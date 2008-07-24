@@ -1,0 +1,16 @@
+Index: smartmontools/smartd.conf
+===================================================================
+--- smartmontools.orig/smartd.conf	2007-11-01 13:16:28.000000000 +0100
++++ smartmontools/smartd.conf	2007-11-01 13:16:28.000000000 +0100
+@@ -1,9 +1,8 @@
+-# Sample configuration file for smartd.  See man smartd.conf.
++# /etc/smartd.conf
++# Configuration file for smartd. Use "man smartd.conf" for more information.
+ 
+ # Home page is: http://smartmontools.sourceforge.net
+ 
+-# $Id: smartd.conf,v 1.45 2006/11/12 23:39:04 dpgilbert Exp $
+-
+ # smartd will re-read the configuration file if it receives a HUP
+ # signal
+ 

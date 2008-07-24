@@ -1,0 +1,33 @@
+Index: smartmontools/smartd.8.in
+===================================================================
+--- smartmontools.orig/smartd.8.in	2008-02-21 09:41:17.000000000 +0100
++++ smartmontools/smartd.8.in	2008-02-21 09:41:41.000000000 +0100
+@@ -410,15 +410,6 @@
+ .B /usr/local/etc/rc.d/init.d/smartd stop
+ 
+ .fi
+-If you want \fBsmartd\fP to start running whenever your machine is
+-booted, this can be enabled by using the command:
+-.nf
+-.B /sbin/chkconfig --add smartd
+-.fi
+-and disabled using the command:
+-.nf
+-.B /sbin/chkconfig --del smartd
+-.fi
+ 
+ .\" DO NOT MODIFY THIS OR THE FOLLOWING TWO LINES. THIS MATERIAL
+ .\" IS AUTOMATICALLY INCLUDED IN THE FILE smartd.conf.5
+Index: smartmontools/smartd.cpp
+===================================================================
+--- smartmontools.orig/smartd.cpp	2008-02-21 09:41:49.000000000 +0100
++++ smartmontools/smartd.cpp	2008-02-21 09:42:02.000000000 +0100
+@@ -766,7 +766,7 @@
+              "  NIS domain: %s\n\n"
+              "The following warning/error was logged by the smartd daemon:\n\n"
+              "%s\n\n"
+-             "For details see host's SYSLOG (default: /var/log/messages).\n\n"
++             "For details see host's SYSLOG (default: /var/log/syslog).\n\n"
+              "%s%s%s",
+ 	     hostname, domainname, nisdomain, message, further, original, additional);
+   exportenv(environ_strings[10], "SMARTD_FULLMESSAGE", fullmessage);
