@@ -1,9 +1,12 @@
 Source: smartmontools
 Section: utils
 Priority: optional
-Maintainer: Guido Guenther <agx@sigxcpu.org>
+Maintainer: Guido Günther <agx@sigxcpu.org>
 Build-Depends: debhelper (>= 6.0.7~), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake1.9, autoconf
 Standards-Version: 3.8.0
+Vcs-Git: git://git.debian.org/git/users/agx/smartmontools.git
+Vcs-Browser: http://git.debian.org/git/users/agx/smartmontools.git
+Homepage: http://smartmontools.sourceforge.net/
 
 Package: smartmontools
 Architecture: any

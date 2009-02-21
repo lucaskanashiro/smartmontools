@@ -1,3 +1,11 @@
+smartmontools (5.38-3) unstable; urgency=low
+
+  * [3ea288e] add Homepage, Vcs-{Git,Browser} fields (Closes: #500530)
+  * [76a9163] check if daemon is running befor starting it (Closes: #516430)
+  * [8a3e8a3] fix maintainer name
+
+ -- Guido Günther <agx@sigxcpu.org>  Sat, 21 Feb 2009 17:19:19 +0100
+
 smartmontools (5.38-2) unstable; urgency=low
 
   * [fd9c675] add lintian override Full stop at end of synopsis is OK -
