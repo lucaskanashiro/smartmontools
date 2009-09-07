@@ -3,7 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,37 +26,97 @@
 #ifndef ATAPRINT_H_
 #define ATAPRINT_H_
 
-#define ATAPRINT_H_CVSID "$Id: ataprint.h,v 1.31 2008/03/04 22:09:47 ballen4705 Exp $\n"
+#define ATAPRINT_H_CVSID "$Id: ataprint.h,v 1.43 2009/07/07 19:28:29 chrfranke Exp $\n"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <vector>
 
-/* Prints ATA Drive Information and S.M.A.R.T. Capability */
-int ataPrintDriveInfo(struct ata_identify_device *);
+// Request to dump a GP or SMART log
+struct ata_log_request
+{
+  bool gpl; // false: SMART, true: GP
+  unsigned char logaddr; // Log address
+  unsigned page; // First page (sector)
+  unsigned nsectors; // # Sectors
 
-void ataPrintGeneralSmartValues(struct ata_smart_values *, struct ata_identify_device *);
+  ata_log_request()
+    : gpl(false), logaddr(0), page(0), nsectors(0)
+    { }
+};
 
-void ataPrintSmartThresholds(struct ata_smart_thresholds_pvt *);
+// Options for ataPrintMain
+// TODO: Move remaining options from con->* to here.
+struct ata_print_options
+{
+  bool drive_info;
+  bool smart_check_status;
+  bool smart_general_values;
+  bool smart_vendor_attrib;
+  bool smart_error_log;
+  bool smart_selftest_log;
+  bool smart_selective_selftest_log;
 
-// returns number of errors in Errorlog
-int  ataPrintSmartErrorlog(struct ata_smart_errorlog *);
+  bool gp_logdir, smart_logdir;
+  unsigned smart_ext_error_log;
+  unsigned smart_ext_selftest_log;
+  bool retry_error_log, retry_selftest_log;
 
-int ataPrintLogDirectory(struct ata_smart_log_directory *);
+  std::vector<ata_log_request> log_requests;
 
-void PrintSmartAttributes(struct ata_smart_values *);
+  bool sct_temp_sts, sct_temp_hist;
+  bool sataphy, sataphy_reset;
 
-void PrintSmartAttribWithThres(struct ata_smart_values *,
-                                struct ata_smart_thresholds_pvt *,
-                                int onlyfailed);
+  bool smart_disable, smart_enable;
+  bool smart_auto_offl_disable, smart_auto_offl_enable;
+  bool smart_auto_save_disable, smart_auto_save_enable;
 
-// returns number of entries that had logged errors
-int ataPrintSmartSelfTestlog(struct ata_smart_selftestlog *, int allentries);
+  int smart_selftest_type; // OFFLINE_FULL_SCAN, ..., see atacmds.h. -1 for no test
+  ata_selective_selftest_args smart_selective_args; // Extra args for selective self-test
 
-void ataPseudoCheckSmart(struct ata_smart_values *, struct ata_smart_thresholds_pvt *);
+  unsigned sct_temp_int;
+  bool sct_temp_int_pers;
 
-// Convenience function for formatting strings from ata_identify_device.
-void format_ata_string(char *out, const char *in, int n);
+  unsigned char fix_firmwarebug; // FIX_*, see atacmds.h
+  bool fix_swapped_id; // Fix swapped ID strings returned by some buggy drivers
 
-int ataPrintMain(int fd);
+  // The i'th entry in this array will modify the printed meaning of
+  // the i'th SMART attribute.  The default definitions of the
+  // Attributes are obtained by having the array be all zeros.  If
+  // attributedefs[i] is nonzero, it means that the i'th attribute has
+  // a non-default meaning.  See the ataPrintSmartAttribName and
+  // and parse_attribute_def functions.
+  unsigned char attributedefs[256];
+
+  bool ignore_presets; // Ignore presets from drive database
+  bool show_presets; // Show presets and exit
+  unsigned char powermode; // Skip check, if disk in idle or standby mode
+
+  ata_print_options()
+    : drive_info(false),
+      smart_check_status(false),
+      smart_general_values(false),
+      smart_vendor_attrib(false),
+      smart_error_log(false),
+      smart_selftest_log(false),
+      smart_selective_selftest_log(false),
+      gp_logdir(false), smart_logdir(false),
+      smart_ext_error_log(0),
+      smart_ext_selftest_log(0),
+      retry_error_log(false), retry_selftest_log(false),
+      sct_temp_sts(false), sct_temp_hist(false),
+      sataphy(false), sataphy_reset(false),
+      smart_disable(false), smart_enable(false),
+      smart_auto_offl_disable(false), smart_auto_offl_enable(false),
+      smart_auto_save_disable(false), smart_auto_save_enable(false),
+      smart_selftest_type(-1),
+      sct_temp_int(0), sct_temp_int_pers(false),
+      fix_firmwarebug(FIX_NOTSPECIFIED),
+      fix_swapped_id(false),
+      ignore_presets(false),
+      show_presets(false),
+      powermode(0)
+    { memset(attributedefs, 0, sizeof(attributedefs)); }
+};
+
+int ataPrintMain(ata_device * device, const ata_print_options & options);
 
 #endif

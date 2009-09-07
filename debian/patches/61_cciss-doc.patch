@@ -6,27 +6,25 @@ file and adds some more cciss documentation to the manpages. I think this
 patch gets things to parity with the 3ware documentation with a couple
 minor exceptions
 
-diff -ur smartmontools-5.38/smartd.8.in smartmontools-5.38.new/smartd.8.in
---- smartmontools-5.38/smartd.8.in	2008-03-04 14:09:47.000000000 -0800
-+++ smartmontools-5.38.new/smartd.8.in	2008-06-28 04:07:26.000000000 -0700
-@@ -496,11 +496,11 @@
+--- a/smartd.8.in
++++ b/smartd.8.in
+@@ -548,10 +548,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
 -.B # behind two 3ware controllers, three SATA disks
--.B # directly connected to the highpoint rocket-
--.B # raid controller, two SATA disks connected to
--.B # the highpoint rocketraid controller via a pmport
--.B # device and one SATA disk.
+-.B # directly connected to the HighPoint Rocket-
+-.B # RAID controller, two SATA disks connected to
+-.B # the HighPoint RocketRAID controller via a pmport
 +.B # behind two 3ware controllers, two disks on a cciss
-+.B # controller, three SATA disks directly connected to
-+.B # the highpoint rocket-raid controller, two SATA
-+.B # disks connected to the highpoint rocketraid
-+.B # controller via a pmport device and one SATA disk.
++.B # controller, three SATA disks directly connected
++.B # to the HighPoint Rocket-RAID controller,
++.B # two SATA disks connected to the HighPoint
++.B # RocketRAID controller via a pmport
+ .B # device, four SATA disks connected to an Areca
+ .B # RAID controller, and one SATA disk.
  .B #
- .nf
- .B # First ATA disk on two different interfaces. On
-@@ -551,6 +551,13 @@
+@@ -613,6 +614,13 @@ Section below!
  .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
@@ -37,12 +35,12 @@ diff -ur smartmontools-5.38/smartd.8.in smartmontools-5.38.new/smartd.8.in
 +.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
 +.B #
 +.nf
- .B # Three SATA disks on a highpoint rocketraid controller.
+ .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -630,6 +637,10 @@
- appear to \fBsmartd\fP as normal ATA devices.  Hence all the ATA
- directives can be used for these disks (but see note below).
+@@ -718,6 +726,10 @@ these disks.  Areca firmware version 1.4
+ smartmontools must be used; Please see the \fBsmartctl\fP man page for
+ further details.
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
@@ -51,24 +49,21 @@ diff -ur smartmontools-5.38/smartd.8.in smartmontools-5.38.new/smartd.8.in
  .TP
  .B \-d TYPE
  Specifies the type of the device.  This Directive may be used multiple
-@@ -1110,9 +1121,10 @@
+@@ -1249,9 +1261,9 @@ is set to the argument of \-M exec, if p
  .IP \fBSMARTD_DEVICE\fP 4
  is set to the device path (examples: /dev/hda, /dev/sdb).
  .IP \fBSMARTD_DEVICETYPE\fP 4
--is set to the device type (possible values: ata, scsi, 3ware,N, hpt,L/M/N).
--Here N=0,...,23 denotes the ATA disk behind a 3ware RAID controller and
--L/M/N denotes the SATA disk behind a HighPoint RocketRAID controller.
+-is set to the device type (possible values: ata, scsi, 3ware,N,
 +is set to the device type (possible values: ata, scsi, 3ware,N, cciss,N,
-+hpt,L/M/N). Here N=0,...,23 denotes the ATA disk behind a 3ware or cciss
-+RAID controller and L/M/N denotes the SATA disk behind a HighPoint
-+RocketRAID controller.
+ areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
+-3ware RAID controller and L/M/N denotes the SATA disk behind a
++3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
+ HighPoint RocketRAID controller.
  .IP \fBSMARTD_DEVICESTRING\fP 4
  is set to the device description.  For SMARTD_DEVICETYPE of ata or
- scsi, this is the same as SMARTD_DEVICE.  For 3ware RAID controllers,
-diff -ur smartmontools-5.38/smartd.conf smartmontools-5.38.new/smartd.conf
---- smartmontools-5.38/smartd.conf	2006-11-12 15:39:04.000000000 -0800
-+++ smartmontools-5.38.new/smartd.conf	2008-06-28 03:29:45.000000000 -0700
-@@ -87,6 +87,12 @@
+--- a/smartd.conf
++++ b/smartd.conf
+@@ -86,6 +86,12 @@ DEVICESCAN -m root -M exec /usr/share/sm
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -81,27 +76,25 @@ diff -ur smartmontools-5.38/smartd.conf smartmontools-5.38.new/smartd.conf
  
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
-diff -ur smartmontools-5.38/smartd.conf.5.in smartmontools-5.38.new/smartd.conf.5.in
---- smartmontools-5.38/smartd.conf.5.in	2008-06-28 03:57:05.000000000 -0700
-+++ smartmontools-5.38.new/smartd.conf.5.in	2008-06-28 04:04:51.000000000 -0700
-@@ -118,11 +118,11 @@
+--- a/smartd.conf.5.in
++++ b/smartd.conf.5.in
+@@ -118,10 +118,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
 -.B # behind two 3ware controllers, three SATA disks
--.B # directly connected to the highpoint rocket-
--.B # raid controller, two SATA disks connected to
--.B # the highpoint controller via a pmport device
--.B # and one SATA disk.
+-.B # directly connected to the HighPoint Rocket-
+-.B # RAID controller, two SATA disks connected to
+-.B # the HighPoint RocketRAID controller via a pmport
 +.B # behind two 3ware controllers, two disks on a cciss
 +.B # controller, three SATA disks directly connected
-+.B # to the highpoint rocket-raid controller, two
-+.B # SATA disks connected to the highpoint controller
-+.B # via a pmport device and one SATA disk.
++.B # to the HighPoint Rocket-RAID controller,
++.B # two SATA disks connected to the HighPoint
++.B # RocketRAID controller via a pmport
+ .B # device, four SATA disks connected to an Areca
+ .B # RAID controller, and one SATA disk.
  .B #
- .nf
- .B # First ATA disk on two different interfaces. On
-@@ -173,6 +173,13 @@
+@@ -183,6 +184,13 @@ Section below!
  .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
@@ -112,12 +105,12 @@ diff -ur smartmontools-5.38/smartd.conf.5.in smartmontools-5.38.new/smartd.conf.
 +.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
 +.B #
 +.nf
- .B # Three SATA disks on a highpoint rocketraid controller.
+ .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -252,6 +259,9 @@
- appear to \fBsmartd\fP as normal ATA devices.  Hence all the ATA
- directives can be used for these disks (but see note below).
+@@ -288,6 +296,9 @@ these disks.  Areca firmware version 1.4
+ smartmontools must be used; Please see the \fBsmartctl\fP man page for
+ further details.
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
@@ -125,17 +118,15 @@ diff -ur smartmontools-5.38/smartd.conf.5.in smartmontools-5.38.new/smartd.conf.
  .TP
  .B \-d TYPE
  Specifies the type of the device.  This Directive may be used multiple
-@@ -732,9 +742,10 @@
+@@ -819,9 +830,9 @@ is set to the argument of \-M exec, if p
  .IP \fBSMARTD_DEVICE\fP 4
  is set to the device path (examples: /dev/hda, /dev/sdb).
  .IP \fBSMARTD_DEVICETYPE\fP 4
--is set to the device type (possible values: ata, scsi, 3ware,N, hpt,L/M/N).
--Here N=0,...,23 denotes the ATA disk behind a 3ware RAID controller and
--L/M/N denotes the SATA disk behind a HighPoint RocketRAID controller.
+-is set to the device type (possible values: ata, scsi, 3ware,N,
 +is set to the device type (possible values: ata, scsi, 3ware,N, cciss,N,
-+hpt,L/M/N). Here N=0,...,23 denotes the ATA disk behind a 3ware or cciss
-+RAID controller and L/M/N denotes the SATA disk behind a HighPoint
-+RocketRAID controller.
+ areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
+-3ware RAID controller and L/M/N denotes the SATA disk behind a
++3ware or cciss RAID controller and L/M/N denotes the SATA disk behind a
+ HighPoint RocketRAID controller.
  .IP \fBSMARTD_DEVICESTRING\fP 4
  is set to the device description.  For SMARTD_DEVICETYPE of ata or
- scsi, this is the same as SMARTD_DEVICE.  For 3ware RAID controllers,

@@ -3,11 +3,11 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * Additional SCSI work:
- * Copyright (C) 2003-8 Douglas Gilbert <dougg@torque.net>
+ * Copyright (C) 2003-9 Douglas Gilbert <dougg@torque.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,25 +35,23 @@
 #include "int64.h"
 #include "extern.h"
 #include "scsicmds.h"
+#include "atacmds.h" // smart_command_set
+#include "dev_interface.h"
 #include "scsiprint.h"
 #include "smartctl.h"
 #include "utility.h"
-#include "scsiata.h"
 
 #define GBUF_SIZE 65535
 
-const char* scsiprint_c_cvsid="$Id: scsiprint.cpp,v 1.121 2008/03/04 22:09:47 ballen4705 Exp $"
-CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID SCSIPRINT_H_CVSID SMARTCTL_H_CVSID UTILITY_H_CVSID;
+const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 2861 2009-07-24 16:47:03Z chrfranke $"
+                                 SCSIPRINT_H_CVSID;
 
 // control block which points to external global control variables
 extern smartmonctrl *con;
 
-// to hold onto exit code for atexit routine
-extern int exitstatus;
-
 UINT8 gBuf[GBUF_SIZE];
 #define LOG_RESP_LEN 252
-#define LOG_RESP_LONG_LEN 16384
+#define LOG_RESP_LONG_LEN ((62 * 256) + 252)
 #define LOG_RESP_TAPE_ALERT_LEN 0x144
 
 /* Log pages supported */
@@ -67,6 +65,7 @@ static int gVerifyECounterLPage = 0;
 static int gNonMediumELPage = 0;
 static int gLastNErrorLPage = 0;
 static int gBackgroundResultsLPage = 0;
+static int gProtocolSpecificLPage = 0;
 static int gTapeAlertsLPage = 0;
 static int gSeagateCacheLPage = 0;
 static int gSeagateFactoryLPage = 0;
@@ -81,7 +80,7 @@ static int modese_len = 0;
 // simply returns to the calling routine.
 extern void failuretest(int type, int returnvalue);
 
-static void scsiGetSupportedLogPages(int device)
+static void scsiGetSupportedLogPages(scsi_device * device)
 {
     int i, err;
 
@@ -126,6 +125,9 @@ static void scsiGetSupportedLogPages(int device)
             case BACKGROUND_RESULTS_LPAGE:
                 gBackgroundResultsLPage = 1;
                 break;
+            case PROTOCOL_SPECIFIC_LPAGE:
+                gProtocolSpecificLPage = 1;
+                break;
             case TAPE_ALERTS_LPAGE:
                 gTapeAlertsLPage = 1;
                 break;
@@ -143,7 +145,7 @@ static void scsiGetSupportedLogPages(int device)
 
 /* Returns 0 if ok, -1 if can't check IE, -2 if can check and bad
    (or at least something to report). */
-static int scsiGetSmartData(int device, int attribs)
+static int scsiGetSmartData(scsi_device * device, bool attribs)
 {
     UINT8 asc;
     UINT8 ascq;
@@ -187,14 +189,14 @@ static int scsiGetSmartData(int device, int attribs)
 
 // Returns number of logged errors or zero if none or -1 if fetching
 // TapeAlerts fails
-static char *severities = "CWI";
+static const char * const severities = "CWI";
 
-static int scsiGetTapeAlertsData(int device, int peripheral_type)
+static int scsiGetTapeAlertsData(scsi_device * device, int peripheral_type)
 {
     unsigned short pagelength;
     unsigned short parametercode;
     int i, err;
-    char *s;
+    const char *s;
     const char *ts;
     int failures = 0;
 
@@ -237,7 +239,7 @@ static int scsiGetTapeAlertsData(int device, int peripheral_type)
     return failures;
 }
 
-static void scsiGetStartStopData(int device)
+static void scsiGetStartStopData(scsi_device * device)
 {
     UINT32 u;
     int err, len, k, extra, pc;
@@ -280,7 +282,7 @@ static void scsiGetStartStopData(int device)
             if (extra > 7) {
                 u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) | ucp[7];
                 if (0xffffffff != u)
-                    pout("Recommended maximum start stop count:  %u times\n",
+                    pout("Specified cycle count over device lifetime:  %u\n",
                          u);
             }
             break;
@@ -288,7 +290,22 @@ static void scsiGetStartStopData(int device)
             if (extra > 7) {
                 u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) | ucp[7];
                 if (0xffffffff != u)
-                    pout("Current start stop count:      %u times\n", u);
+                    pout("Accumulated start-stop cycles:  %u\n", u);
+            }
+            break;
+        case 5:
+            if (extra > 7) {
+                u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) | ucp[7];
+                if (0xffffffff != u)
+                    pout("Specified load-unload count over device "
+                         "lifetime:  %u\n", u);
+            }
+            break;
+        case 6:
+            if (extra > 7) {
+                u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) | ucp[7];
+                if (0xffffffff != u)
+                    pout("Accumulated load-unload cycles:  %u\n", u);
             }
             break;
         default:
@@ -298,7 +315,7 @@ static void scsiGetStartStopData(int device)
     }
 } 
 
-static void scsiPrintGrownDefectListLen(int device)
+static void scsiPrintGrownDefectListLen(scsi_device * device)
 {
     int err, dl_format, dl_len, div;
 
@@ -347,7 +364,7 @@ static void scsiPrintGrownDefectListLen(int device)
     }
 }
 
-static void scsiPrintSeagateCacheLPage(int device)
+static void scsiPrintSeagateCacheLPage(scsi_device * device)
 {
     int k, j, num, pl, pc, err, len;
     unsigned char * ucp;
@@ -422,7 +439,7 @@ static void scsiPrintSeagateCacheLPage(int device)
     }
 }
 
-static void scsiPrintSeagateFactoryLPage(int device)
+static void scsiPrintSeagateFactoryLPage(scsi_device * device)
 {
     int k, j, num, pl, pc, len, err, good, bad;
     unsigned char * ucp;
@@ -516,7 +533,7 @@ static void scsiPrintSeagateFactoryLPage(int device)
     }
 }
 
-static void scsiPrintErrorCounterLog(int device)
+static void scsiPrintErrorCounterLog(scsi_device * device)
 {
     struct scsiErrorCounter errCounterArr[3];
     struct scsiErrorCounter * ecp;
@@ -639,8 +656,8 @@ static const char * self_test_code[] = {
 
 static const char * self_test_result[] = {
         "Completed                ",
-        "Interrupted ('-X' switch)",
-        "Interrupted (bus reset ?)",
+        "Aborted (by user command)",
+        "Aborted (device reset ?) ",
         "Unknown error, incomplete",
         "Completed, segment failed",
         "Failed in first segment  ",
@@ -660,7 +677,7 @@ static const char * self_test_result[] = {
 // Returns 0 if ok else FAIL* bitmask. Note that if any of the most recent
 // 20 self tests fail (result code 3 to 7 inclusive) then FAILLOG and/or
 // FAILSMART is returned.
-static int scsiPrintSelfTest(int device)
+static int scsiPrintSelfTest(scsi_device * device)
 {
     int num, k, n, res, err, durationSec;
     int noheader = 1;
@@ -797,7 +814,7 @@ static int scsiPrintSelfTest(int device)
         pout("No self-tests have been logged\n");
     else
         pout("\n");
-    if ((0 == scsiFetchExtendedSelfTestTime(device, &durationSec, 
+    if ((0 == scsiFetchExtendedSelfTestTime(device, &durationSec,
                         modese_len)) && (durationSec > 0)) {
         pout("Long (extended) Self Test duration: %d seconds "
              "[%.1f minutes]\n", durationSec, durationSec / 60.0);
@@ -814,15 +831,15 @@ static const char * bms_status[] = {
     "halted due to medium formatted without P-List",
     "halted - vendor specific cause",
     "halted due to temperature out of range",
-    "halted until BM interval timer expires", /* 8 */
+    "waiting until BMS interval timer expires", /* 8 */
 };
 
 static const char * reassign_status[] = {
-    "No reassignment needed",
-    "Require Reassign or Write command",
+    "Reserved [0x0]",
+    "Require Write or Reassign Blocks command",
     "Successfully reassigned",
     "Reserved [0x3]",
-    "Failed",
+    "Reassignment by disk failed",
     "Recovered via rewrite in-place",
     "Reassigned by app, has valid data",
     "Reassigned by app, has no valid data",
@@ -833,7 +850,7 @@ static const char * reassign_status[] = {
 // Returns 0 if ok else FAIL* bitmask. Note can have a status entry
 // and up to 2048 events (although would hope to have less). May set
 // FAILLOG if serious errors detected (in the future).
-static int scsiPrintBackgroundResults(int device)
+static int scsiPrintBackgroundResults(scsi_device * device)
 {
     int num, j, m, err, pc, pl, truncated;
     int noheader = 1;
@@ -895,6 +912,8 @@ static int scsiPrintBackgroundResults(int device)
                  (ucp[10] << 8) + ucp[11]);
             pout("scan progress: %.2f%%\n",
                  (double)((ucp[12] << 8) + ucp[13]) * 100.0 / 65536.0);
+            pout("    Number of background medium scans performed: %d\n",
+                 (ucp[14] << 8) + ucp[15]);
             break;
         default:
             if (noheader) {
@@ -933,6 +952,334 @@ static int scsiPrintBackgroundResults(int device)
              "bytes\n", LOG_RESP_LONG_LEN, truncated);
     return retval;
 }
+
+
+static void show_sas_phy_event_info(int peis, unsigned int val,
+                                    unsigned thresh_val)
+{
+    unsigned int u;
+
+    switch (peis) {
+    case 0:
+        pout("     No event\n");
+        break;
+    case 0x1:
+        pout("     Invalid word count: %u\n", val);
+        break;
+    case 0x2:
+        pout("     Running disparity error count: %u\n", val);
+        break;
+    case 0x3:
+        pout("     Loss of dword synchronization count: %u\n", val);
+        break;
+    case 0x4:
+        pout("     Phy reset problem count: %u\n", val);
+        break;
+    case 0x5:
+        pout("     Elasticity buffer overflow count: %u\n", val);
+        break;
+    case 0x6:
+        pout("     Received ERROR  count: %u\n", val);
+        break;
+    case 0x20:
+        pout("     Received address frame error count: %u\n", val);
+        break;
+    case 0x21:
+        pout("     Transmitted abandon-class OPEN_REJECT count: %u\n", val);
+        break;
+    case 0x22:
+        pout("     Received abandon-class OPEN_REJECT count: %u\n", val);
+        break;
+    case 0x23:
+        pout("     Transmitted retry-class OPEN_REJECT count: %u\n", val);
+        break;
+    case 0x24:
+        pout("     Received retry-class OPEN_REJECT count: %u\n", val);
+        break;
+    case 0x25:
+        pout("     Received AIP (WATING ON PARTIAL) count: %u\n", val);
+        break;
+    case 0x26:
+        pout("     Received AIP (WAITING ON CONNECTION) count: %u\n", val);
+        break;
+    case 0x27:
+        pout("     Transmitted BREAK count: %u\n", val);
+        break;
+    case 0x28:
+        pout("     Received BREAK count: %u\n", val);
+        break;
+    case 0x29:
+        pout("     Break timeout count: %u\n", val);
+        break;
+    case 0x2a:
+        pout("     Connection count: %u\n", val);
+        break;
+    case 0x2b:
+        pout("     Peak transmitted pathway blocked count: %u\n",
+               val & 0xff);
+        pout("         Peak value detector threshold: %u\n",
+               thresh_val & 0xff);
+        break;
+    case 0x2c:
+        u = val & 0xffff;
+        if (u < 0x8000)
+            pout("     Peak transmitted arbitration wait time (us): "
+                   "%u\n", u);
+        else
+            pout("     Peak transmitted arbitration wait time (ms): "
+                   "%u\n", 33 + (u - 0x8000));
+        u = thresh_val & 0xffff;
+        if (u < 0x8000)
+            pout("         Peak value detector threshold (us): %u\n",
+                   u);
+        else
+            pout("         Peak value detector threshold (ms): %u\n",
+                   33 + (u - 0x8000));
+        break;
+    case 0x2d:
+        pout("     Peak arbitration time (us): %u\n", val);
+        pout("         Peak value detector threshold: %u\n", thresh_val);
+        break;
+    case 0x2e:
+        pout("     Peak connection time (us): %u\n", val);
+        pout("         Peak value detector threshold: %u\n", thresh_val);
+        break;
+    case 0x40:
+        pout("     Transmitted SSP frame count: %u\n", val);
+        break;
+    case 0x41:
+        pout("     Received SSP frame count: %u\n", val);
+        break;
+    case 0x42:
+        pout("     Transmitted SSP frame error count: %u\n", val);
+        break;
+    case 0x43:
+        pout("     Received SSP frame error count: %u\n", val);
+        break;
+    case 0x44:
+        pout("     Transmitted CREDIT_BLOCKED count: %u\n", val);
+        break;
+    case 0x45:
+        pout("     Received CREDIT_BLOCKED count: %u\n", val);
+        break;
+    case 0x50:
+        pout("     Transmitted SATA frame count: %u\n", val);
+        break;
+    case 0x51:
+        pout("     Received SATA frame count: %u\n", val);
+        break;
+    case 0x52:
+        pout("     SATA flow control buffer overflow count: %u\n", val);
+        break;
+    case 0x60:
+        pout("     Transmitted SMP frame count: %u\n", val);
+        break;
+    case 0x61:
+        pout("     Received SMP frame count: %u\n", val);
+        break;
+    case 0x63:
+        pout("     Received SMP frame error count: %u\n", val);
+        break;
+    default:
+        break;
+    }
+}
+
+static void show_sas_port_param(unsigned char * ucp, int param_len)
+{
+    int j, m, n, nphys, pcb, t, sz, spld_len;
+    unsigned char * vcp;
+    uint64_t ull;
+    unsigned int ui;
+    char s[64];
+
+    sz = sizeof(s);
+    pcb = ucp[2];
+    t = (ucp[0] << 8) | ucp[1];
+    pout("relative target port id = %d\n", t);
+    pout("  generation code = %d\n", ucp[6]);
+    nphys = ucp[7];
+    pout("  number of phys = %d\n", nphys);
+
+    for (j = 0, vcp = ucp + 8; j < (param_len - 8);
+         vcp += spld_len, j += spld_len) {
+        pout("  phy identifier = %d\n", vcp[1]);
+        spld_len = vcp[3];
+        if (spld_len < 44)
+            spld_len = 48;      /* in SAS-1 and SAS-1.1 vcp[3]==0 */
+        else
+            spld_len += 4;
+        t = ((0x70 & vcp[4]) >> 4);
+        switch (t) {
+        case 0: snprintf(s, sz, "no device attached"); break;
+        case 1: snprintf(s, sz, "end device"); break;
+        case 2: snprintf(s, sz, "expander device"); break;
+        case 3: snprintf(s, sz, "expander device (fanout)"); break;
+        default: snprintf(s, sz, "reserved [%d]", t); break;
+        }
+        pout("    attached device type: %s\n", s);
+        t = 0xf & vcp[4];
+        switch (t) {
+        case 0: snprintf(s, sz, "unknown"); break;
+        case 1: snprintf(s, sz, "power on"); break;
+        case 2: snprintf(s, sz, "hard reset"); break;
+        case 3: snprintf(s, sz, "SMP phy control function"); break;
+        case 4: snprintf(s, sz, "loss of dword synchronization"); break;
+        case 5: snprintf(s, sz, "mux mix up"); break;
+        case 6: snprintf(s, sz, "I_T nexus loss timeout for STP/SATA");
+            break;
+        case 7: snprintf(s, sz, "break timeout timer expired"); break;
+        case 8: snprintf(s, sz, "phy test function stopped"); break;
+        case 9: snprintf(s, sz, "expander device reduced functionality");
+             break;
+        default: snprintf(s, sz, "reserved [0x%x]", t); break;
+        }
+        pout("    attached reason: %s\n", s);
+        t = (vcp[5] & 0xf0) >> 4;
+        switch (t) {
+        case 0: snprintf(s, sz, "unknown"); break;
+        case 1: snprintf(s, sz, "power on"); break;
+        case 2: snprintf(s, sz, "hard reset"); break;
+        case 3: snprintf(s, sz, "SMP phy control function"); break;
+        case 4: snprintf(s, sz, "loss of dword synchronization"); break;
+        case 5: snprintf(s, sz, "mux mix up"); break;
+        case 6: snprintf(s, sz, "I_T nexus loss timeout for STP/SATA");
+            break;
+        case 7: snprintf(s, sz, "break timeout timer expired"); break;
+        case 8: snprintf(s, sz, "phy test function stopped"); break;
+        case 9: snprintf(s, sz, "expander device reduced functionality");
+             break;
+        default: snprintf(s, sz, "reserved [0x%x]", t); break;
+        }
+        pout("    reason: %s\n", s);
+        t = (0xf & vcp[5]);
+        switch (t) {
+        case 0: snprintf(s, sz, "phy enabled; unknown");
+                     break;
+        case 1: snprintf(s, sz, "phy disabled"); break;
+        case 2: snprintf(s, sz, "phy enabled; speed negotiation failed");
+                     break;
+        case 3: snprintf(s, sz, "phy enabled; SATA spinup hold state");
+                     break;
+        case 4: snprintf(s, sz, "phy enabled; port selector");
+                     break;
+        case 5: snprintf(s, sz, "phy enabled; reset in progress");
+                     break;
+        case 6: snprintf(s, sz, "phy enabled; unsupported phy attached");
+                     break;
+        case 8: snprintf(s, sz, "phy enabled; 1.5 Gbps"); break;
+        case 9: snprintf(s, sz, "phy enabled; 3 Gbps"); break;
+        case 0xa: snprintf(s, sz, "phy enabled; 6 Gbps"); break;
+        default: snprintf(s, sz, "reserved [%d]", t); break;
+        }
+        pout("    negotiated logical link rate: %s\n", s);
+        pout("    attached initiator port: ssp=%d stp=%d smp=%d\n",
+               !! (vcp[6] & 8), !! (vcp[6] & 4), !! (vcp[6] & 2));
+        pout("    attached target port: ssp=%d stp=%d smp=%d\n",
+               !! (vcp[7] & 8), !! (vcp[7] & 4), !! (vcp[7] & 2));
+        for (n = 0, ull = vcp[8]; n < 8; ++n) {
+            ull <<= 8; ull |= vcp[8 + n];
+        }
+        pout("    SAS address = 0x%" PRIx64 "\n", ull);
+        for (n = 0, ull = vcp[16]; n < 8; ++n) {
+            ull <<= 8; ull |= vcp[16 + n];
+        }
+        pout("    attached SAS address = 0x%" PRIx64 "\n", ull);
+        pout("    attached phy identifier = %d\n", vcp[24]);
+        ui = (vcp[32] << 24) | (vcp[33] << 16) | (vcp[34] << 8) | vcp[35];
+        pout("    Invalid DWORD count = %u\n", ui);
+        ui = (vcp[36] << 24) | (vcp[37] << 16) | (vcp[38] << 8) | vcp[39];
+        pout("    Running disparity error count = %u\n", ui);
+        ui = (vcp[40] << 24) | (vcp[41] << 16) | (vcp[42] << 8) | vcp[43];
+        pout("    Loss of DWORD synchronization = %u\n", ui);
+        ui = (vcp[44] << 24) | (vcp[45] << 16) | (vcp[46] << 8) | vcp[47];
+        pout("    Phy reset problem = %u\n", ui);
+        if (spld_len > 51) {
+            int num_ped, peis;
+            unsigned char * xcp;
+            unsigned int pvdt;
+
+            num_ped = vcp[51];
+            if (num_ped > 0)
+               pout("    Phy event descriptors:\n");
+            xcp = vcp + 52;
+            for (m = 0; m < (num_ped * 12); m += 12, xcp += 12) {
+                peis = xcp[3];
+                ui = (xcp[4] << 24) | (xcp[5] << 16) | (xcp[6] << 8) |
+                     xcp[7];
+                pvdt = (xcp[8] << 24) | (xcp[9] << 16) | (xcp[10] << 8) |
+                       xcp[11];
+                show_sas_phy_event_info(peis, ui, pvdt);
+            }
+        }
+    }
+}
+
+// Returns 1 if okay, 0 if non SAS descriptors
+static int show_protocol_specific_page(unsigned char * resp, int len)
+{
+    int k, num, param_len;
+    unsigned char * ucp;
+
+    num = len - 4;
+    for (k = 0, ucp = resp + 4; k < num; ) {
+        param_len = ucp[3] + 4;
+        if (6 != (0xf & ucp[4]))
+            return 0;   /* only decode SAS log page */
+        if (0 == k)
+            pout("Protocol Specific port log page for SAS SSP\n");
+        show_sas_port_param(ucp, param_len);
+        k += param_len;
+        ucp += param_len;
+    }
+    return 1;
+}
+
+
+// See Serial Attached SCSI (SAS-2) (e.g. revision 16) the Protocol Specific
+// log pageSerial Attached SCSI (SAS-2) (e.g. revision 16) the Protocol
+// Specific log page.
+// Returns 0 if ok else FAIL* bitmask. Note that if any of the most recent
+// 20 self tests fail (result code 3 to 7 inclusive) then FAILLOG and/or
+// FAILSMART is returned.
+static int scsiPrintSasPhy(scsi_device * device, int reset)
+{
+    int num, err;
+
+    if ((err = scsiLogSense(device, PROTOCOL_SPECIFIC_LPAGE, 0, gBuf,
+                            LOG_RESP_LONG_LEN, 0))) {
+        PRINT_ON(con);
+        pout("scsiPrintSasPhy Log Sense Failed [%s]\n", scsiErrString(err));
+        PRINT_OFF(con);
+        return FAILSMART;
+    }
+    if ((gBuf[0] & 0x3f) != PROTOCOL_SPECIFIC_LPAGE) {
+        PRINT_ON(con);
+        pout("Protocol specific Log Sense Failed, page mismatch\n");
+        PRINT_OFF(con);
+        return FAILSMART;
+    }
+    // compute page length
+    num = (gBuf[2] << 8) + gBuf[3];
+    if (1 != show_protocol_specific_page(gBuf, num + 4)) {
+        PRINT_ON(con);
+        pout("Only support protocol specific log page on SAS devices\n");
+        PRINT_OFF(con);
+        return FAILSMART;
+    }
+    if (reset) {
+        if ((err = scsiLogSelect(device, 1 /* pcr */, 0 /* sp */, 0 /* pc */,
+                                 PROTOCOL_SPECIFIC_LPAGE, 0, NULL, 0))) {
+            PRINT_ON(con);
+            pout("scsiPrintSasPhy Log Select (reset) Failed [%s]\n",
+                 scsiErrString(err));
+            PRINT_OFF(con);
+            return FAILSMART;
+        }
+    }
+    return 0;
+}
+
 
 static const char * peripheral_dt_arr[] = {
         "disk",
@@ -973,7 +1320,7 @@ static const char * transport_proto_arr[] = {
 };
 
 /* Returns 0 on success, 1 on general error and 2 for early, clean exit */
-static int scsiGetDriveInfo(int device, UINT8 * peripheral_type, int all)
+static int scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
 {
     char manufacturer[9];
     char product[17];
@@ -1025,29 +1372,7 @@ static int scsiGetDriveInfo(int device, UINT8 * peripheral_type, int all)
     if (all && (0 != strncmp(manufacturer, "ATA", 3)))
         pout("Device: %s %s Version: %s\n", manufacturer, product, revision);
 
-    if (0 == strncmp(manufacturer, "3ware", 5) || 0 == strncmp(manufacturer, "AMCC", 4) ) {
-#if defined(_WIN32) || defined(__CYGWIN__)
-        pout("please try changing device to /dev/hdX,N\n");
-#else
-        pout("please try adding '-d 3ware,N'\n");
-        pout("you may also need to change device to /dev/twaN or /dev/tweN\n");
-#endif
-        return 2;
-    } else if ((len >= 42) &&
-	       (0 == strncmp((const char *)(gBuf + 36), "MVSATA", 6))) {
-        pout("please try '-d marvell'\n");
-        return 2;
-    } else if ((0 == con->controller_explicit) &&
-	       (0 == strncmp(manufacturer, "ATA     ", 8)) &&
-               has_sat_pass_through(device, 0)) {
-        con->controller_type = CONTROLLER_SAT;
-        if (con->reportscsiioctl > 0) {
-            PRINT_ON(con);
-            pout("Detected SAT interface, switch to device type 'sat'\n");
-            PRINT_OFF(con);
-        }
-	return 2;
-    } else if ((0 == con->controller_explicit) &&
+    if (!*device->get_req_type()/*no type requested*/ &&
                (0 == strncmp(manufacturer, "ATA", 3))) {
         pout("\nProbable ATA device behind a SAT layer\n"
              "Try an additional '-d ata' or '-d sat' argument.\n");
@@ -1154,7 +1479,7 @@ static int scsiGetDriveInfo(int device, UINT8 * peripheral_type, int all)
     return 0;
 }
 
-static int scsiSmartEnable(int device)
+static int scsiSmartEnable(scsi_device * device)
 {
     struct scsi_iec_mode_page iec;
     int err;
@@ -1190,7 +1515,7 @@ static int scsiSmartEnable(int device)
     return 0;
 }
         
-static int scsiSmartDisable(int device)
+static int scsiSmartDisable(scsi_device * device)
 {
     struct scsi_iec_mode_page iec;
     int err;
@@ -1226,7 +1551,7 @@ static int scsiSmartDisable(int device)
     return 0;
 }
 
-static void scsiPrintTemp(int device)
+static void scsiPrintTemp(scsi_device * device)
 {
     UINT8 temp = 0;
     UINT8 trip = 0;
@@ -1245,14 +1570,14 @@ static void scsiPrintTemp(int device)
 }
 
 /* Main entry point used by smartctl command. Return 0 for success */
-int scsiPrintMain(int fd)
+int scsiPrintMain(scsi_device * device, const scsi_print_options & options)
 {
     int checkedSupportedLogPages = 0;
     UINT8 peripheral_type = 0;
     int returnval = 0;
     int res, durationSec;
 
-    res = scsiGetDriveInfo(fd, &peripheral_type, con->driveinfo);
+    res = scsiGetDriveInfo(device, &peripheral_type, options.drive_info);
     if (res) {
         if (2 == res)
             return 0;
@@ -1260,45 +1585,45 @@ int scsiPrintMain(int fd)
             failuretest(MANDATORY_CMD, returnval |= FAILID);
     }
 
-    if (con->smartenable) {
-        if (scsiSmartEnable(fd))
+    if (options.smart_enable) {
+        if (scsiSmartEnable(device))
             failuretest(MANDATORY_CMD, returnval |= FAILSMART);
     }
 
-    if (con->smartdisable) {
-        if (scsiSmartDisable(fd))
+    if (options.smart_disable) {
+        if (scsiSmartDisable(device))
             failuretest(MANDATORY_CMD,returnval |= FAILSMART);
     }
     
-    if (con->smartautosaveenable) {
-      if (scsiSetControlGLTSD(fd, 0, modese_len)) {
+    if (options.smart_auto_save_enable) {
+      if (scsiSetControlGLTSD(device, 0, modese_len)) {
         pout("Enable autosave (clear GLTSD bit) failed\n");
         failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
       }
     }
     
-    if (con->smartautosavedisable) {
-      if (scsiSetControlGLTSD(fd, 1, modese_len)) {
+    if (options.smart_auto_save_disable) {
+      if (scsiSetControlGLTSD(device, 1, modese_len)) {
         pout("Disable autosave (set GLTSD bit) failed\n");
         failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
       }
     }
     
-    if (con->checksmart) {
-        scsiGetSupportedLogPages(fd);
+    if (options.smart_check_status) {
+        scsiGetSupportedLogPages(device);
         checkedSupportedLogPages = 1;
         if ((SCSI_PT_SEQUENTIAL_ACCESS == peripheral_type) ||
             (SCSI_PT_MEDIUM_CHANGER == peripheral_type)) { /* tape device */
             if (gTapeAlertsLPage) {
-                if (con->driveinfo)
+                if (options.drive_info)
                     pout("TapeAlert Supported\n");
-                if (-1 == scsiGetTapeAlertsData(fd, peripheral_type))
+                if (-1 == scsiGetTapeAlertsData(device, peripheral_type))
                     failuretest(OPTIONAL_CMD, returnval |= FAILSMART);
             }
             else
                 pout("TapeAlert Not Supported\n");
         } else { /* disk, cd/dvd, enclosure, etc */
-            if ((res = scsiGetSmartData(fd, con->smartvendorattrib))) {
+            if ((res = scsiGetSmartData(device, options.smart_vendor_attrib))) {
                 if (-2 == res)
                     returnval |= FAILSTATUS;
                 else
@@ -1306,38 +1631,38 @@ int scsiPrintMain(int fd)
             }
         }
     }   
-    if (con->smartvendorattrib) {
+    if (options.smart_vendor_attrib) {
         if (! checkedSupportedLogPages)
-            scsiGetSupportedLogPages(fd);
+            scsiGetSupportedLogPages(device);
         if (gTempLPage) {
-            if (con->checksmart)
+            if (options.smart_check_status)
                 pout("\n");
-            scsiPrintTemp(fd);         
+            scsiPrintTemp(device);
         }
         if (gStartStopLPage)
-            scsiGetStartStopData(fd);
+            scsiGetStartStopData(device);
         if (SCSI_PT_DIRECT_ACCESS == peripheral_type) {
-            scsiPrintGrownDefectListLen(fd);
+            scsiPrintGrownDefectListLen(device);
             if (gSeagateCacheLPage)
-                scsiPrintSeagateCacheLPage(fd);
+                scsiPrintSeagateCacheLPage(device);
             if (gSeagateFactoryLPage)
-                scsiPrintSeagateFactoryLPage(fd);
+                scsiPrintSeagateFactoryLPage(device);
         }
     }
-    if (con->smarterrorlog) {
+    if (options.smart_error_log) {
         if (! checkedSupportedLogPages)
-            scsiGetSupportedLogPages(fd);
-        scsiPrintErrorCounterLog(fd);
-        if (1 == scsiFetchControlGLTSD(fd, modese_len, 1))
+            scsiGetSupportedLogPages(device);
+        scsiPrintErrorCounterLog(device);
+        if (1 == scsiFetchControlGLTSD(device, modese_len, 1))
             pout("\n[GLTSD (Global Logging Target Save Disable) set. "
                  "Enable Save with '-S on']\n");
     }
-    if (con->smartselftestlog) {
+    if (options.smart_selftest_log) {
         if (! checkedSupportedLogPages)
-            scsiGetSupportedLogPages(fd);
+            scsiGetSupportedLogPages(device);
         res = 0;
         if (gSelfTestLPage)
-            res = scsiPrintSelfTest(fd);
+            res = scsiPrintSelfTest(device);
         else {
             pout("Device does not support Self Test logging\n");
             failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
@@ -1345,12 +1670,12 @@ int scsiPrintMain(int fd)
         if (0 != res)
             failuretest(OPTIONAL_CMD, returnval|=res);
     }
-    if (con->smartbackgroundlog) {
+    if (options.smart_background_log) {
         if (! checkedSupportedLogPages)
-            scsiGetSupportedLogPages(fd);
+            scsiGetSupportedLogPages(device);
         res = 0;
         if (gBackgroundResultsLPage)
-            res = scsiPrintBackgroundResults(fd);
+            res = scsiPrintBackgroundResults(device);
         else {
             pout("Device does not support Background scan results logging\n");
             failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
@@ -1358,27 +1683,27 @@ int scsiPrintMain(int fd)
         if (0 != res)
             failuretest(OPTIONAL_CMD, returnval|=res);
     }
-    if (con->smartexeoffimmediate) {
-        if (scsiSmartDefaultSelfTest(fd))
+    if (options.smart_default_selftest) {
+        if (scsiSmartDefaultSelfTest(device))
             return returnval | FAILSMART;
         pout("Default Self Test Successful\n");
     }
-    if (con->smartshortcapselftest) {
-        if (scsiSmartShortCapSelfTest(fd))
+    if (options.smart_short_cap_selftest) {
+        if (scsiSmartShortCapSelfTest(device))
             return returnval | FAILSMART;
         pout("Short Foreground Self Test Successful\n");
     }
-    if (con->smartshortselftest ) { 
-        if (scsiSmartShortSelfTest(fd))
+    if (options.smart_short_selftest) {
+        if (scsiSmartShortSelfTest(device))
             return returnval | FAILSMART;
         pout("Short Background Self Test has begun\n");
         pout("Use smartctl -X to abort test\n");
     }
-    if (con->smartextendselftest) {
-        if (scsiSmartExtendSelfTest(fd))
+    if (options.smart_extend_selftest) {
+        if (scsiSmartExtendSelfTest(device))
             return returnval | FAILSMART;
         pout("Extended Background Self Test has begun\n");
-        if ((0 == scsiFetchExtendedSelfTestTime(fd, &durationSec, 
+        if ((0 == scsiFetchExtendedSelfTestTime(device, &durationSec,
                         modese_len)) && (durationSec > 0)) {
             time_t t = time(NULL);
 
@@ -1389,15 +1714,19 @@ int scsiPrintMain(int fd)
         }
         pout("Use smartctl -X to abort test\n");        
     }
-    if (con->smartextendcapselftest) {
-        if (scsiSmartExtendCapSelfTest(fd))
+    if (options.smart_extend_cap_selftest) {
+        if (scsiSmartExtendCapSelfTest(device))
             return returnval | FAILSMART;
         pout("Extended Foreground Self Test Successful\n");
     }
-    if (con->smartselftestabort) {
-        if (scsiSmartSelfTestAbort(fd))
+    if (options.smart_selftest_abort) {
+        if (scsiSmartSelfTestAbort(device))
             return returnval | FAILSMART;
         pout("Self Test returned without error\n");
+    }           
+    if (options.sasphy) {
+        if (scsiPrintSasPhy(device, options.sasphy_reset))
+            return returnval | FAILSMART;
     }           
     return returnval;
 }

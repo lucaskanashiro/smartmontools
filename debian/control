@@ -1,18 +1,21 @@
 Source: smartmontools
 Section: utils
 Priority: optional
-Maintainer: Guido Günther <agx@sigxcpu.org>
-Build-Depends: debhelper (>= 6.0.7~), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake1.9, autoconf
-Standards-Version: 3.8.0
-Vcs-Git: git://git.debian.org/git/users/agx/smartmontools.git
-Vcs-Browser: http://git.debian.org/git/users/agx/smartmontools.git
+Maintainer: Giuseppe Iuculano <giuseppe@iuculano.it>
+Uploaders: Florian Maier <contact@marsmenschen.com>
+Build-Depends: debhelper (>= 7), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32]
+Standards-Version: 3.8.3
+Vcs-Git: git://git.debian.org/collab-maint/smartmontools.git
+Vcs-Browser: http://git.debian.org/?p=collab-maint/smartmontools.git
 Homepage: http://smartmontools.sourceforge.net/
+DM-Upload-Allowed: yes
 
 Package: smartmontools
 Architecture: any
 Conflicts: smartsuite, ucsc-smartsuite
-Depends: ${misc:Depends}, ${shlibs:Depends}, debianutils (>= 2.2), lsb-base (>= 3.0-10)
+Depends: ${misc:Depends}, ${shlibs:Depends}, debianutils (>= 2.2), lsb-base (>= 3.2-14)
 Recommends: mailx | mailutils
+Suggests: gsmartcontrol, smart-notifier, powersaved
 Description: control and monitor storage systems using S.M.A.R.T.
  The smartmontools package contains two utility programs (smartctl and smartd)
  to control and monitor storage systems using the Self-Monitoring, Analysis and

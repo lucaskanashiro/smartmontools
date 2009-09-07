@@ -1,20 +1,20 @@
 ;
 ; installer.nsi - NSIS install script for smartmontools
 ;
-; Copyright (C) 2006-8 Christian Franke <smartmontools-support@lists.sourceforge.net>
+; Copyright (C) 2006-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
 ;
 ; Project home page is: http://smartmontools.sourceforge.net
 ;
 ; Download and install NSIS from: http://nsis.sourceforge.net/Download
-; Process with makensis to create installer (tested with NSIS 2.29)
+; Process with makensis to create installer (tested with NSIS 2.45)
 ;
-; $Id: installer.nsi,v 1.4 2008/03/04 22:09:48 ballen4705 Exp $
+; $Id: installer.nsi 2878 2009-08-26 20:03:06Z chrfranke $
 ;
 
 
 ;--------------------------------------------------------------------
 ; Command line arguments:
-; makensis /DINPDIR=<input-dir> /DOUTFILE=<output-file> installer.nsi
+; makensis /DINPDIR=<input-dir> /DOUTFILE=<output-file> /DVERSTR=<version-string> installer.nsi
 
 !ifndef INPDIR
   !define INPDIR "."
@@ -106,6 +106,15 @@ SectionGroup "!Program files"
 
   SectionEnd
 
+  Section "smartctl-nc (GSmartControl)" SMARTCTL_NC_SECTION
+
+    SectionIn 1 2
+
+    SetOutPath "$INSTDIR\bin"
+    File "${INPDIR}\bin\smartctl-nc.exe"
+
+  SectionEnd
+
 SectionGroupEnd
 
 Section "!Documentation" DOC_SECTION
@@ -143,6 +152,9 @@ Section "Uninstaller" UNINST_SECTION
 
   ; Write uninstall keys and program
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "DisplayName" "smartmontools"
+!ifdef VERSTR
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "DisplayVersion" "${VERSTR}"
+!endif
   ;WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "Publisher" "smartmontools"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "UninstallString" '"$INSTDIR\uninst-smartmontools.exe"'
   ;WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLInfoAbout" "http://smartmontools.sourceforge.net/"
@@ -378,6 +390,7 @@ Section "Uninstall"
 
   ; Remove files
   Delete "$INSTDIR\bin\smartctl.exe"
+  Delete "$INSTDIR\bin\smartctl-nc.exe"
   Delete "$INSTDIR\bin\smartd.exe"
   Delete "$INSTDIR\bin\syslogevt.exe"
   Delete "$INSTDIR\bin\smartctl-run.bat"
@@ -462,6 +475,7 @@ FunctionEnd
 
 Function SkipProgPath
   !insertmacro CheckSection ${SMARTCTL_SECTION}
+  !insertmacro CheckSection ${SMARTCTL_NC_SECTION}
   !insertmacro CheckSection ${SMARTD_SECTION}
   !insertmacro CheckSection ${DOC_SECTION}
   !insertmacro CheckSection ${MENU_SECTION}

@@ -1,7 +1,7 @@
 Smartmontools installation instructions
 =======================================
 
-$Id: INSTALL,v 1.73 2007/04/27 08:50:00 geoffk1 Exp $
+$Id: INSTALL 2844 2009-07-18 12:59:21Z chrfranke $
 
 Please also see the smartmontools home page:
 http://smartmontools.sourceforge.net/
@@ -9,7 +9,7 @@ http://smartmontools.sourceforge.net/
 Table of contents:
 
 [1] System requirements
-[2] Installing from CVS
+[2] Installing from SVN
 [3] Installing from source tarball
 [4] Guidelines for different Linux distributions
 [5] Guidelines for FreeBSD
@@ -209,23 +209,19 @@ Table of contents:
     Innotek LibC 0.5 runtime is required.
     Currently only ATA disks are supported, SCSI support will be added.
 
-
-[2] Installing from CVS
+[2] Installing from SVN
 =======================
-    Get the sources from the CVS repository:
-    cvs -d :pserver:anonymous@smartmontools.cvs.sourceforge.net:/cvsroot/smartmontools login
-    cvs -d :pserver:anonymous@smartmontools.cvs.sourceforge.net:/cvsroot/smartmontools co sm5
-    (when prompted for a password, just press Enter)
+
+    Get the sources from the SVN repository:
+    svn co https://smartmontools.svn.sourceforge.net/svnroot/smartmontools/trunk/smartmontools smartmontools
 
     Then type:
     ./autogen.sh
     and continue with step [3] below, skipping the "unpack the tarball" step.
 
-    Further details of using CVS can be found at the URL above.
-
     The autogen.sh command is ONLY required when installing from
-    CVS. You need GNU Autoconf (version 2.50 or greater), GNU Automake
-    (version 1.6 or greater) and their dependencies installed in order
+    SVN. You need GNU Autoconf (version 2.50 or greater), GNU Automake
+    (version 1.7 or greater) and their dependencies installed in order
     to run it.  You can get these here:
     http://www.gnu.org/directory/GNU/autoconf.html
     http://www.gnu.org/directory/GNU/automake.html
@@ -233,7 +229,7 @@ Table of contents:
 [3] Installing from the source tarball
 ======================================
 
-    If you are NOT installing from CVS, then unpack the tarball: 
+    If you are NOT installing from SVN, then unpack the tarball:
     tar zxvf smartmontools-5.VERSION.tar.gz
 
     Then:
@@ -262,6 +258,12 @@ Table of contents:
     environment variable CFLAGS='your options' before doing
     ./configure, or else do:
     make CFLAGS='your options'
+
+    The first output line of smartctl and smartd provides information
+    about release number, last SVN checkin date and revison, platform,
+    and package. The latter defaults to "(local build)" and can be
+    changed by the variable BUILD_INFO, for example:
+    make BUILD_INFO='"(Debian 5.39-2)"'
 
 [4] Guidelines for different Linux distributions
 ================================================
@@ -332,10 +334,6 @@ SuSE:
               --with-docdir=/usr/local/share/doc/smartmontools-VERSION \
 	      --enable-sample
 
-  Also, it is important that you use GNU make (gmake from /usr/ports/devel/gmake)
-  to build smartmontools, as the default FreeBSD make doesn't know how to build
-  the man pages.
-
   NOTE: --enable-sample will cause the smartd.conf and smartd RC files to
   be installed with the string '.sample' append to the name, so you will end
   up with the following:
@@ -368,17 +366,17 @@ SuSE:
 
     smartmontools has been partially but not completely ported to
     Solaris.  It includes complete SCSI support but no ATA or 3ware
-    support.  It can be compiled with either cc or gcc. To compile
-    with gcc:
+    support.  It can be compiled with either CC (Sun's C++ compiler)
+    or GNU g++.
+
+    To compile with g++:
 
     ./configure [args]
     make
 
-    To compile with Sun cc:
+    To compile with Sun CC:
 
-    setenv CC cc  [csh syntax], or
-    CC=cc         [sh syntax]
-    ./configure [args]
+    env CC=cc CXX=CC ./configure [args]
     make
 
     The correct arguments [args] to configure are:
@@ -426,7 +424,7 @@ Same as Red Hat:
   file type ("binmode" mount option) set. The "autogen.sh" script prints a
   warning if DOS type is selected.
 
-  If installing from CVS, you may check out all files either with CR/LF
+  If installing from SVN, you may check out all files either with CR/LF
   or LF line endings. Starting with release 3.1-7, Cygwin's bash does no
   longer accept scripts with CR/LF by default. To run the initial script
   ./autogen.sh checked out with CR/LF on a "binmode" mount, type:
@@ -469,7 +467,7 @@ To create a Windows installer, use:
 
   The installer is build using the command "makensis" from the NSIS
   package. See http://nsis.sourceforge.net/ for documentation and
-  download location. The install script was tested with NSIS 2.17.
+  download location.
 
 To both create and run the (interactive) installer, use:
 
@@ -484,16 +482,22 @@ To both create and run the (interactive) installer, use:
   or a native Win32 release of Info-ZIP, http://www.info-zip.org) are
   necessary but may be not installed by Cygwin's default settings.
 
-  It is also possible to compile smartmontools with MSVC 6.0.
-  The project files (smartmontools_vc6.dsw, smart{ctl,d}_vc6.dsp) are
-  included in CVS (but not in source tarball). The config_vc6.h is no
-  longer maintained in CVS. The command:
+To prepare os_win32 directory for MSVC8, use the following on Cygwin:
 
-  make config-vc6
+  mkdir vctmp && cd vctmp
+  ../configure --build=mingw32
+  make config-vc8
 
-  builds config_vc6.h from MinGW's config.h. Unlike MinGW, MSVC 6.0
-  can also be used to build the syslog message file tool syslogevt.exe.
-  See smartd man page for usage information about this tool.
+  The MSVC8 project files (os_win32/smartmontools_vc8.sln,
+  os_win32/smart{ctl,d}_vc8.vcproj) are included in SVN (but not in
+  source tarball). The target config-vc8 from a Makefile configured
+  for MinGW creates os_win32/{config,svnversion}_vc8.h from
+  ./{config,svnversion}.h. The configure skript must be run outside
+  of the source directory to avoid inclusion of the original config.h.
+
+  Unlike MinGW, MSVC can also be used to build the syslog message file
+  tool syslogevt.exe. See smartd man page for usage information about
+  this tool.
 
 
 [11] Guidelines for OS/2, eComStation
@@ -581,7 +585,7 @@ The following files are installed if ./configure has no options:
 /usr/local/share/man/man8/smartctl.8                    [Manual page]
 /usr/local/share/man/man8/smartd.8                      [Manual page]
 /usr/local/share/doc/smartmontools-5.X/AUTHORS          [Information about the authors and developers]
-/usr/local/share/doc/smartmontools-5.X/CHANGELOG        [A log of changes. Also see CVS]
+/usr/local/share/doc/smartmontools-5.X/CHANGELOG        [A log of changes. Also see SVN]
 /usr/local/share/doc/smartmontools-5.X/COPYING          [GNU General Public License Version 2]
 /usr/local/share/doc/smartmontools-5.X/INSTALL          [Installation instructions: what you're reading!]
 /usr/local/share/doc/smartmontools-5.X/NEWS             [Significant bugs discovered in old versions]
@@ -607,6 +611,19 @@ if groff is available:
 make MAN2HTML='groff -man -Thtml' htmlman
 
 
+Some of the source files are prepared for the documentation
+generator Doxygen (http://www.doxygen.org/). If Doxygen is installed,
+the command:
+
+doxygen
+
+creates HTML documentation in doc/html and LaTeX documentation
+in doc/latex. If TeX is installed, the following command creates
+a documentation file doc/latex/refman.pdf:
+
+( cd doc/latex && make pdf )
+
+
 [14] Detailed description of arguments to configure command
 ===========================================================
 
@@ -628,9 +645,17 @@ OPTIONS              DEFAULT                                      AFFECTS
                                                                   Contents of smartd executable;
                                                                   Contents of smartd/smartd.conf man pages;
                                                                   Directory for rc.d/init.d/smartd init script
---with-initscriptdir  ${sysconfdir}/init.d/rc.d                   Location of init scripts       
---with-docdir	      ${prefix}/share/doc/smartmontools-5.X       Location of the documentation
---enable-sample	      --disable-sample				  Adds the string '.sample' to the names of the smartd.conf file and the smartd RC file
+--with-initscriptdir  ${sysconfdir}/init.d/rc.d                   Location of init scripts
+--with-docdir         ${prefix}/share/doc/smartmontools-5.X       Location of the documentation
+--enable-sample       --disable-sample                            Adds the string '.sample' to the names of the smartd.conf file and the smartd RC file
+--with-os-deps        os_<guessed>.o                              OS dependent module(s)
+--with-selinux        <not set>                                   Enables SELinux support.  If smartmontools has to create the /dev/tw[ae] device
+                                                                  nodes for 3ware/AMCC controllers, this option ensures that the nodes are created
+                                                                  with correct SELinux file contexts.
+--enable-drivedb      --disable-drivedb                           Enables default drive database file '${drivedbdir}/drivedb.h'
+--with-drivedbdir     ${prefix}/share/smartmontools/drivedb.h     Directory for 'drivedb.h' (specifying this option implies --enable-drivedb)
+--enable-savestates   --disable-savestates                        Enables default smartd state files '${savestates}MODEL-SERIAL.ata.state'
+--with-savestates     ${prefix}/var/lib/smartmontools/smartd.     Prefix for smartd state files (specifying this option implies --enable-savestates)
 
 Here's an example:
 If you set --prefix=/home/joe and none of the other four

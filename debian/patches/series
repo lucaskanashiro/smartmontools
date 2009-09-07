@@ -3,3 +3,7 @@
 54_remove-Id-from-smartd.conf.diff
 60_remove-redhatism.diff
 61_cciss-doc.patch
+62_lowcap.patch
+63_removable.patch
+64_r2898.patch
+65_freebsd.patch

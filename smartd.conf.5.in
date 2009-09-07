@@ -1,7 +1,7 @@
 .ig
 Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
 
-$Id: smartd.conf.5.in,v 1.87 2008/03/04 22:09:47 ballen4705 Exp $
+$Id: smartd.conf.5.in 2847 2009-07-18 14:58:44Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the Free
@@ -119,10 +119,11 @@ Section below!
 .B # /usr/local/etc/smartd.conf for monitoring three
 .B # ATA disks, three SCSI disks, six ATA disks
 .B # behind two 3ware controllers, three SATA disks
-.B # directly connected to the highpoint rocket-
-.B # raid controller, two SATA disks connected to
-.B # the highpoint controller via a pmport device
-.B # and one SATA disk.
+.B # directly connected to the HighPoint Rocket-
+.B # RAID controller, two SATA disks connected to
+.B # the HighPoint RocketRAID controller via a pmport
+.B # device, four SATA disks connected to an Areca
+.B # RAID controller, and one SATA disk.
 .B #
 .nf
 .B # First ATA disk on two different interfaces. On
@@ -154,6 +155,15 @@ Section below!
 .B \ \ /dev/sda -a -d sat
 .B #
 .nf
+.B # Three disks connected to a MegaRAID controller
+.B # Start short self-tests daily between 1-2, 2-3, and
+.B # 3-4 am.
+.B \ \ /dev/sda -d megaraid,0 -a -s S/../.././01
+.B \ \ /dev/sda -d megaraid,1 -a -s S/../.././02
+.B \ \ /dev/sda -d megaraid,2 -a -s S/../.././03
+.B
+.B #
+.nf
 .B # Four ATA disks on a 3ware 6/7/8000 controller.
 .B # Start short self-tests daily between midnight and 1am,
 .B # 1-2, 2-3, and 3-4 am.  Starting with the Linux 2.6
@@ -173,19 +183,36 @@ Section below!
 .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
 .B #
 .nf
-.B # Three SATA disks on a highpoint rocketraid controller.
+.B # Three SATA disks on a HighPoint RocketRAID controller.
 .B # Start short self-tests daily between 1-2, 2-3, and
 .B # 3-4 am.
+.B # under Linux
 .B \ \ /dev/sde -d hpt,1/1 -a -s S/../.././01
 .B \ \ /dev/sde -d hpt,1/2 -a -s S/../.././02
 .B \ \ /dev/sde -d hpt,1/3 -a -s S/../.././03
+.B # or under FreeBSD
+.B # /dev/hptrr -d hpt,1/1 -a -s S/../.././01
+.B # /dev/hptrr -d hpt,1/2 -a -s S/../.././02
+.B # /dev/hptrr -d hpt,1/3 -a -s S/../.././03
 .B #
 .nf
-.B # Two SATA disks connected to a highpoint rocketraid 
+.B # Two SATA disks connected to a HighPoint RocketRAID 
 .B # via a pmport device.  Start long self-tests Sundays
-.B # between midnight and 1am and 2-3 am
+.B # between midnight and 1am and 2-3 am.
+.B # under Linux
 .B \ \ /dev/sde -d hpt,1/4/1 -a -s L/../../7/00
 .B \ \ /dev/sde -d hpt,1/4/2 -a -s L/../../7/02
+.B # or under FreeBSD
+.B # /dev/hptrr -d hpt,1/4/1 -a -s L/../../7/00
+.B # /dev/hptrr -d hpt,1/4/2 -a -s L/../../7/02
+.B #
+.nf
+.B # Three SATA disks connected to an Areca
+.B # RAID controller. Start long self-tests Sundays
+.B # between midnight and 3 am.
+.B \ \ /dev/sg2 -d areca,1 -a -s L/../../7/00
+.B \ \ /dev/sg2 -d areca,2 -a -s L/../../7/01
+.B \ \ /dev/sg2 -d areca,3 -a -s L/../../7/02
 .B #
 .nf
 .B # The following line enables monitoring of the 
@@ -252,12 +279,22 @@ or /dev/twa?) must be listed, along with the \'\-d 3ware,N\' Directive
 appear to \fBsmartd\fP as normal ATA devices.  Hence all the ATA
 directives can be used for these disks (but see note below).
 
+.B If an Areca controller is used
+then the corresponding SCSI generic device (/dev/sg?)  must be listed,
+along with the \'\-d areca,N\' Directive (see below).  The individual
+SATA disks hosted by the Areca controller appear to \fBsmartd\fP as
+normal ATA devices.  Hence all the ATA directives can be used for
+these disks.  Areca firmware version 1.46 or later which supports
+smartmontools must be used; Please see the \fBsmartctl\fP man page for
+further details.
+
 .TP
 .B \-d TYPE
 Specifies the type of the device.  This Directive may be used multiple
-times for one device, but the arguments \fIata\fP, \fIscsi\fP, \fIsat\fP,
-\fImarvell\fP, \fIcciss\fP and \fI3ware,N\fP are mutually-exclusive. If more
-than one is given then \fBsmartd\fP will use the last one which appears.
+times for one device, but the arguments \fIata\fP, \fIscsi\fP,
+\fIsat\fP, \fImarvell\fP, \fIcciss,N\fP, \fIareca,N\fP, \fImegaraid,N\fP
+and \fI3ware,N\fP are mutually-exclusive. If more than one is given then
+\fBsmartd\fP will use the last one which appears.
 
 If none of these three arguments is given, then \fBsmartd\fP will
 first attempt to guess the device type by looking at whether the sixth
@@ -296,12 +333,19 @@ be overridden with this syntax: \'\-d sat,12\' or \'\-d sat,16\'.
 \- Under Linux, interact with SATA disks behind Marvell chip-set
 controllers (using the Marvell rather than libata driver).
 
+.I megaraid,N
+\- the device consists of one or more SCSI/SAS/SATA disks connected
+to a MegaRAID controller.  The non-negative integer N (in the range
+of 0 to 127 inclusive) denotes which disk on the controller is monitored.
+In log files and email messages this disk will be identified as
+megaraid_disk_XXX with XXX in the range from 000 to 127 inclusive.
+
 .I 3ware,N
 \- the device consists of one or more ATA disks connected to a 3ware
-RAID controller. The non-negative integer N (in the range from 0 to 31
+RAID controller. The non-negative integer N (in the range from 0 to 127 
 inclusive) denotes which disk on the controller is monitored.  In log
-files and email messages this disk will be identified as 3ware_disk_XX
-with XX in the range from 00 to 31 inclusive.
+files and email messages this disk will be identified as 3ware_disk_XXX
+with XXX in the range from 000 to 127 inclusive.
 
 This Directive may at first appear confusing, because the 3ware
 controller is a SCSI device (such as /dev/sda) and should be listed as
@@ -336,6 +380,13 @@ Alternatively use the character device interfaces /dev/twe0-15 (3ware
 6/7/8000 series controllers) or /dev/twa0-15 (3ware 9000 series
 controllers).
 
+.I areca,N
+\- the device consists of one or more SATA disks connected to an Areca
+SATA RAID controller.  The positive integer N (in the range from 1 to
+24 inclusive) denotes which disk on the controller is monitored.  In
+log files and email messages this disk will be identifed as
+areca_disk_XX with XX in the range from 01 to 24 inclusive.
+
 .I cciss,N
 \- the device consists of one or more SCSI disks connected to a cciss
 RAID controller. The non-negative integer N (in the range from 0 to 15
@@ -343,11 +394,11 @@ inclusive) denotes which disk on the controller is monitored.  In log
 files and email messages this disk will be identified as cciss_disk_XX
 with XX in the range from 00 to 15 inclusive.
 
-.B 3ware and cciss controllers are currently ONLY supported under Linux.
+.B 3ware, MegaRAID, Areca and cciss controllers are currently ONLY supported under Linux.
 
 .I hpt,L/M/N
 \- the device consists of one or more ATA disks connected to a HighPoint
-RocketRAID controller. The integer L is the controller id, the integer M
+RocketRAID controller.  The integer L is the controller id, the integer M
 is the channel number, and the integer N is the PMPort number if it is
 available. The allowed values of L are from 1 to 4 inclusive, M are from
 1 to 8 inclusive and N from 1 to 4 if PMPort available.  And also these
@@ -356,7 +407,7 @@ In log files and email messages this disk will be identified as
 hpt_X/X/X and X/X/X is the same as L/M/N, note if no N indicated, N set
 to the default value 1.
 
-.B HighPoint RocketRAID controllers are currently ONLY supported under Linux.
+.B HighPoint RocketRAID controllers are currently ONLY supported under Linux and FreeBSD.
 
 .I removable
 \- the device or its media is removable.  This indicates to
@@ -367,7 +418,7 @@ behavior) if the device does not appear to be present when
 with the other \'\-d\' Directives.
 
 .TP
-.B \-n POWERMODE[,q]
+.B \-n POWERMODE[,N][,q]
 This \'nocheck\' Directive is used to prevent a disk from being
 spun-up when it is periodically polled by \fBsmartd\fP.
 
@@ -412,13 +463,17 @@ this is probably what you want.
 In the IDLE state, most disks are still spinning, so this is probably
 not what you want.
 
-When a self test is scheduled (see \'\-s\' Directive below), the
-\'\fB\-n\fP\' Directive is ignored, and all tests are carried out.
+Maximum number of skipped checks (in a row) can be specified by
+appending positive number \',N\' to POWERMODE (like \'\-n standby,15\').
+After N checks are skipped in a row, powermode is ignored and the
+check is performed anyway.
 
 When a periodic test is skipped, \fBsmartd\fP normally writes an
 informal log message. The message can be suppressed by appending
 the option \',q\' to POWERMODE (like \'\-n standby,q\').
 This prevents a laptop disk from spinning up due to this message.
+
+Both \',N\' and \',q\' can be specified together.
 
 .TP
 .B \-T TYPE
@@ -508,6 +563,15 @@ match (in turn) are: \'L\' for a \fBL\fPong Self-Test, \'S\' for a
 only), and \'O\' for an \fBO\fPffline Immediate Test (ATA only).  As
 soon as a match is found, the test will be started and no additional
 matches will be sought for that device and that polling cycle.
+
+[NEW EXPERIMENTAL SMARTD FEATURE] To run scheduled Selective
+Self-Tests, use \'n\' for \fBn\fPext span, \'r\' to \fBr\fPedo last
+span, or \'c\' to \fBc\fPontinue with next span or redo last span
+based on status of last test. The LBA range is based on the first
+span from the last test.
+See the \fBsmartctl \-t select,[next|redo|cont]\fP options for
+further info.
+
 .IP \fBMM\fP 4
 is the month of the year, expressed with two decimal digits.  The
 range is from 01 (January) to 12 (December) inclusive.  Do \fBnot\fP
@@ -553,6 +617,19 @@ Self-Test every Saturday at 3-4am, use:
 .nf
 \fB \-s (O/../.././(00|06|12|18)|S/../.././01|L/../../6/03)\fP
 .fi
+If Long Self-Tests of a large disks take longer than the system uptime,
+a full disk test can be performed by several Selective Self-Tests.
+To setup a full test of a 1TB disk within 20 days (one 50GB span
+each day), run this command once:
+.nf
+  smartctl -t select,0-99999999 /dev/sda
+.fi
+To run the next test spans on Monday-Friday between 12-13am, run smartd
+with this directive:
+.nf
+\fB \-s n/../../[1-5]/12\fP
+.fi
+
 
 Scheduled tests are run immediately following the regularly-scheduled
 device polling, if the current local date, time, and test type, match
@@ -560,8 +637,8 @@ device polling, if the current local date, time, and test type, match
 occurs every thirty minutes after starting \fBsmartd\fP.  Take caution
 if you use the \'\-i\' option to make this polling interval more than
 sixty minutes: the poll times may fail to coincide with any of the
-testing times that you have specified with \fBREGEXP\fP, and so the
-self tests may not take place as you wish.
+testing times that you have specified with \fBREGEXP\fP.  In this case
+the test will be run following the next device polling.
 
 Before running an offline or self-test, \fBsmartd\fP checks to be sure
 that a self-test is not already running.  If a self-test \fBis\fP
@@ -581,6 +658,16 @@ that you constructed \fBREGEXP\fP correctly.  The matching order
 (\fBL\fP before \fBS\fP before \fBC\fP before \fBO\fP) ensures that
 if multiple test types are all scheduled for the same hour, the
 longer test type has precedence.  This is usually the desired behavior.
+
+If the scheduled tests are used in conjunction with state persistence
+(\'\-s\' option), smartd will also try to match the hours since last
+shutdown (or 90 days at most). If any test would have been started
+during downtime, the longest (see above) of these tests is run after
+second device polling.
+
+If the \'\-n\' directive is used and any test would have been started
+during disk standby time, the longest of these tests is run when the
+disk is active again.
 
 Unix users: please beware that the rules for extended regular
 expressions [regex(7)] are \fBnot\fP the same as the rules for
@@ -732,17 +819,19 @@ is set to the argument of \-M exec, if present or else to \'mail\'
 .IP \fBSMARTD_DEVICE\fP 4
 is set to the device path (examples: /dev/hda, /dev/sdb).
 .IP \fBSMARTD_DEVICETYPE\fP 4
-is set to the device type (possible values: ata, scsi, 3ware,N, hpt,L/M/N).
-Here N=0,...,23 denotes the ATA disk behind a 3ware RAID controller and
-L/M/N denotes the SATA disk behind a HighPoint RocketRAID controller.
+is set to the device type (possible values: ata, scsi, 3ware,N,
+areca,N, hpt,L/M/N).  Here N=0,...,127 denotes the ATA disk behind a
+3ware RAID controller and L/M/N denotes the SATA disk behind a
+HighPoint RocketRAID controller.
 .IP \fBSMARTD_DEVICESTRING\fP 4
 is set to the device description.  For SMARTD_DEVICETYPE of ata or
 scsi, this is the same as SMARTD_DEVICE.  For 3ware RAID controllers,
-the form used is \'/dev/sdc [3ware_disk_01]\'.  For HighPoint RocketRAID
-controller, the form is \'/dev/sdd [hpt_1/1/1]\'.  In these cases the
-device string contains a space and is NOT quoted.  So to use
-$SMARTD_DEVICESTRING in a bash script you should probably enclose it
-in double quotes.
+the form used is \'/dev/sdc [3ware_disk_01]\'.  For HighPoint
+RocketRAID controller, the form is \'/dev/sdd [hpt_1/1/1]\' under Linux
+or \'/dev/hptrr [hpt_1/1/1]\' under FreeBSD.  For Areca controllers, the
+form is \'/dev/sg2 [areca_disk_09]\'.  In these cases the device string
+contains a space and is NOT quoted.  So to use $SMARTD_DEVICESTRING in a
+bash script you should probably enclose it in double quotes.
 .IP \fBSMARTD_FAILTYPE\fP 4
 gives the reason for the warning or message email.  The possible values that
 it takes and their meanings are:
@@ -911,7 +1000,7 @@ temperature (usually Attribute 194 or 231). It\'s annoying to get reports
 each time the temperature changes.  This Directive may appear multiple
 times for a single device, if you want to ignore multiple Attributes.
 .TP
-.B \-r ID
+.B \-r ID[!]
 When tracking, report the \fIRaw\fP value of Attribute \fBID\fP along
 with its (normally reported) \fINormalized\fP value.  \fBID\fP must be
 a decimal integer in the range from 1 to 255.  This Directive modifies
@@ -922,8 +1011,12 @@ multiple times.
 A common use of this Directive is to track the device Temperature
 (often ID=194 or 231).
 
+If the optional flag \'!\' is appended, a change of the Normalized
+value is considered critical.  The report will be logged as LOG_CRIT
+and a warning email will be sent if \'-m\' is specified.
+
 .TP
-.B \-R ID
+.B \-R ID[!]
 When tracking, report whenever the \fIRaw\fP value of Attribute
 \fBID\fP changes.  (Normally \fBsmartd\fP only tracks/reports changes
 of the \fINormalized\fP Attribute values.)  \fBID\fP must be a decimal
@@ -941,8 +1034,13 @@ A common use of this Directive is to track the device Temperature
 different types of system behavior affects the values of certain
 Attributes.
 
+If the optional flag \'!\' is appended, a change of the Raw
+value is considered critical.  The report will be logged as
+LOG_CRIT and a warning email will be sent if \'-m\' is specified.
+An example is \'-R 5!\' to warn when new sectors are reallocated.
+
 .TP
-.B \-C ID
+.B \-C ID[+]
 [ATA only] Report if the current number of pending sectors is
 non-zero.  Here \fBID\fP is the id number of the Attribute whose raw
 value is the Current Pending Sector count.  The allowed range of
@@ -950,6 +1048,11 @@ value is the Current Pending Sector count.  The allowed range of
 ID\ =\ 0.  If the \fB\-C ID\fP option is not given, then it defaults to
 \fB\-C 197\fP (since Attribute 197 is generally used to monitor
 pending sectors).
+
+If \'+\' is specified, a report is only printed if the number of sectors
+has increased between two check cycles. Some disks do not reset this
+attribute when a bad sector is reallocated.
+See also \'\-v 197,increasing\' below.
 
 A pending sector is a disk sector (containing 512 bytes of your data)
 which the device would like to mark as ``bad" and reallocate.
@@ -964,7 +1067,7 @@ device substitute a spare good sector for the bad one) but at the
 price of losing the 512 bytes of data stored there.
 
 .TP
-.B \-U ID
+.B \-U ID[+]
 [ATA only] Report if the number of offline uncorrectable sectors is
 non-zero.  Here \fBID\fP is the id number of the Attribute whose raw
 value is the Offline Uncorrectable Sector count.  The allowed range of
@@ -973,6 +1076,10 @@ ID\ =\ 0.  If the \fB\-U ID\fP option is not given, then it defaults to
 \fB\-U 198\fP (since Attribute 198 is generally used to monitor
 offline uncorrectable sectors).
 
+If \'+\' is specified, a report is only printed if the number of sectors
+has increased since the last check cycle. Some disks do not reset this
+attribute when a bad sector is reallocated.
+See also \'\-v 198,increasing\' below.
 
 An offline uncorrectable sector is a disk sector which was not
 readable during an off\-line scan or a self\-test.  This is important
@@ -983,12 +1090,18 @@ option for more details.
 .TP
 .B \-W DIFF[,INFO[,CRIT]]
 Report if the current temperature had changed by at least \fBDIFF\fP
-degrees since last report. Report or Warn if the temperature is greater
-or equal than one of \fBINFO\fP or \fBCRIT\fP degrees Celsius. If the
-limit \fBCRIT\fP is reached, a message with loglevel
+degrees since last report, or if new min or max temperature is detected.
+Report or Warn if the temperature is greater or equal than one of
+\fBINFO\fP or \fBCRIT\fP degrees Celsius.
+If the limit \fBCRIT\fP is reached, a message with loglevel
 \fB\'LOG_CRITICAL\'\fP will be logged to syslog and a warning email
 will be send if '-m' is specified. If only the limit \fBINFO\fP is
 reached, a message with loglevel \fB\'LOG_INFO\'\fP will be logged.
+
+If this directive is used in conjunction with state persistence
+(\'\-s\' option), the min and max temperature values are preserved
+across boot cycles. The minimum temperature value is not updated
+during the first 30 minutes after startup.
 
 To disable any of the 3 reports, set the corresponding limit to 0.
 Trailing zero arguments may be omitted. By default, all temperature
@@ -1107,6 +1220,16 @@ with RK100-13 firmware).
 \- Raw Attribute number 194 is NOT the disk temperature, and its
 interpretation is unknown. This is primarily useful for the -P
 (presets) Directive.
+
+.I 197,increasing
+\- Raw Attribute number 197 (Current Pending Sector Count) is not
+reset if uncorrectable sectors are reallocated.  This also sets
+\'-C 197+\' if no other \'-C\' directive is specified.
+
+.I 198,increasing
+\- Raw Attribute number 198 (Offline Uncorrectable Sector Count) is not
+reset if uncorrectable sector are reallocated.  This also sets
+\'-U 198+\' if no other \'-U\' directive is specified.
 
 .I 198,offlinescanuncsectorct
 \- Raw Attribute number 198 is the Offline Scan UNC Sector Count.
@@ -1317,17 +1440,19 @@ University of Wisconsin \- Milwaukee Physics Department
 The following have made large contributions to smartmontools:
 .nf
 \fBCasper Dik\fP (Solaris SCSI interface)
-\fBChristian Franke\fP (Windows interface and Cygwin package)
+\fBChristian Franke\fP (Windows interface, C++ redesign, USB support, ...)
 \fBDouglas Gilbert\fP (SCSI subsystem)
 \fBGuido Guenther\fP (Autoconf/Automake packaging)
 \fBGeoffrey Keating\fP (Darwin ATA interface)
 \fBEduard Martinescu\fP (FreeBSD interface)
 \fBFr\*'ed\*'eric L. W. Meunier\fP (Web site and Mailing list)
+\fBGabriele Pohl\fP (Web site and Wiki, conversion from CVS to SVN)
 \fBKeiji Sawada\fP (Solaris ATA interface)
+\fBManfred Schwarb\fP (Drive database)
 \fBSergey Svishchev\fP (NetBSD interface)
 \fBDavid Snyder and Sergey Svishchev\fP (OpenBSD interface)
 \fBPhil Williams\fP (User interface and drive database)
-\fBShengfeng Zhou\fP (Linux Highpoint RocketRaid interface)
+\fBShengfeng Zhou\fP (Linux/FreeBSD HighPoint RocketRAID interface)
 .fi
 Many other individuals have made smaller contributions and corrections.
 
@@ -1356,5 +1481,5 @@ SEE ALSO:
 \fBsyslog.conf\fP(5), \fBbadblocks\fP(8), \fBide\-smart\fP(8), \fBregex\fP(7).
 
 .SH
-CVS ID OF THIS PAGE:
-$Id: smartd.conf.5.in,v 1.87 2008/03/04 22:09:47 ballen4705 Exp $
+SVN ID OF THIS PAGE:
+$Id: smartd.conf.5.in 2847 2009-07-18 14:58:44Z chrfranke $

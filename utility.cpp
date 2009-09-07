@@ -3,7 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -39,13 +40,18 @@
 #include <mbstring.h> // _mbsinc()
 #endif
 
+#include <stdexcept>
+
 #include "config.h"
+#include "svnversion.h"
 #include "int64.h"
 #include "utility.h"
 
-// Any local header files should be represented by a CVSIDX just below.
-const char* utility_c_cvsid="$Id: utility.cpp,v 1.65 2008/03/04 22:09:47 ballen4705 Exp $"
-CONFIG_H_CVSID INT64_H_CVSID UTILITY_H_CVSID;
+#include "atacmds.h"
+#include "dev_interface.h"
+
+const char * utility_cpp_cvsid = "$Id: utility.cpp 2848 2009-07-18 20:14:38Z chrfranke $"
+                                 UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
         "Direct-access (disk)",
@@ -70,13 +76,50 @@ const char * packet_types[] = {
 const char *reportbug="Please report this bug to the Smartmontools developers at " PACKAGE_BUGREPORT ".\n";
 
 
-// hang on to exit code, so we can make use of more generic 'atexit()'
-// functionality and still check our exit code
-int exitstatus = 0;
-
 // command-line argument: are we running in debug mode?.
 unsigned char debugmode = 0;
 
+// BUILD_INFO can be provided by package maintainers
+#ifndef BUILD_INFO
+#define BUILD_INFO "(local build)"
+#endif
+
+// Make version information string
+std::string format_version_info(const char * prog_name, bool full /*= false*/)
+{
+  std::string info = strprintf(
+    "%s "PACKAGE_VERSION" "SMARTMONTOOLS_SVN_DATE" r"SMARTMONTOOLS_SVN_REV
+      " [%s] "BUILD_INFO"\n"
+    "Copyright (C) 2002-9 by Bruce Allen, http://smartmontools.sourceforge.net\n",
+    prog_name, smi()->get_os_version_str()
+  );
+  if (!full)
+    return info;
+
+  info += strprintf(
+    "\n"
+    "%s comes with ABSOLUTELY NO WARRANTY. This is free\n"
+    "software, and you are welcome to redistribute it under\n"
+    "the terms of the GNU General Public License Version 2.\n"
+    "See http://www.gnu.org for further details.\n"
+    "\n"
+    "smartmontools release "PACKAGE_VERSION
+      " dated "SMARTMONTOOLS_RELEASE_DATE" at "SMARTMONTOOLS_RELEASE_TIME"\n"
+    "smartmontools SVN rev "SMARTMONTOOLS_SVN_REV
+      " dated "SMARTMONTOOLS_SVN_DATE" at "SMARTMONTOOLS_SVN_TIME"\n"
+    "smartmontools build host: "SMARTMONTOOLS_BUILD_HOST"\n"
+    "smartmontools build configured: "SMARTMONTOOLS_CONFIGURE_DATE "\n"
+    "%s compile dated "__DATE__" at "__TIME__"\n",
+    prog_name, prog_name
+  );
+  info += strprintf(
+    "smartmontools configure arguments: %s\n",
+      (sizeof(SMARTMONTOOLS_CONFIGURE_ARGS) > 1 ?
+       SMARTMONTOOLS_CONFIGURE_ARGS : "[no arguments given]")
+  );
+
+  return info;
+}
 
 // Solaris only: Get site-default timezone. This is called from
 // UpdateTimezone() when TZ environment variable is unset at startup.
@@ -117,9 +160,9 @@ static char *ReadSiteDefaultTimezone(){
 void FixGlibcTimeZoneBug(){
 #if __GLIBC__  
   if (!getenv("TZ")) {
-    putenv("TZ=GMT");
+    putenv((char *)"TZ=GMT"); // POSIX prototype is 'int putenv(char *)'
     tzset();
-    putenv("TZ");
+    putenv((char *)"TZ");
     tzset();
   }
 #elif _WIN32
@@ -230,7 +273,7 @@ int isbigendian(){
 // timezone info (sigh).
 void dateandtimezoneepoch(char *buffer, time_t tval){
   struct tm *tmval;
-  char *timezonename;
+  const char *timezonename;
   char datebuffer[DATEANDEPOCHLEN];
   int lenm1;
 #ifdef _WIN32
@@ -285,61 +328,6 @@ void dateandtimezone(char *buffer){
   return;
 }
 
-// These are two utility functions for printing CVS IDs. Massagecvs()
-// returns distance that it has moved ahead in the input string
-int massagecvs(char *out, const char *cvsid){
-  char *copy,*filename,*date,*version;
-  int retVal=0;
-  const char delimiters[] = " ,$";
-
-  // make a copy on the heap, go to first token,
-  if (!(copy=strdup(cvsid)))
-    return 0;
-
-  if (!(filename=strtok(copy, delimiters)))
-    goto endmassage;
-
-  // move to first instance of "Id:"
-  while (strcmp(filename,"Id:"))
-    if (!(filename=strtok(NULL, delimiters)))
-      goto endmassage;
-  
-  // get filename, skip "v", get version and date
-  if (!(  filename=strtok(NULL, delimiters)  ) ||
-      !(           strtok(NULL, delimiters)  ) ||
-      !(   version=strtok(NULL, delimiters)  ) ||
-      !(      date=strtok(NULL, delimiters)  ) )
-    goto endmassage;
-  
-  sprintf(out,"%-16s revision: %-5s date: %-15s", filename, version, date);
-  retVal = (date-copy)+strlen(date);
-  
- endmassage:
-  free(copy);
-  return retVal;
-}
-
-// prints a single set of CVS ids
-void printone(char *block, const char *cvsid){
-  char strings[CVSMAXLEN];
-  const char *here=cvsid;
-  int bi=0, len=strlen(cvsid)+1;
-
-  // check that the size of the output block is sufficient
-  if (len>=CVSMAXLEN) {
-    pout("CVSMAXLEN=%d must be at least %d\n",CVSMAXLEN,len+1);
-    EXIT(1);
-  }
-
-  // loop through the different strings
-  while (bi<CVSMAXLEN && (len=massagecvs(strings,here))){
-    bi+=snprintf(block+bi,CVSMAXLEN-bi,"%s %s\n",(bi==0?"Module:":"  uses:"),strings);
-    here+=len;
-  }
-  return;
-}
-
-
 // A replacement for perror() that sends output to our choice of
 // printing. If errno not set then just print message.
 void syserror(const char *message){
@@ -361,21 +349,6 @@ void syserror(const char *message){
   return;
 }
 
-// Prints a warning message for a failed regular expression compilation from
-// regcomp().
-void printregexwarning(int errcode, regex_t *compiled){
-  size_t length = regerror(errcode, compiled, NULL, 0);
-  char *buffer = (char*)malloc(length);
-  if (!buffer){
-    pout("Out of memory in printregexwarning()\n");
-    return;
-  }
-  regerror(errcode, compiled, buffer, length);
-  pout("%s\n", buffer);
-  free(buffer);
-  return;
-}
-
 // POSIX extended regular expressions interpret unmatched ')' ordinary:
 // "The close-parenthesis shall be considered special in this context
 //  only if matched with a preceding open-parenthesis."
@@ -385,7 +358,8 @@ void printregexwarning(int errcode, regex_t *compiled){
 // 
 // The check below is rather incomplete because it does not handle
 // e.g. '\)' '[)]'.
-// But it should work for the regex subset used in drive database.
+// But it should work for the regex subset used in drive database
+// and smartd '-s' directives.
 static int check_regex_nesting(const char * pattern)
 {
   int level = 0, i;
@@ -398,22 +372,88 @@ static int check_regex_nesting(const char * pattern)
   return level;
 }
 
-// A wrapper for regcomp().  Returns zero for success, non-zero otherwise.
-int compileregex(regex_t *compiled, const char *pattern, int cflags)
-{ 
-  int errorcode;
+// Wrapper class for regex(3)
 
-  if (   (errorcode = regcomp(compiled, pattern, cflags))
-      || check_regex_nesting(pattern) < 0                ) {
-    pout("Internal error: unable to compile regular expression \"%s\" ", pattern);
-    if (errorcode)
-      printregexwarning(errorcode, compiled);
-    else
-      pout("Unmatched ')'\n");
-    pout("Please inform smartmontools developers at " PACKAGE_BUGREPORT "\n");
-    return 1;
+regular_expression::regular_expression()
+: m_flags(0)
+{
+  memset(&m_regex_buf, 0, sizeof(m_regex_buf));
+}
+
+regular_expression::regular_expression(const char * pattern, int flags)
+{
+  memset(&m_regex_buf, 0, sizeof(m_regex_buf));
+  compile(pattern, flags);
+}
+
+regular_expression::~regular_expression()
+{
+  free_buf();
+}
+
+regular_expression::regular_expression(const regular_expression & x)
+{
+  memset(&m_regex_buf, 0, sizeof(m_regex_buf));
+  copy(x);
+}
+
+regular_expression & regular_expression::operator=(const regular_expression & x)
+{
+  free_buf();
+  copy(x);
+  return *this;
+}
+
+void regular_expression::free_buf()
+{
+  if (nonempty(&m_regex_buf, sizeof(m_regex_buf))) {
+    regfree(&m_regex_buf);
+    memset(&m_regex_buf, 0, sizeof(m_regex_buf));
   }
-  return 0;
+}
+
+void regular_expression::copy(const regular_expression & x)
+{
+  m_pattern = x.m_pattern;
+  m_flags = x.m_flags;
+  m_errmsg = x.m_errmsg;
+
+  if (!m_pattern.empty() && m_errmsg.empty()) {
+    // There is no POSIX compiled-regex-copy command.
+    if (!compile())
+      throw std::runtime_error(strprintf(
+        "Unable to recompile regular expression \"%s\": %s",
+        m_pattern.c_str(), m_errmsg.c_str()));
+  }
+}
+
+bool regular_expression::compile(const char * pattern, int flags)
+{
+  free_buf();
+  m_pattern = pattern;
+  m_flags = flags;
+  return compile();
+}
+
+bool regular_expression::compile()
+{
+  int errcode = regcomp(&m_regex_buf, m_pattern.c_str(), m_flags);
+  if (errcode) {
+    char errmsg[512];
+    regerror(errcode, &m_regex_buf, errmsg, sizeof(errmsg));
+    m_errmsg = errmsg;
+    free_buf();
+    return false;
+  }
+
+  if (check_regex_nesting(m_pattern.c_str()) < 0) {
+    m_errmsg = "Unmatched ')'";
+    free_buf();
+    return false;
+  }
+
+  m_errmsg.clear();
+  return true;
 }
 
 // Splits an argument to the -r option into a name part and an (optional) 
@@ -465,25 +505,27 @@ int split_report_arg2(char *s, int *i){
 }
 
 #ifndef HAVE_STRTOULL
-// Replacement for missing strtoull() (Linux with libc < 6, MSVC 6.0)
-// Functionality reduced to split_selective_arg()'s requirements.
+// Replacement for missing strtoull() (Linux with libc < 6, MSVC)
+// Functionality reduced to requirements of smartd and split_selective_arg().
 
-static uint64_t strtoull(const char * p, char * * endp, int base)
+uint64_t strtoull(const char * p, char * * endp, int base)
 {
   uint64_t result, maxres;
   int i = 0;
   char c = p[i++];
-  // assume base == 0
-  if (c == '0') {
-    if (p[i] == 'x' || p[i] == 'X') {
-      base = 16; i++;
+
+  if (!base) {
+    if (c == '0') {
+      if (p[i] == 'x' || p[i] == 'X') {
+        base = 16; i++;
+      }
+      else
+        base = 8;
+      c = p[i++];
     }
     else
-      base = 8;
-    c = p[i++];
+      base = 10;
   }
-  else
-    base = 10;
 
   result = 0;
   maxres = ~(uint64_t)0 / (unsigned)base;
@@ -507,7 +549,8 @@ static uint64_t strtoull(const char * p, char * * endp, int base)
     result = result * (unsigned)base + digit;
     c = p[i++];
   }
-  *endp = (char *)p + i - 1;
+  if (endp)
+    *endp = (char *)p + i - 1;
   return result;
 }
 #endif // HAVE_STRTOLL
@@ -565,7 +608,14 @@ int split_selective_arg(char *s, uint64_t *start,
   return 0;
 }
 
+#ifdef OLD_INTERFACE
+
+// smartd exit codes
+#define EXIT_NOMEM     8   // out of memory
+#define EXIT_BADCODE   10  // internal error - should NEVER happen
+
 int64_t bytes = 0;
+
 // Helps debugging.  If the second argument is non-negative, then
 // decrement bytes by that amount.  Else decrement bytes by (one plus)
 // length of null terminated string.
@@ -634,13 +684,16 @@ char *CustomStrDup(const char *ptr, int mustexist, int whatline, const char* fil
   return tmp;
 }
 
-// Returns nonzero if region of memory contains non-zero entries
-int nonempty(unsigned char *testarea,int n){
-  int i;
-  for (i=0;i<n;i++)
-    if (testarea[i])
-      return 1;
-  return 0;
+#endif // OLD_INTERFACE
+
+
+// Returns true if region of memory contains non-zero entries
+bool nonempty(const void * data, int size)
+{
+  for (int i = 0; i < size; i++)
+    if (((const unsigned char *)data)[i])
+      return true;
+  return false;
 }
 
 
@@ -670,6 +723,24 @@ void MsecToText(unsigned int msec, char *txt){
 
   sprintf(txt, "%02d:%02d:%02d.%03d", (int)hours, (int)min, (int)sec, (int)msec);  
   return;
+}
+
+// return (v)sprintf() formatted std::string
+
+std::string vstrprintf(const char * fmt, va_list ap)
+{
+  char buf[512];
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  buf[sizeof(buf)-1] = 0;
+  return buf;
+}
+
+std::string strprintf(const char * fmt, ...)
+{
+  va_list ap; va_start(ap, fmt);
+  std::string str = vstrprintf(fmt, ap);
+  va_end(ap);
+  return str;
 }
 
 

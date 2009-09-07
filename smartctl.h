@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,11 +25,7 @@
 #ifndef SMARTCTL_H_
 #define SMARTCTL_H_
 
-#define SMARTCTL_H_CVSID "$Id: smartctl.h,v 1.25 2008/03/04 22:09:47 ballen4705 Exp $\n"
-
-/* Boolean Values */
-#define TRUE 0x01
-#define FALSE 0x00
+#define SMARTCTL_H_CVSID "$Id: smartctl.h,v 1.27 2009/06/20 19:11:04 chrfranke Exp $\n"
 
 // Return codes (bitmask)
 
@@ -72,6 +68,7 @@
 #define OPTIONAL_CMD 1
 #define MANDATORY_CMD 2
 
-void print_smartctl_examples();
+// Moved to C++ interface
+//void print_smartctl_examples();
 
 #endif

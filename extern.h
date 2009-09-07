@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,95 +25,27 @@
 #ifndef EXTERN_H_
 #define EXTERN_H_
 
-#define EXTERN_H_CVSID "$Id: extern.h,v 1.54 2008/03/04 22:09:47 ballen4705 Exp $\n"
-
-// Possible values for fixfirmwarebug.  If user has NOT specified -F at
-// all, then value is 0.
-#define FIX_NOTSPECIFIED     0
-#define FIX_NONE             1
-#define FIX_SAMSUNG          2
-#define FIX_SAMSUNG2         3
-#define FIX_SAMSUNG3         4
+#define EXTERN_H_CVSID "$Id: extern.h,v 1.63 2009/07/07 19:28:29 chrfranke Exp $\n"
 
 // Block used for global control/communications.  If you need more
 // global variables, this should be the only place that you need to
 // add them.
 typedef struct smartmonctrl_s {
-  // spans for selective self-test
-  uint64_t smartselectivespan[5][2];
-  // mode for each span, see SEL_* in utility.h
-  char smartselectivemode[5];
-  // number of spans
-  int smartselectivenumspans;
-  int           testcase;
-  unsigned      scttempint;
-  // one plus time in minutes to wait after powerup before restarting
-  // interrupted offline scan after selective self-test.
-  int  pendingtime;
-  // run offline scan after selective self-test.  0: don't change, 1:
-  // turn off scan after selective self-test, 2: turn on scan after
-  // selective self-test.
-  unsigned char scanafterselect;
-  // skip check, if disk in idle or standby mode
-  unsigned char powermode;
-  unsigned char driveinfo;
-  unsigned char checksmart;
-  unsigned char smartvendorattrib;
-  unsigned char generalsmartvalues;
-  unsigned char smartlogdirectory;
-  unsigned char smartselftestlog;
-  unsigned char selectivetestlog;
-  unsigned char smarterrorlog;
-  unsigned char smartbackgroundlog;
-  unsigned char scttempsts;
-  unsigned char scttemphist;
-  unsigned char scttempintp;
-  unsigned char smartdisable;
-  unsigned char smartenable; 
-  unsigned char smartstatus;
-  unsigned char smartexeoffimmediate;
-  unsigned char smartshortselftest;
-  unsigned char smartextendselftest;
-  unsigned char smartconveyanceselftest;
-  unsigned char smartselectiveselftest;
-  unsigned char smartshortcapselftest;
-  unsigned char smartextendcapselftest;
-  unsigned char smartconveyancecapselftest;
-  unsigned char smartselectivecapselftest;
-  unsigned char smartselftestabort;
-  unsigned char smartautoofflineenable;
-  unsigned char smartautoofflinedisable;
-  unsigned char smartautosaveenable;
-  unsigned char smartautosavedisable;
-  unsigned char printing_switchable;
-  unsigned char dont_print;
-  unsigned char dont_print_serial;
+  bool printing_switchable;
+  bool dont_print;
+  bool dont_print_serial;
   unsigned char permissive;
-  unsigned char conservative;
-  unsigned char checksumfail;
-  unsigned char checksumignore;
+  bool conservative;
   unsigned char reportataioctl;
   unsigned char reportscsiioctl;
-  unsigned char fixfirmwarebug;
-  unsigned char fixswappedid;
-  unsigned char satpassthrulen;
-  // Controller type (device type) has been specified explicitly
-  unsigned char controller_explicit;
+#ifdef OLD_INTERFACE
   // 3Ware controller type, but also extensible to other contoller types
-  unsigned char controller_type;
+  unsigned char controller_type; // TODO: Only needed for os_linux.cpp
   // For 3Ware controllers, nonzero value is 1 plus the disk number
-  unsigned char controller_port;
+  unsigned char controller_port;  // TODO: Only needed for os_linux.cpp
   // combined controller/channle/pmport for highpoint rocketraid controller
-  unsigned char hpt_data[3];
-  unsigned char ignorepresets;
-  unsigned char showpresets;
-  // The i'th entry in this array will modify the printed meaning of
-  // the i'th SMART attribute.  The default definitions of the
-  // Attributes are obtained by having the array be all zeros.  If
-  // attributedefs[i] is nonzero, it means that the i'th attribute has
-  // a non-default meaning.  See the ataPrintSmartAttribName and
-  // and parse_attribute_def functions.
-  unsigned char attributedefs[256];
+  unsigned char hpt_data[3]; // TODO: Only needed for os_linux.cpp
+#endif
 } smartmonctrl;
 
 #endif

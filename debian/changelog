@@ -1,3 +1,78 @@
+smartmontools (5.38+svn2879-4) unstable; urgency=low
+
+  * [af11f9b] debian/patches/65_freebsd.patch: The os_freebsd.cpp uses
+    reallocf(), which is specific for *BSD libc. Added an implementation
+    directly into os_freebsd.cpp - thanks to Petr Salinger
+  * [b2a680f] debian/watch: Removed uupdate
+  * [4fe54cf] Do not Build-depends on libcap-ng-dev on avr32
+
+ -- Giuseppe Iuculano <giuseppe@iuculano.it>  Mon, 07 Sep 2009 20:55:53 +0200
+
+smartmontools (5.38+svn2879-3) unstable; urgency=low
+
+  * [1b75411] Freebsd patch was not entirely merged in upstream. Applied
+    remaining changes and try to fix FTBFS on GNU/kFreeBSD (Closes: #537856)
+
+ -- Giuseppe Iuculano <giuseppe@iuculano.it>  Mon, 07 Sep 2009 15:33:34 +0200
+
+smartmontools (5.38+svn2879-2) unstable; urgency=low
+
+  * [51c0fd9] Build-depends on libcap-ng-dev only on linux. - thanks to
+    Petr Salinger
+  * [94843b0] Fixed Vcs-Browser field
+  * [c2d3bf4] Do not Build-depends on libcap-ng-dev on sparc
+  * [27a32a3] Dereference '/dev/disk/by-*/*' symlink before device type
+    autodetection. (Closes: #544823)
+
+ -- Giuseppe Iuculano <giuseppe@iuculano.it>  Mon, 07 Sep 2009 14:24:17 +0200
+
+smartmontools (5.38+svn2879-1) unstable; urgency=low
+
+  [ Guido Günther ]
+  * [d5c8d71] suggest graphical helpers (Closes: #524752)
+  * [b11b96e] support status action in init script (Closes: #525196) -
+    thanks to Peter Eisentraut
+  * [b092558] fix Vcs-Browser URL
+
+  [ Giuseppe Iuculano ]
+  * [101b745] New maintainers, thanks to Guido Günther for the prior
+    work on smartmontools. (Closes: #543861)
+  * [35bece3] debian/rules: Added a get-orig-source target to retrieve a
+    svn snapshot
+  * [4482c05] Bump to debhelper 7 compatibility levels
+  * [2127e19] Imported Upstream version 5.38+svn2879
+    - Fixed FTBFS (Closes: #539430)
+    - GNU/kFreeBSD patches merged in upstream (Closes: #537856)
+    - More drives recognized: Fujitsu MHW2 BJ series, WD Caviar Black family,
+      Western Digital AV-GP series, Transcend Solid-State Drive and Transcend
+      Solid-State Drive V series, Seagate Momentus 5400.5 series.
+  * [6052436] Refreshed patches
+  * [91ad575] move badblockhowto.html in debian/ (Closes: #538631)
+  * [bbdf8c9] debian/control: Depend on lsb >= 3.2-14, which has the
+    status_of_proc() function.
+  * [9afe5af] Removed stop links from rc0 and rc6 (Closes: #494951) -
+    thanks to James Westby
+  * [6dcd8ec] Updated to standards version 3.8.3 (No changes needed)
+  * [608687b] debian/rules: Use dh_prep instead of dh_clean -k
+  * [a52f90d] debian/rules: Do not ignore make clean errors
+  * [31e40f7] debian/rules: use dh_install to install files
+  * [9ca7a79] debian/control: Added Florian Maier in Uploaders, fixed
+    VCS field, added DM-Upload-Allowed field
+  * [d494f00] Updated debian/badblockhowto.html (Closes: #540359) -
+    thanks to Francesco Potorti`
+  * [3db595a] Use the `-n standby' option by default in smartd.conf
+    (Closes: #531325)
+  * [52b4501] Added /etc/smartmontools/run.d/10powersave-notify to
+    enable desktop notification over powersave-notify and added
+    powersaved in Recommends
+  * [0dcf301] debian/patches/62_lowcap.patch: Drop all unnecessary
+    capabilities
+  * [5afdd10] Added the removable option by default. This indicates to
+    smartd that it should continue if the device does not appear to be
+    present when smartd is started. (Closes: #406130)
+
+ -- Giuseppe Iuculano <giuseppe@iuculano.it>  Tue, 01 Sep 2009 12:59:13 +0200
+
 smartmontools (5.38-3) unstable; urgency=low
 
   * [3ea288e] add Homepage, Vcs-{Git,Browser} fields (Closes: #500530)

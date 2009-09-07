@@ -1,7 +1,5 @@
-Index: smartmontools/smartd.conf
-===================================================================
---- smartmontools.orig/smartd.conf	2007-11-01 13:16:28.000000000 +0100
-+++ smartmontools/smartd.conf	2007-11-01 13:16:28.000000000 +0100
+--- a/smartd.conf
++++ b/smartd.conf
 @@ -1,9 +1,8 @@
 -# Sample configuration file for smartd.  See man smartd.conf.
 +# /etc/smartd.conf

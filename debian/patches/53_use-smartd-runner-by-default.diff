@@ -1,13 +1,11 @@
-Index: smartmontools/smartd.conf
-===================================================================
---- smartmontools.orig/smartd.conf	2007-03-31 15:56:12.000000000 +0200
-+++ smartmontools/smartd.conf	2007-11-01 13:18:01.000000000 +0100
+--- a/smartd.conf
++++ b/smartd.conf
 @@ -20,7 +20,7 @@
  # Directives listed below, which will be applied to all devices that
  # are found.  Most users should comment out DEVICESCAN and explicitly
  # list the devices that they wish to monitor.
 -DEVICESCAN
-+DEVICESCAN -m root -M exec /usr/share/smartmontools/smartd-runner
++DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
  
  # Alternative setting to ignore temperature and power-on hours reports
  # in syslog.

@@ -1,8 +1,10 @@
 /*
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2000   Michael Cornwell <cornwell@acm.org>
+ * Copyright (C) 2008   Oliver Bock <brevilo@users.sourceforge.net>
+ * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -10,8 +12,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -21,6 +22,7 @@
  */
 
 #ifndef _GNU_SOURCE
+// TODO: Why is this define necessary?
 #define _GNU_SOURCE
 #endif
 
@@ -28,10 +30,6 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>   // umask
-#ifndef _WIN32
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
 #include <signal.h>
 #include <fcntl.h>
 #include <string.h>
@@ -41,17 +39,22 @@
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
+#include <getopt.h>
 
-#if SCSITIMEOUT
-#include <setjmp.h>
-#endif
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <algorithm> // std::replace()
 
 // see which system files to conditionally include
 #include "config.h"
 
 // conditionally included files
-#ifdef HAVE_GETOPT_LONG
-#include <getopt.h>
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
 #endif
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
@@ -77,13 +80,19 @@ extern "C" int __stdcall FreeConsole(void);
 // locally included files
 #include "int64.h"
 #include "atacmds.h"
-#include "ataprint.h"
+#include "dev_interface.h"
 #include "extern.h"
 #include "knowndrives.h"
 #include "scsicmds.h"
-#include "scsiata.h"
-#include "smartd.h"
 #include "utility.h"
+
+// This is for solaris, where signal() resets the handler to SIG_DFL
+// after the first signal is caught.
+#ifdef HAVE_SIGSET
+#define SIGNALFN sigset
+#else
+#define SIGNALFN signal
+#endif
 
 #ifdef _WIN32
 #include "hostname_win32.h" // gethost/domainname()
@@ -95,9 +104,7 @@ extern "C" int __stdcall FreeConsole(void);
 #define SIGNALFN  daemon_signal
 #define strsignal daemon_strsignal
 #define sleep     daemon_sleep
-#undef EXIT // see utility.h
-#define EXIT(x)  { exitstatus = daemon_winsvc_exitcode = (x); exit((x)); }
-// SIGQUIT does not exits, CONTROL-Break signals SIGBREAK.
+// SIGQUIT does not exist, CONTROL-Break signals SIGBREAK.
 #define SIGQUIT SIGBREAK
 #define SIGQUIT_KEYNAME "CONTROL-Break"
 #else  // _WIN32
@@ -115,58 +122,62 @@ extern "C" int getdomainname(char *, int); // no declaration in header files!
 
 #define ARGUSED(x) ((void)(x))
 
-// These are CVS identification information for *.cpp and *.h files
-extern const char *atacmdnames_c_cvsid, *atacmds_c_cvsid, *ataprint_c_cvsid, *escalade_c_cvsid, 
-                  *knowndrives_c_cvsid, *os_XXXX_c_cvsid, *scsicmds_c_cvsid, *utility_c_cvsid;
-
-static const char *filenameandversion="$Id: smartd.cpp,v 1.397 2008/03/04 22:09:47 ballen4705 Exp $";
-#ifdef NEED_SOLARIS_ATA_CODE
-extern const char *os_solaris_ata_s_cvsid;
-#endif
-#ifdef _WIN32
-extern const char *daemon_win32_c_cvsid, *hostname_win32_c_cvsid, *syslog_win32_c_cvsid;
-#endif
-const char *smartd_c_cvsid="$Id: smartd.cpp,v 1.397 2008/03/04 22:09:47 ballen4705 Exp $" 
-ATACMDS_H_CVSID ATAPRINT_H_CVSID CONFIG_H_CVSID
-#ifdef DAEMON_WIN32_H_CVSID
-DAEMON_WIN32_H_CVSID
-#endif
-EXTERN_H_CVSID INT64_H_CVSID
-#ifdef HOSTNAME_WIN32_H_CVSID
-HOSTNAME_WIN32_H_CVSID
-#endif
-KNOWNDRIVES_H_CVSID SCSICMDS_H_CVSID SMARTD_H_CVSID
-#ifdef SYSLOG_H_CVSID
-SYSLOG_H_CVSID
-#endif
-UTILITY_H_CVSID;
+const char * smartd_cpp_cvsid = "$Id: smartd.cpp 2870 2009-08-02 20:38:30Z manfred99 $"
+                                CONFIG_H_CVSID EXTERN_H_CVSID;
 
 extern const char *reportbug;
 
-// GNU copyleft statement.  Needed for GPL purposes.
-const char *copyleftstring="smartd comes with ABSOLUTELY NO WARRANTY. This is\n"
-                           "free software, and you are welcome to redistribute it\n"
-                           "under the terms of the GNU General Public License\n"
-                           "Version 2. See http://www.gnu.org for further details.\n\n";
-
 extern unsigned char debugmode;
 
+// smartd exit codes
+#define EXIT_BADCMD    1   // command line did not parse
+#define EXIT_BADCONF   2   // syntax error in config file
+#define EXIT_STARTUP   3   // problem forking daemon
+#define EXIT_PID       4   // problem creating pid file
+#define EXIT_NOCONF    5   // config file does not exist
+#define EXIT_READCONF  6   // config file exists but cannot be read
+
+#define EXIT_NOMEM     8   // out of memory
+#define EXIT_BADCODE   10  // internal error - should NEVER happen
+
+#define EXIT_BADDEV    16  // we can't monitor this device
+#define EXIT_NODEV     17  // no devices to monitor
+
+#define EXIT_SIGNAL    254 // abort on signal
+
 // command-line: how long to sleep between checks
+#define CHECKTIME 1800
 static int checktime=CHECKTIME;
 
-// command-line: name of PID file (NULL for no pid file)
-static char* pid_file=NULL;
+// command-line: name of PID file (empty for no pid file)
+static std::string pid_file;
+
+// command-line: path prefix of persistent state file, empty if no persistence.
+static std::string state_path_prefix
+#ifdef SMARTMONTOOLS_SAVESTATES
+          = SMARTMONTOOLS_SAVESTATES
+#endif
+                                    ;
+
+// command-line: path prefix of attribute log file, empty if no logs.
+static std::string attrlog_path_prefix
+#ifdef SMARTMONTOOLS_ATTRIBUTELOG
+          = SMARTMONTOOLS_ATTRIBUTELOG
+#endif
+                                    ;
 
 // configuration file name
+#define CONFIGFILENAME "smartd.conf"
+
 #ifndef _WIN32
-static char* configfile = SMARTMONTOOLS_SYSCONFDIR "/" CONFIGFILENAME ;
+static const char *configfile = SMARTMONTOOLS_SYSCONFDIR "/" CONFIGFILENAME ;
 #else
-static char* configfile = "./" CONFIGFILENAME ;
+static const char *configfile = "./" CONFIGFILENAME ;
 #endif
 // configuration file "name" if read from stdin
-static /*const*/ char * const configfile_stdin = "<stdin>";
-// allocated memory for alternate configuration file name
-static char* configfile_alt = NULL;
+static const char * const configfile_stdin = "<stdin>";
+// path of alternate configuration file
+static std::string configfile_alt;
 
 // command-line: when should we exit?
 static int quit=0;
@@ -181,23 +192,6 @@ static bool do_fork=true;
 
 // used for control of printing, passing arguments to atacmds.c
 smartmonctrl *con=NULL;
-
-// pointers to (real or simulated) entries in configuration file, and
-// maximum space currently allocated for these entries.
-cfgfile **cfgentries=NULL;
-int cfgentries_max=0;
-
-// pointers to ATA and SCSI devices being monitored, maximum and
-// actual numbers
-cfgfile **ATAandSCSIdevlist=NULL;
-int ATAandSCSIdevlist_max=0;
-int numdevata=0, numdevscsi=0;
-
-// track memory usage
-extern int64_t bytes;
-
-// exit status
-extern int exitstatus;
 
 // set to one if we catch a USR1 (check devices now)
 volatile int caughtsigUSR1=0;
@@ -214,204 +208,532 @@ volatile int caughtsigHUP=0;
 // set to signal value if we catch INT, QUIT, or TERM
 volatile int caughtsigEXIT=0;
 
-#if SCSITIMEOUT
-// stack environment if we time out during SCSI access (USB devices)
-jmp_buf registerscsienv;
-#endif
+// Attribute monitoring flags.
+// See monitor_attr_flags below.
+enum {
+  MONITOR_IGN_FAILUSE = 0x01,
+  MONITOR_IGNORE      = 0x02,
+  MONITOR_RAW_PRINT   = 0x04,
+  MONITOR_RAW         = 0x08,
+  MONITOR_AS_CRIT     = 0x10,
+  MONITOR_RAW_AS_CRIT = 0x20,
+};
 
-// tranlate cfg->pending into the correct Attribute numbers
-void TranslatePending(unsigned short pending, unsigned char *current, unsigned char *offline) {
+// Array of flags for each attribute.
+class attribute_flags
+{
+public:
+  attribute_flags()
+    { memset(m_flags, 0, sizeof(m_flags)); }
 
-  unsigned char curr = CURR_PEND(pending);
-  unsigned char off =  OFF_PEND(pending);
+  bool is_set(int id, unsigned char flag) const
+    { return (0 < id && id < (int)sizeof(m_flags) && (m_flags[id] & flag)); }
 
-  // look for special value of CUR_UNC_DEFAULT that means DONT
-  // monitor. 0 means DO test.
-  if (curr==CUR_UNC_DEFAULT)
-    curr=0;
-  else if (curr==0)
-    curr=CUR_UNC_DEFAULT;
-	
-  // look for special value of OFF_UNC_DEFAULT that means DONT
-  // monitor.  0 means DO TEST.
-  if (off==OFF_UNC_DEFAULT)
-    off=0;
-  else if (off==0)
-    off=OFF_UNC_DEFAULT;
+  void set(int id, unsigned char flags)
+    {
+      if (0 < id && id < (int)sizeof(m_flags))
+        m_flags[id] |= flags;
+    }
 
-  *current=curr;
-  *offline=off;
+private:
+  unsigned char m_flags[256];
+};
 
-  return;
+
+/// Configuration data for a device. Read from smartd.conf.
+/// Supports copy & assignment and is compatible with STL containers.
+struct dev_config
+{
+  int lineno;                             // Line number of entry in file
+  std::string name;                       // Device name
+  std::string dev_type;                   // Device type argument from -d directive, empty if none
+  std::string state_file;                 // Path of the persistent state file, empty if none
+  std::string attrlog_file;               // Path of the persistent attrlog file, empty if none
+  bool smartcheck;                        // Check SMART status
+  bool usagefailed;                       // Check for failed Usage Attributes
+  bool prefail;                           // Track changes in Prefail Attributes
+  bool usage;                             // Track changes in Usage Attributes
+  bool selftest;                          // Monitor number of selftest errors
+  bool errorlog;                          // Monitor number of ATA errors
+  bool permissive;                        // Ignore failed SMART commands
+  char autosave;                          // 1=disable, 2=enable Autosave Attributes
+  char autoofflinetest;                   // 1=disable, 2=enable Auto Offline Test
+  unsigned char fix_firmwarebug;          // FIX_*, see atacmds.h
+  bool ignorepresets;                     // Ignore database of -v options
+  bool showpresets;                       // Show database entry for this device
+  bool removable;                         // Device may disappear (not be present)
+  char powermode;                         // skip check, if disk in idle or standby mode
+  bool powerquiet;                        // skip powermode 'skipping checks' message
+  int powerskipmax;                       // how many times can be check skipped
+  unsigned char tempdiff;                 // Track Temperature changes >= this limit
+  unsigned char tempinfo, tempcrit;       // Track Temperatures >= these limits as LOG_INFO, LOG_CRIT+mail
+  regular_expression test_regex;          // Regex for scheduled testing
+
+  // Configuration of email warning messages
+  std::string emailcmdline;               // script to execute, empty if no messages
+  std::string emailaddress;               // email address, or empty
+  unsigned char emailfreq;                // Emails once (1) daily (2) diminishing (3)
+  bool emailtest;                         // Send test email?
+
+  // ATA ONLY
+  unsigned char curr_pending_id;          // ID of current pending sector count, 0 if none
+  unsigned char offl_pending_id;          // ID of offline uncorrectable sector count, 0 if none
+  bool curr_pending_incr, offl_pending_incr; // True if current/offline pending values increase
+  bool curr_pending_set,  offl_pending_set;  // True if '-C', '-U' set in smartd.conf
+
+  attribute_flags monitor_attr_flags;     // MONITOR_* flags for each attribute
+
+  // TODO: Encapsulate, add get/set functions
+  unsigned char attributedefs[256];       // -v options, see end of extern.h for def
+
+  dev_config();
+};
+
+dev_config::dev_config()
+: lineno(0),
+  smartcheck(false),
+  usagefailed(false),
+  prefail(false),
+  usage(false),
+  selftest(false),
+  errorlog(false),
+  permissive(false),
+  autosave(0),
+  autoofflinetest(0),
+  fix_firmwarebug(FIX_NOTSPECIFIED),
+  ignorepresets(false),
+  showpresets(false),
+  removable(false),
+  powermode(0),
+  powerquiet(false),
+  powerskipmax(0),
+  tempdiff(0),
+  tempinfo(0), tempcrit(0),
+  emailfreq(0),
+  emailtest(false),
+  curr_pending_id(0), offl_pending_id(0),
+  curr_pending_incr(false), offl_pending_incr(false),
+  curr_pending_set(false),  offl_pending_set(false)
+{
+  memset(attributedefs, 0, sizeof(attributedefs));
 }
 
 
-// free all memory associated with selftest part of configfile entry.  Return NULL
-testinfo* FreeTestData(testinfo *data){
-  
-  // make sure we have something to do.
-  if (!data)
-    return NULL;
-  
-  // free space for text pattern
-  data->regex=FreeNonZero(data->regex, -1, __LINE__, filenameandversion);
-  
-  // free compiled expression
-  regfree(&(data->cregex));
+// Number of allowed mail message types
+const int SMARTD_NMAIL = 13;
+// Type for '-M test' mails (state not persistent)
+const int MAILTYPE_TEST = 0;
+// TODO: Add const or enum for all mail types.
 
-  // make sure that no sign of the compiled expression is left behind
-  // (just in case, to help detect bugs if we ever try and refer to
-  // that again).
-  memset(&(data->cregex), '0', sizeof(regex_t));
+struct mailinfo {
+  int logged;// number of times an email has been sent
+  time_t firstsent;// time first email was sent, as defined by time(2)
+  time_t lastsent; // time last email was sent, as defined by time(2)
 
-  // free remaining memory space
-  data=FreeNonZero(data, sizeof(testinfo), __LINE__, filenameandversion);
+  mailinfo()
+    : logged(0), firstsent(0), lastsent(0) { }
+};
 
-  return NULL;
+/// Persistent state data for a device.
+struct persistent_dev_state
+{
+  unsigned char tempmin, tempmax;         // Min/Max Temperatures
+
+  unsigned char selflogcount;             // total number of self-test errors
+  unsigned short selfloghour;             // lifetime hours of last self-test error
+
+  time_t scheduled_test_next_check;       // Time of next check for scheduled self-tests
+
+  mailinfo maillog[SMARTD_NMAIL];         // log info on when mail sent
+
+  // ATA ONLY
+  int ataerrorcount;                      // Total number of ATA errors
+
+  // Persistent part of ata_smart_values:
+  struct ata_attribute {
+    unsigned char id;
+    unsigned char val;
+    uint64_t raw;
+
+    ata_attribute() : id(0), val(0), raw(0) { }
+  };
+  ata_attribute ata_attributes[NUMBER_ATA_SMART_ATTRIBUTES];
+
+  persistent_dev_state();
+};
+
+persistent_dev_state::persistent_dev_state()
+: tempmin(0), tempmax(0),
+  selflogcount(0),
+  selfloghour(0),
+  scheduled_test_next_check(0),
+  ataerrorcount(0)
+{
 }
 
-cfgfile **AllocateMoreSpace(cfgfile **oldarray, int *oldsize, char *listname){
-  // for now keep BLOCKSIZE small to help detect coding problems.
-  // Perhaps increase in the future.
-  const int BLOCKSIZE=8;
-  int i;
-  int olds = *oldsize;
-  int news = olds + BLOCKSIZE;
-  cfgfile **newptr=(cfgfile **)realloc(oldarray, news*sizeof(cfgfile *));
-  
-  // did we get more space?
-  if (newptr) {
+/// Non-persistent state data for a device.
+struct temp_dev_state
+{
+  bool must_write;                        // true if persistent part should be written
 
-    // clear remaining entries ala calloc()
-    for (i=olds; i<news; i++)
-      newptr[i]=NULL;
-    
-    bytes += BLOCKSIZE*sizeof(cfgfile *);
-    
-    *oldsize=news;
-    
-#if 0
-    PrintOut(LOG_INFO, "allocating %d slots for %s\n", BLOCKSIZE, listname);
-#endif
+  bool not_cap_offline;                   // true == not capable of offline testing
+  bool not_cap_conveyance;
+  bool not_cap_short;
+  bool not_cap_long;
+  bool not_cap_selective;
 
-    return newptr;
+  unsigned char temperature;              // last recorded Temperature (in Celsius)
+  time_t tempmin_delay;                   // time where Min Temperature tracking will start
+
+  bool powermodefail;                     // true if power mode check failed
+  int powerskipcnt;                       // Number of checks skipped due to idle or standby mode
+
+  // SCSI ONLY
+  unsigned char SmartPageSupported;       // has log sense IE page (0x2f)
+  unsigned char TempPageSupported;        // has log sense temperature page (0xd)
+  unsigned char SuppressReport;           // minimize nuisance reports
+  unsigned char modese_len;               // mode sense/select cmd len: 0 (don't
+                                          // know yet) 6 or 10
+
+  // ATA ONLY
+  uint64_t num_sectors;                   // Number of sectors (for selective self-test only)
+  ata_smart_values smartval;              // SMART data
+  ata_smart_thresholds_pvt smartthres;    // SMART thresholds
+
+  temp_dev_state();
+};
+
+temp_dev_state::temp_dev_state()
+: must_write(false),
+  not_cap_offline(false),
+  not_cap_conveyance(false),
+  not_cap_short(false),
+  not_cap_long(false),
+  not_cap_selective(false),
+  temperature(0),
+  tempmin_delay(0),
+  powermodefail(false),
+  powerskipcnt(0),
+  SmartPageSupported(false),
+  TempPageSupported(false),
+  SuppressReport(false),
+  modese_len(0),
+  num_sectors(0)
+{
+  memset(&smartval, 0, sizeof(smartval));
+  memset(&smartthres, 0, sizeof(smartthres));
+}
+
+/// Runtime state data for a device.
+struct dev_state
+: public persistent_dev_state,
+  public temp_dev_state
+{
+  void update_persistent_state();
+  void update_temp_state();
+};
+
+/// Container for configuration info for each device.
+typedef std::vector<dev_config> dev_config_vector;
+
+/// Container for state info for each device.
+typedef std::vector<dev_state> dev_state_vector;
+
+// Copy ATA attributes to persistent state.
+void dev_state::update_persistent_state()
+{
+  for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+    const ata_smart_attribute & ta = smartval.vendor_attributes[i];
+    ata_attribute & pa = ata_attributes[i];
+    pa.id = ta.id;
+    if (ta.id == 0) {
+      pa.val = 0; pa.raw = 0;
+      continue;
+    }
+    pa.val = ta.current;
+    pa.raw =            ta.raw[0]
+           | (          ta.raw[1] <<  8)
+           | (          ta.raw[2] << 16)
+           | ((uint64_t)ta.raw[3] << 24)
+           | ((uint64_t)ta.raw[4] << 32)
+           | ((uint64_t)ta.raw[5] << 40);
   }
-  
-  PrintOut(LOG_CRIT, "out of memory for allocating %s list\n", listname);
-  EXIT(EXIT_NOMEM);
 }
 
-void PrintOneCVS(const char *a_cvs_id){
-  char out[CVSMAXLEN];
-  printone(out,a_cvs_id);
-  PrintOut(LOG_INFO,"%s",out);
-  return;
-}
-
-// prints CVS identity information for the executable
-void PrintCVS(void){
-  const char *configargs=strlen(SMARTMONTOOLS_CONFIGURE_ARGS)?SMARTMONTOOLS_CONFIGURE_ARGS:"[no arguments given]";
-
-  PrintOut(LOG_INFO,(char *)copyleftstring);
-  PrintOut(LOG_INFO,"CVS version IDs of files used to build this code are:\n");
-  PrintOneCVS(atacmdnames_c_cvsid);
-  PrintOneCVS(atacmds_c_cvsid);
-  PrintOneCVS(ataprint_c_cvsid);
-#ifdef _WIN32
-  PrintOneCVS(daemon_win32_c_cvsid);
-#endif
-#ifdef _WIN32
-  PrintOneCVS(hostname_win32_c_cvsid);
-#endif
-  PrintOneCVS(knowndrives_c_cvsid);
-  PrintOneCVS(os_XXXX_c_cvsid);
-#ifdef NEED_SOLARIS_ATA_CODE
-  PrintOneCVS( os_solaris_ata_s_cvsid);
-#endif
-  PrintOneCVS(scsicmds_c_cvsid);
-  PrintOneCVS(smartd_c_cvsid);
-#ifdef _WIN32
-  PrintOneCVS(syslog_win32_c_cvsid);
-#endif
-  PrintOneCVS(utility_c_cvsid);
-  PrintOut(LOG_INFO, "\nsmartmontools release " PACKAGE_VERSION " dated " SMARTMONTOOLS_RELEASE_DATE " at " SMARTMONTOOLS_RELEASE_TIME "\n");
-  PrintOut(LOG_INFO, "smartmontools build host: " SMARTMONTOOLS_BUILD_HOST "\n");
-  PrintOut(LOG_INFO, "smartmontools build configured: " SMARTMONTOOLS_CONFIGURE_DATE "\n");
-  PrintOut(LOG_INFO, "smartd compile dated " __DATE__ " at "__TIME__ "\n");
-  PrintOut(LOG_INFO, "smartmontools configure arguments: %s\n", configargs);
-  return;
-}
-
-// Removes config file entry, freeing all memory
-void RmConfigEntry(cfgfile **anentry, int whatline){
-  
-  cfgfile *cfg;
-
-  // pointer should never be null!
-  if (!anentry){
-    PrintOut(LOG_CRIT,"Internal error in RmConfigEntry() at line %d of file %s\n%s",
-             whatline, filenameandversion, reportbug);    
-    EXIT(EXIT_BADCODE);
+// Copy ATA from persistent to temp state.
+void dev_state::update_temp_state()
+{
+  for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+    const ata_attribute & pa = ata_attributes[i];
+    ata_smart_attribute & ta = smartval.vendor_attributes[i];
+    ta.id = pa.id;
+    if (pa.id == 0) {
+      ta.current = 0; memset(ta.raw, 0, sizeof(ta.raw));
+      continue;
+    }
+    ta.current = pa.val;
+    ta.raw[0] = (unsigned char) pa.raw;
+    ta.raw[1] = (unsigned char)(pa.raw >>  8);
+    ta.raw[2] = (unsigned char)(pa.raw >> 16);
+    ta.raw[3] = (unsigned char)(pa.raw >> 24);
+    ta.raw[4] = (unsigned char)(pa.raw >> 32);
+    ta.raw[5] = (unsigned char)(pa.raw >> 40);
   }
-  
-  // only remove entries that exist!
-  if (!(cfg=*anentry))
-    return;
+}
 
-  // entry exists -- free all of its memory  
-  cfg->name            = FreeNonZero(cfg->name,           -1,__LINE__,filenameandversion);
-  cfg->smartthres      = FreeNonZero(cfg->smartthres,      sizeof(struct ata_smart_thresholds_pvt),__LINE__,filenameandversion);
-  cfg->smartval        = FreeNonZero(cfg->smartval,        sizeof(struct ata_smart_values),__LINE__,filenameandversion);
-  cfg->monitorattflags = FreeNonZero(cfg->monitorattflags, NMONITOR*32,__LINE__,filenameandversion);
-  cfg->attributedefs   = FreeNonZero(cfg->attributedefs,   MAX_ATTRIBUTE_NUM,__LINE__,filenameandversion);
-  if (cfg->mailwarn){
-    cfg->mailwarn->address         = FreeNonZero(cfg->mailwarn->address,        -1,__LINE__,filenameandversion);
-    cfg->mailwarn->emailcmdline    = FreeNonZero(cfg->mailwarn->emailcmdline,   -1,__LINE__,filenameandversion);
-    cfg->mailwarn                  = FreeNonZero(cfg->mailwarn,   sizeof(maildata),__LINE__,filenameandversion);
+// Parse a line from a state file.
+static bool parse_dev_state_line(const char * line, persistent_dev_state & state)
+{
+  static regular_expression regex(
+    "^ *"
+     "((temperature-min)" // (1 (2)
+     "|(temperature-max)" // (3)
+     "|(self-test-errors)" // (4)
+     "|(self-test-last-err-hour)" // (5)
+     "|(scheduled-test-next-check)" // (6)
+     "|(ata-error-count)"  // (7)
+     "|(mail\\.([0-9]+)\\." // (8 (9)
+       "((count)" // (10 (11)
+       "|(first-sent-time)" // (12)
+       "|(last-sent-time)" // (13)
+       ")" // 14)
+      ")" // 8)
+     "|(ata-smart-attribute\\.([0-9]+)\\." // (14 (15)
+       "((id)" // (16)
+       "|(val)" // (17)
+       "|(raw)" // (18)
+       ")" // 19)
+      ")" // 14)
+     ")" // 1)
+     " *= *([0-9]+)[ \n]*$", // (20)
+    REG_EXTENDED
+  );
+  if (regex.empty())
+    throw std::logic_error("parse_dev_state_line: invalid regex");
+
+  const int nmatch = 1+20;
+  regmatch_t match[nmatch];
+  if (!regex.execute(line, nmatch, match))
+    return false;
+  if (match[nmatch-1].rm_so < 0)
+    return false;
+
+  uint64_t val = strtoull(line + match[nmatch-1].rm_so, (char **)0, 10);
+
+  int m = 1;
+  if (match[++m].rm_so >= 0)
+    state.tempmin = (unsigned char)val;
+  else if (match[++m].rm_so >= 0)
+    state.tempmax = (unsigned char)val;
+  else if (match[++m].rm_so >= 0)
+    state.selflogcount = (unsigned char)val;
+  else if (match[++m].rm_so >= 0)
+    state.selfloghour = (unsigned short)val;
+  else if (match[++m].rm_so >= 0)
+    state.scheduled_test_next_check = (time_t)val;
+  else if (match[++m].rm_so >= 0)
+    state.ataerrorcount = (int)val;
+  else if (match[m+=2].rm_so >= 0) {
+    int i = atoi(line+match[m].rm_so);
+    if (!(0 <= i && i < SMARTD_NMAIL))
+      return false;
+    if (i == MAILTYPE_TEST) // Don't suppress test mails
+      return true;
+    if (match[m+=2].rm_so >= 0)
+      state.maillog[i].logged = (int)val;
+    else if (match[++m].rm_so >= 0)
+      state.maillog[i].firstsent = (time_t)val;
+    else if (match[++m].rm_so >= 0)
+      state.maillog[i].lastsent = (time_t)val;
+    else
+      return false;
   }
-  cfg->testdata        = FreeTestData(cfg->testdata);
-  *anentry             = FreeNonZero(cfg,                  sizeof(cfgfile),__LINE__,filenameandversion);
-
-  return;
+  else if (match[m+=5+1].rm_so >= 0) {
+    int i = atoi(line+match[m].rm_so);
+    if (!(0 <= i && i < NUMBER_ATA_SMART_ATTRIBUTES))
+      return false;
+    if (match[m+=2].rm_so >= 0)
+      state.ata_attributes[i].id = (unsigned char)val;
+    else if (match[++m].rm_so >= 0)
+      state.ata_attributes[i].val = (unsigned char)val;
+    else if (match[++m].rm_so >= 0)
+      state.ata_attributes[i].raw = val;
+    else
+      return false;
+  }
+  else
+    return false;
+  return true;
 }
 
-// deallocates all memory associated with cfgentries list
-void RmAllConfigEntries(){
-  int i;
+// Read a state file.
+static bool read_dev_state(const char * path, persistent_dev_state & state)
+{
+  stdio_file f(path, "r");
+  if (!f) {
+    if (errno != ENOENT)
+      pout("Cannot read state file \"%s\"\n", path);
+    return false;
+  }
+#ifdef __CYGWIN__
+  setmode(fileno(f), O_TEXT); // Allow files with \r\n
+#endif
 
-  for (i=0; i<cfgentries_max; i++)
-    RmConfigEntry(cfgentries+i, __LINE__);
+  int good = 0, bad = 0;
+  char line[256];
+  while (fgets(line, sizeof(line), f)) {
+    const char * s = line + strspn(line, " \t");
+    if (!*s || *s == '#')
+      continue;
+    if (!parse_dev_state_line(line, state))
+      bad++;
+    else
+      good++;
+  }
 
-  cfgentries=FreeNonZero(cfgentries, sizeof(cfgfile *)*cfgentries_max, __LINE__, filenameandversion);
-  cfgentries_max=0;
-
-  return;
+  if (bad) {
+    if (!good) {
+      pout("%s: format error\n", path);
+      return false;
+    }
+    pout("%s: %d invalid line(s) ignored\n", path, bad);
+  }
+  return true;
 }
 
-// deallocates all memory associated with ATA/SCSI device lists
-void RmAllDevEntries(){
-  int i;
-  
-  for (i=0; i<ATAandSCSIdevlist_max; i++)
-      RmConfigEntry(ATAandSCSIdevlist+i, __LINE__);
-  
-  ATAandSCSIdevlist=FreeNonZero(ATAandSCSIdevlist, sizeof(cfgfile *)*ATAandSCSIdevlist_max, __LINE__, filenameandversion);
-  ATAandSCSIdevlist_max=0;
+static void write_dev_state_line(FILE * f, const char * name, uint64_t val)
+{
+  if (val)
+    fprintf(f, "%s = %"PRIu64"\n", name, val);
+}
 
-  return;
+static void write_dev_state_line(FILE * f, const char * name1, int id, const char * name2, uint64_t val)
+{
+  if (val)
+    fprintf(f, "%s.%d.%s = %"PRIu64"\n", name1, id, name2, val);
+}
+
+// Write a state file
+static bool write_dev_state(const char * path, const persistent_dev_state & state)
+{
+  // Rename old "file" to "file~"
+  std::string pathbak = path; pathbak += '~';
+  unlink(pathbak.c_str());
+  rename(path, pathbak.c_str());
+
+  stdio_file f(path, "w");
+  if (!f) {
+    pout("Cannot create state file \"%s\"\n", path);
+    return false;
+  }
+
+  fprintf(f, "# smartd state file\n");
+  write_dev_state_line(f, "temperature-min", state.tempmin);
+  write_dev_state_line(f, "temperature-max", state.tempmax);
+  write_dev_state_line(f, "self-test-errors", state.selflogcount);
+  write_dev_state_line(f, "self-test-last-err-hour", state.selfloghour);
+  write_dev_state_line(f, "scheduled-test-next-check", state.scheduled_test_next_check);
+
+  int i;
+  for (i = 0; i < SMARTD_NMAIL; i++) {
+    if (i == MAILTYPE_TEST) // Don't suppress test mails
+      continue;
+    const mailinfo & mi = state.maillog[i];
+    if (!mi.logged)
+      continue;
+    write_dev_state_line(f, "mail", i, "count", mi.logged);
+    write_dev_state_line(f, "mail", i, "first-sent-time", mi.firstsent);
+    write_dev_state_line(f, "mail", i, "last-sent-time", mi.lastsent);
+  }
+
+  // ATA ONLY
+  write_dev_state_line(f, "ata-error-count", state.ataerrorcount);
+
+  for (i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+    const persistent_dev_state::ata_attribute & pa = state.ata_attributes[i];
+    if (!pa.id)
+      continue;
+    write_dev_state_line(f, "ata-smart-attribute", i, "id", pa.id);
+    write_dev_state_line(f, "ata-smart-attribute", i, "val", pa.val);
+    write_dev_state_line(f, "ata-smart-attribute", i, "raw", pa.raw);
+  }
+
+  return true;
+}
+
+// Write to the attrlog file
+static bool write_dev_attrlog(const char * path, const persistent_dev_state & state)
+{
+  stdio_file f(path, "a");
+  if (!f) {
+    pout("Cannot create attribute log file \"%s\"\n", path);
+    return false;
+  }
+
+  // ATA ONLY
+  time_t now = time(0);
+  struct tm * tms = gmtime(&now);
+  fprintf(f, "%d-%02d-%02d %02d:%02d:%02d;",
+             1900+tms->tm_year, 1+tms->tm_mon, tms->tm_mday,
+             tms->tm_hour, tms->tm_min, tms->tm_sec);
+  for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+    const persistent_dev_state::ata_attribute & pa = state.ata_attributes[i];
+    if (!pa.id)
+      continue;
+    fprintf(f, "\t%d;%d;%"PRIu64";", pa.id, pa.val, pa.raw);
+  }
+  fprintf(f, "\n");
+
+  return true;
+}
+
+// Write all state files. If write_always is false, don't write
+// unless must_write is set.
+static void write_all_dev_states(const dev_config_vector & configs,
+                                 dev_state_vector & states,
+                                 bool write_always = true)
+{
+  for (unsigned i = 0; i < states.size(); i++) {
+    const dev_config & cfg = configs.at(i);
+    if (cfg.state_file.empty())
+      continue;
+    dev_state & state = states[i];
+    if (!write_always && !state.must_write)
+      continue;
+    if (!write_dev_state(cfg.state_file.c_str(), state))
+      continue;
+    state.must_write = false;
+    if (write_always || debugmode)
+      PrintOut(LOG_INFO, "Device: %s, state written to %s\n",
+               cfg.name.c_str(), cfg.state_file.c_str());
+  }
+}
+
+// Write to all attrlog files
+static void write_all_dev_attrlogs(const dev_config_vector & configs,
+                                   dev_state_vector & states)
+{
+  for (unsigned i = 0; i < states.size(); i++) {
+    const dev_config & cfg = configs.at(i);
+    if (cfg.attrlog_file.empty())
+      continue;
+    dev_state & state = states[i];
+    write_dev_attrlog(cfg.attrlog_file.c_str(), state);
+  }
 }
 
 // remove the PID file
 void RemovePidFile(){
-  if (pid_file) {
-    if ( -1==unlink(pid_file) )
+  if (!pid_file.empty()) {
+    if (unlink(pid_file.c_str()))
       PrintOut(LOG_CRIT,"Can't unlink PID file %s (%s).\n", 
-               pid_file, strerror(errno));
-    pid_file=FreeNonZero(pid_file, -1,__LINE__,filenameandversion);
+               pid_file.c_str(), strerror(errno));
+    pid_file.clear();
   }
   return;
 }
 
+extern "C" { // signal handlers require C-linkage
 
 //  Note if we catch a SIGUSR1
 void USR1handler(int sig){
@@ -445,35 +767,22 @@ void sighandler(int sig){
   return;
 }
 
+} // extern "C"
 
-// signal handler that prints Goodbye message and removes pidfile
-void Goodbye(void){
-  
-  // clean up memory -- useful for debugging
-  RmAllConfigEntries();
-  RmAllDevEntries();
-
+// Cleanup, print Goodbye message and remove pidfile
+static int Goodbye(int status)
+{
   // delete PID file, if one was created
   RemovePidFile();
 
-  // remove alternate configfile name
-  configfile_alt=FreeNonZero(configfile_alt, -1,__LINE__,filenameandversion);
-
-  // useful for debugging -- have we managed memory correctly?
-  if (debugmode || (bytes && exitstatus!=EXIT_NOMEM))
-    PrintOut(LOG_INFO, "Memory still allocated for devices at exit is %" PRId64 " bytes.\n", bytes);
-
   // if we are exiting because of a code bug, tell user
-  if (exitstatus==EXIT_BADCODE || (bytes && exitstatus!=EXIT_NOMEM))
+  if (status==EXIT_BADCODE)
         PrintOut(LOG_CRIT, "Please inform " PACKAGE_BUGREPORT ", including output of smartd -V.\n");
 
-  if (exitstatus==0 && bytes)
-    exitstatus=EXIT_BADCODE;
-
   // and this should be the final output from smartd before it exits
-  PrintOut(exitstatus?LOG_CRIT:LOG_INFO, "smartd is exiting (exit status %d)\n", exitstatus);
+  PrintOut(status?LOG_CRIT:LOG_INFO, "smartd is exiting (exit status %d)\n", status);
 
-  return;
+  return status;
 }
 
 #define ENVLENGTH 1024
@@ -492,9 +801,28 @@ int exportenv(char* stackspace, const char *name, const char *value){
 
 char* dnsdomain(const char* hostname) {
   char *p = NULL;
-#ifdef HAVE_GETHOSTBYNAME
+#ifdef HAVE_GETADDRINFO
+  static char canon_name[NI_MAXHOST];
+  struct addrinfo *info = NULL;
+  struct addrinfo hints;
+  int err;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_flags = AI_CANONNAME;
+  if ((err = getaddrinfo(hostname, NULL, &hints, &info)) || (!info)) {
+    PrintOut(LOG_CRIT, "Error retrieving getaddrinfo(%s): %s\n", hostname, gai_strerror(err));
+    return NULL;
+  }
+  if (info->ai_canonname) {
+    strncpy(canon_name, info->ai_canonname, sizeof(canon_name));
+    canon_name[NI_MAXHOST - 1] = '\0';
+    p = canon_name;
+    if ((p = strchr(canon_name, '.')))
+      p++;
+  }
+  freeaddrinfo(info);
+#elif HAVE_GETHOSTBYNAME
   struct hostent *hp;
-  
   if ((hp = gethostbyname(hostname))) {
     // Does this work if gethostbyname() returns an IPv6 name in
     // colon/dot notation?  [BA]
@@ -509,9 +837,12 @@ char* dnsdomain(const char* hostname) {
 
 #define EBUFLEN 1024
 
+static void MailWarning(const dev_config & cfg, dev_state & state, int which, const char *fmt, ...)
+                        __attribute__ ((format (printf, 4, 5)));
+
 // If either address or executable path is non-null then send and log
 // a warning email, or execute executable
-void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
+static void MailWarning(const dev_config & cfg, dev_state & state, int which, const char *fmt, ...){
   char command[2048], message[256], hostname[256], domainname[256], additional[256],fullmessage[1024];
   char original[256], further[256], nisdomain[256], subject[256],dates[DATEANDEPOCHLEN];
   char environ_strings[11][ENVLENGTH];
@@ -519,7 +850,7 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   va_list ap;
   const int day=24*3600;
   int days=0;
-  char *whichfail[]={
+  const char * const whichfail[]={
     "EmailTest",                  // 0
     "Health",                     // 1
     "Usage",                      // 2
@@ -535,33 +866,21 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
     "Temperature"                 // 12
   };
   
-  char *address, *executable;
-  mailinfo *mail;
-  maildata* data=cfg->mailwarn;
-#ifndef _WIN32
-  FILE *pfp=NULL;
-#else
-  char stdinbuf[1024]; int boxmsgoffs, boxtype;
-#endif
-  const char *newadd=NULL, *newwarn=NULL;
   const char *unknown="[Unknown]";
 
   // See if user wants us to send mail
-  if(!data)
+  if (cfg.emailaddress.empty() && cfg.emailcmdline.empty())
     return;
-  
-  address=data->address;
-  executable=data->emailcmdline;
-  
-  if (!address && !executable)
-    return;
-  
+
+  std::string address = cfg.emailaddress;
+  const char * executable = cfg.emailcmdline.c_str();
+
   // which type of mail are we sending?
-  mail=(data->maillog)+which;
-  
+  mailinfo * mail=(state.maillog)+which;
+
   // checks for sanity
-  if (data->emailfreq<1 || data->emailfreq>3) {
-    PrintOut(LOG_CRIT,"internal error in MailWarning(): cfg->mailwarn->emailfreq=%d\n",data->emailfreq);
+  if (cfg.emailfreq<1 || cfg.emailfreq>3) {
+    PrintOut(LOG_CRIT,"internal error in MailWarning(): cfg.mailwarn->emailfreq=%d\n",cfg.emailfreq);
     return;
   }
   if (which<0 || which>=SMARTD_NMAIL || sizeof(whichfail)!=SMARTD_NMAIL*sizeof(char *)) {
@@ -571,7 +890,7 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   }
   
   // Return if a single warning mail has been sent.
-  if ((data->emailfreq==1) && mail->logged)
+  if ((cfg.emailfreq==1) && mail->logged)
     return;
 
   // Return if this is an email test and one has already been sent.
@@ -582,11 +901,11 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   epoch=time(NULL);
 
   // Return if less than one day has gone by
-  if (data->emailfreq==2 && mail->logged && epoch<(mail->lastsent+day))
+  if (cfg.emailfreq==2 && mail->logged && epoch<(mail->lastsent+day))
     return;
 
   // Return if less than 2^(logged-1) days have gone by
-  if (data->emailfreq==3 && mail->logged){
+  if (cfg.emailfreq==3 && mail->logged) {
     days=0x01<<(mail->logged-1);
     days*=day;
     if  (epoch<(mail->lastsent+days))
@@ -636,7 +955,7 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   if (which) {
     sprintf(further,"You can also use the smartctl utility for further investigation.\n");
 
-    switch (data->emailfreq){
+    switch (cfg.emailfreq) {
     case 1:
       sprintf(additional,"No additional email messages about this problem will be sent.\n");
       break;
@@ -648,7 +967,7 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
               (0x01)<<mail->logged);
       break;
     }
-    if (data->emailfreq>1 && mail->logged){
+    if (cfg.emailfreq>1 && mail->logged) {
       dateandtimezoneepoch(dates, mail->firstsent);
       sprintf(original,"The original email about this issue was sent at %s\n", dates);
     }
@@ -656,8 +975,8 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   
   snprintf(subject, 256,"SMART error (%s) detected on host: %s", whichfail[which], hostname);
 
-  // If the user has set cfg->emailcmdline, use that as mailer, else "mail" or "mailx".
-  if (!executable)
+  // If the user has set cfg.emailcmdline, use that as mailer, else "mail" or "mailx".
+  if (!*executable)
 #ifdef DEFAULT_MAILER
     executable = DEFAULT_MAILER ;
 #else
@@ -668,19 +987,10 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
 #endif
 #endif
 
-  // make a private copy of address with commas replaced by spaces
-  // to separate recipients
-  if (address) {
-    address=CustomStrDup(data->address, 1, __LINE__, filenameandversion);
 #ifndef _WIN32 // blat mailer needs comma
-    {
-      char *comma=address;
-      while ((comma=strchr(comma, ',')))
-        *comma=' ';
-    }
+  // replace commas by spaces to separate recipients
+  std::replace(address.begin(), address.end(), ',', ' ');
 #endif
-  }
-
   // Export information in environment variables that will be useful
   // for user scripts
   exportenv(environ_strings[0], "SMARTD_MAILER", executable);
@@ -691,67 +1001,12 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   snprintf(dates, DATEANDEPOCHLEN,"%d", (int)mail->firstsent);
   exportenv(environ_strings[4], "SMARTD_TFIRSTEPOCH", dates);
   exportenv(environ_strings[5], "SMARTD_FAILTYPE", whichfail[which]);
-  if (address)
-    exportenv(environ_strings[6], "SMARTD_ADDRESS", address);
-  exportenv(environ_strings[7], "SMARTD_DEVICESTRING", cfg->name);
+  if (!address.empty())
+    exportenv(environ_strings[6], "SMARTD_ADDRESS", address.c_str());
+  exportenv(environ_strings[7], "SMARTD_DEVICESTRING", cfg.name.c_str());
 
-  switch (cfg->controller_type) {
-  case CONTROLLER_3WARE_678K:
-  case CONTROLLER_3WARE_9000_CHAR:
-  case CONTROLLER_3WARE_678K_CHAR:
-    {
-      char *s,devicetype[16];
-      sprintf(devicetype, "3ware,%d", cfg->controller_port-1);
-      exportenv(environ_strings[8], "SMARTD_DEVICETYPE", devicetype);
-      if ((s=strchr(cfg->name, ' ')))
-	*s='\0';
-      exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-      if (s)
-	*s=' ';
-    }
-    break;
-  case CONTROLLER_CCISS:
-    {
-      char *s,devicetype[16];
-      sprintf(devicetype, "cciss,%d", cfg->controller_port-1);
-      exportenv(environ_strings[8], "SMARTD_DEVICETYPE", devicetype);
-      if ((s=strchr(cfg->name, ' ')))
-	*s='\0';
-      exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-      if (s)
-	*s=' ';
-    }
-    break;
-  case CONTROLLER_ATA:
-    exportenv(environ_strings[8], "SMARTD_DEVICETYPE", "ata");
-    exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-    break;
-  case CONTROLLER_MARVELL_SATA:
-    exportenv(environ_strings[8], "SMARTD_DEVICETYPE", "marvell");
-    exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-    break;
-  case CONTROLLER_SCSI:
-    exportenv(environ_strings[8], "SMARTD_DEVICETYPE", "scsi");
-    exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-    break;
-  case CONTROLLER_SAT:
-    exportenv(environ_strings[8], "SMARTD_DEVICETYPE", "sat");
-    exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-    break;
-  case CONTROLLER_HPT:
-    {
-      char *s,devicetype[16];
-      sprintf(devicetype, "hpt,%d/%d/%d", cfg->hpt_data[0],
-              cfg->hpt_data[1], cfg->hpt_data[2]);
-      exportenv(environ_strings[8], "SMARTD_DEVICETYPE", devicetype);
-      if ((s=strchr(cfg->name, ' ')))
-        *s='\0';
-      exportenv(environ_strings[9], "SMARTD_DEVICE", cfg->name);
-      if (s)
-        *s=' ';
-    }
-    break;
-  }
+  exportenv(environ_strings[8], "SMARTD_DEVICETYPE", cfg.dev_type.c_str());
+  exportenv(environ_strings[9], "SMARTD_DEVICE", cfg.name.c_str());
 
   snprintf(fullmessage, 1024,
              "This email was generated by the smartd daemon running on:\n\n"
@@ -767,22 +1022,23 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
 
   // now construct a command to send this as EMAIL
 #ifndef _WIN32
-  if (address)
+  if (!address.empty())
     snprintf(command, 2048, 
              "$SMARTD_MAILER -s '%s' %s 2>&1 << \"ENDMAIL\"\n"
-	     "%sENDMAIL\n", subject, address, fullmessage);
+	     "%sENDMAIL\n", subject, address.c_str(), fullmessage);
   else
     snprintf(command, 2048, "%s 2>&1", executable);
   
   // tell SYSLOG what we are about to do...
-  newadd=address?address:"<nomailer>";
-  newwarn=which?"Warning via":"Test of";
+  const char * newadd = (!address.empty()? address.c_str() : "<nomailer>");
+  const char * newwarn = (which? "Warning via" : "Test of");
 
   PrintOut(LOG_INFO,"%s %s to %s ...\n",
            which?"Sending warning via":"Executing test of", executable, newadd);
   
   // issue the command to send mail or to run the user's executable
   errno=0;
+  FILE * pfp;
   if (!(pfp=popen(command, "r")))
     // failed to popen() mail process
     PrintOut(LOG_CRIT,"%s %s to %s: failed (fork or pipe failed, or no memory) %s\n", 
@@ -852,28 +1108,33 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
 #else // _WIN32
 
   // No "here-documents" on Windows, so must use separate commandline and stdin
+  char stdinbuf[1024];
   command[0] = stdinbuf[0] = 0;
-  boxtype = -1; boxmsgoffs = 0;
-  newadd = "<nomailer>";
-  if (address) {
+  int boxtype = -1, boxmsgoffs = 0;
+  const char * newadd = "<nomailer>";
+  if (!address.empty()) {
     // address "[sys]msgbox ..." => show warning (also) as [system modal ]messagebox
-    int addroffs = (!strncmp(address, "sys", 3) ? 3 : 0);
-    if (!strncmp(address+addroffs, "msgbox", 6) && (!address[addroffs+6] || address[addroffs+6] == ',')) {
-      boxtype = (addroffs > 0 ? 1 : 0);
-      addroffs += 6;
-      if (address[addroffs])
-        addroffs++;
+    char addr1[9+1+13] = ""; int n1 = -1, n2 = -1;
+    if (sscanf(address.c_str(), "%9[a-z]%n,%n", addr1, &n1, &n2) == 1 && (n1 == (int)address.size() || n2 > 0)) {
+      if (!strcmp(addr1, "msgbox"))
+        boxtype = 0;
+      else if (!strcmp(addr1, "sysmsgbox"))
+        boxtype = 1;
+      if (boxtype >= 0)
+        address.erase(0, (n2 > n1 ? n2 : n1));
     }
-    else
-      addroffs = 0;
 
-    if (address[addroffs]) {
+    if (!address.empty()) {
       // Use "blat" parameter syntax (TODO: configure via -M for other mailers)
       snprintf(command, sizeof(command),
                "%s - -q -subject \"%s\" -to \"%s\"",
-               executable, subject, address+addroffs);
-      newadd = address+addroffs;
+               executable, subject, address.c_str());
+      newadd = address.c_str();
     }
+
+#ifdef _MSC_VER
+    _set_printf_count_output(1); // "%n" disabled by default
+#endif
     // Message for mail [0...] and messagebox [boxmsgoffs...]
     snprintf(stdinbuf, sizeof(stdinbuf),
              "This email was generated by the smartd daemon running on:\n\n"
@@ -891,7 +1152,7 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
   else
     snprintf(command, sizeof(command), "%s", executable);
 
-  newwarn=which?"Warning via":"Test of";
+  const char * newwarn = (which ? "Warning via" : "Test of");
   if (boxtype >= 0) {
     // show message box
     daemon_messagebox(boxtype, subject, stdinbuf+boxmsgoffs);
@@ -918,11 +1179,6 @@ void MailWarning(cfgfile *cfg, int which, char *fmt, ...){
 
   // increment mail sent counter
   mail->logged++;
-  
-  // free copy of address (without commas)
-  address=FreeNonZero(address, -1, __LINE__, filenameandversion);
-
-  return;
 }
 
 // Printing function for watching ataprint commands, or losing them
@@ -948,7 +1204,7 @@ void pout(const char *fmt, ...){
 #endif
     vprintf(fmt,ap);
   // in debug==2 mode we print output from knowndrives.o functions
-  else if (debugmode==2 || con->reportataioctl || con->reportscsiioctl || con->controller_port) {
+  else if (debugmode==2 || con->reportataioctl || con->reportscsiioctl /*|| con->controller_port???*/) {
     openlog("smartd", LOG_PID, facility);
     vsyslog(LOG_INFO, fmt, ap);
     closelog();
@@ -983,6 +1239,11 @@ void PrintOut(int priority, const char *fmt, ...){
   return;
 }
 
+// Used to warn users about invalid checksums. Called from atacmds.cpp.
+void checksumwarning(const char * string)
+{
+  pout("Warning! %s error: invalid SMART checksum.\n", string);
+}
 
 // Wait for the pid file to show up, this makes sure a calling program knows
 // that the daemon is really up and running and has a pid to kill it
@@ -991,11 +1252,11 @@ bool WaitForPidFile()
     int waited, max_wait = 10;
     struct stat stat_buf;
 
-    if(!pid_file || debugmode)
+    if (pid_file.empty() || debugmode)
     	return true;
 
     for(waited = 0; waited < max_wait; ++waited) {
-	if(stat(pid_file, &stat_buf) == 0) {
+	if (!stat(pid_file.c_str(), &stat_buf)) {
 		return true;
 	} else
 		sleep(1);
@@ -1006,7 +1267,7 @@ bool WaitForPidFile()
 
 // Forks new process, closes ALL file descriptors, redirects stdin,
 // stdout, and stderr.  Not quite daemon().  See
-// http://www.iar.unlp.edu.ar/~fede/revistas/lj/Magazines/LJ47/2335.html
+// http://www.linuxjournal.com/article/2335
 // for a good description of why we do things this way.
 void DaemonInit(){
 #ifndef _WIN32
@@ -1023,13 +1284,14 @@ void DaemonInit(){
       PrintOut(LOG_CRIT,"smartd unable to fork daemon process!\n");
       EXIT(EXIT_STARTUP);
     }
-    else if (pid)
+    else if (pid) {
       // we are the parent process, wait for pid file, then exit cleanly
       if(!WaitForPidFile()) {
-        PrintOut(LOG_CRIT,"PID file %s didn't show up!\n", pid_file);
+        PrintOut(LOG_CRIT,"PID file %s didn't show up!\n", pid_file.c_str());
      	EXIT(EXIT_STARTUP);
       } else
         EXIT(0);
+    }
   
     // from here on, we are the child process.
     setsid();
@@ -1056,14 +1318,18 @@ void DaemonInit(){
   FreeConsole();
 #endif // __CYGWIN__
 
+#define NO_warn_unused_result(cmd) { if (cmd) {} ; }
+
   // redirect any IO attempts to /dev/null for stdin
   i=open("/dev/null",O_RDWR);
-  // stdout
-  dup(i);
-  // stderr
-  dup(i);
-  umask(0);
-  chdir("/");
+  if (i>=0) {
+    // stdout
+    NO_warn_unused_result(dup(i));
+    // stderr
+    NO_warn_unused_result(dup(i));
+  };
+  umask(0022);
+  NO_warn_unused_result(chdir("/"));
 
   if (do_fork)
     PrintOut(LOG_INFO, "smartd has fork()ed into background mode. New PID=%d.\n", (int)getpid());
@@ -1084,58 +1350,43 @@ void DaemonInit(){
 }
 
 // create a PID file containing the current process id
-void WritePidFile() {
-  if (pid_file) {
-    int error = 0;
+static void WritePidFile()
+{
+  if (!pid_file.empty()) {
     pid_t pid = getpid();
     mode_t old_umask;
-    FILE* fp; 
-
 #ifndef __CYGWIN__
     old_umask = umask(0077); // rwx------
 #else
     // Cygwin: smartd service runs on system account, ensure PID file can be read by admins
     old_umask = umask(0033); // rwxr--r--
 #endif
-    fp = fopen(pid_file, "w");
+
+    stdio_file f(pid_file.c_str(), "w");
     umask(old_umask);
-    if (fp == NULL) {
-      error = 1;
-    } else if (fprintf(fp, "%d\n", (int)pid) <= 0) {
-      error = 1;
-    } else if (fclose(fp) != 0) {
-      error = 1;
-    }
-    if (error) {
-      PrintOut(LOG_CRIT, "unable to write PID file %s - exiting.\n", pid_file);
+    if (!(f && fprintf(f, "%d\n", (int)pid) > 0 && f.close())) {
+      PrintOut(LOG_CRIT, "unable to write PID file %s - exiting.\n", pid_file.c_str());
       EXIT(EXIT_PID);
     }
-    PrintOut(LOG_INFO, "file %s written containing PID %d\n", pid_file, (int)pid);
+    PrintOut(LOG_INFO, "file %s written containing PID %d\n", pid_file.c_str(), (int)pid);
   }
-  return;
 }
 
 // Prints header identifying version of code and home
-void PrintHead(){
-#ifdef HAVE_GET_OS_VERSION_STR
-  const char * ver = get_os_version_str();
-#else
-  const char * ver = SMARTMONTOOLS_BUILD_HOST;
-#endif
-  PrintOut(LOG_INFO,"smartd version %s [%s] Copyright (C) 2002-8 Bruce Allen\n", PACKAGE_VERSION, ver);
-  PrintOut(LOG_INFO,"Home page is " PACKAGE_HOMEPAGE "\n\n");
-  return;
+static void PrintHead()
+{
+  PrintOut(LOG_INFO, "%s\n", format_version_info("smartd").c_str());
 }
 
 // prints help info for configuration file Directives
 void Directives() {
   PrintOut(LOG_INFO,
            "Configuration file (%s) Directives (after device name):\n"
-           "  -d TYPE Set the device type: ata, scsi, marvell, removable, sat, 3ware,N, hpt,L/M/N, cciss,N\n"
+           "  -d TYPE Set the device type: %s\n"
            "  -T TYPE Set the tolerance to one of: normal, permissive\n"
            "  -o VAL  Enable/disable automatic offline tests (on/off)\n"
            "  -S VAL  Enable/disable attribute autosave (on/off)\n"
-           "  -n MODE No check if: never[,q], sleep[,q], standby[,q], idle[,q]\n"
+           "  -n MODE No check if: never, sleep[,N][,q], standby[,N][,q], idle[,N][,q]\n"
            "  -H      Monitor SMART Health Status, report if failed\n"
            "  -s REG  Do Self-Test at time(s) given by regular expression REG\n"
            "  -l TYPE Monitor SMART log.  Type is one of: error, selftest\n"
@@ -1149,8 +1400,8 @@ void Directives() {
            "  -R ID   Track changes in Attribute ID Raw value with -p, -u or -t\n"
            "  -i ID   Ignore Attribute ID for -f Directive\n"
            "  -I ID   Ignore Attribute ID for -p, -u or -t Directive\n"
-	   "  -C ID   Monitor Current Pending Sectors in Attribute ID\n"
-	   "  -U ID   Monitor Offline Uncorrectable Sectors in Attribute ID\n"
+           "  -C ID[+] Monitor [increases of] Current Pending Sectors in Attribute ID\n"
+           "  -U ID[+] Monitor [increases of] Offline Uncorrectable Sectors in Attribute ID\n"
            "  -W D,I,C Monitor Temperature D)ifference, I)nformal limit, C)ritical limit\n"
            "  -v N,ST Modifies labeling of Attribute N (see man page)  \n"
            "  -P TYPE Drive-specific presets: use, ignore, show, showall\n"
@@ -1161,7 +1412,7 @@ void Directives() {
            "Attribute ID is a decimal integer 1 <= ID <= 255\n"
 	   "Use ID = 0 to turn off -C and/or -U Directives\n"
            "Example: /dev/hda -a\n", 
-           configfile);
+           configfile, smi()->get_valid_dev_types_str());
   return;
 }
 
@@ -1191,7 +1442,6 @@ const char *GetValidArgList(char opt) {
 /* prints help information for command syntax */
 void Usage (void){
   PrintOut(LOG_INFO,"Usage: smartd [options]\n\n");
-#ifdef HAVE_GETOPT_LONG
   PrintOut(LOG_INFO,"  -c NAME|-, --configfile=NAME|-\n");
   PrintOut(LOG_INFO,"        Read configuration file NAME or stdin [default is %s]\n\n", configfile);
   PrintOut(LOG_INFO,"  -d, --debug\n");
@@ -1218,81 +1468,54 @@ void Usage (void){
   PrintOut(LOG_INFO,"        Quit on one of: %s\n\n", GetValidArgList('q'));
   PrintOut(LOG_INFO,"  -r, --report=TYPE\n");
   PrintOut(LOG_INFO,"        Report transactions for one of: %s\n\n", GetValidArgList('r'));
+  PrintOut(LOG_INFO,"  -s PREFIX, --savestates=PREFIX\n");
+  PrintOut(LOG_INFO,"        Save disk states to {PREFIX}MODEL-SERIAL.TYPE.state\n");
+#ifdef SMARTMONTOOLS_SAVESTATES
+  PrintOut(LOG_INFO,"        [default is "SMARTMONTOOLS_SAVESTATES"MODEL-SERIAL.TYPE.state]\n");
+#endif
+  PrintOut(LOG_INFO,"\n");
+  PrintOut(LOG_INFO,"  -B [+]FILE, --drivedb=[+]FILE\n");
+  PrintOut(LOG_INFO,"        Read and replace [add] drive database from FILE\n");
+#ifdef SMARTMONTOOLS_DRIVEDBDIR
+  PrintOut(LOG_INFO,"        [default is "SMARTMONTOOLS_DRIVEDBDIR"/drivedb.h]\n");
+#endif
+  PrintOut(LOG_INFO,"\n");
 #ifdef _WIN32
   PrintOut(LOG_INFO,"  --service\n");
   PrintOut(LOG_INFO,"        Running as windows service (see man page), install with:\n");
   PrintOut(LOG_INFO,"          smartd install [options]\n");
   PrintOut(LOG_INFO,"        Remove service with:\n");
   PrintOut(LOG_INFO,"          smartd remove\n\n");
-#else
-#endif // _WIN32 || __CYGWIN__
+#endif // _WIN32
   PrintOut(LOG_INFO,"  -V, --version, --license, --copyright\n");
   PrintOut(LOG_INFO,"        Print License, Copyright, and version information\n");
-#else
-  PrintOut(LOG_INFO,"  -c NAME|-  Read configuration file NAME or stdin [default is %s]\n", configfile);
-  PrintOut(LOG_INFO,"  -d         Start smartd in debug mode\n");
-  PrintOut(LOG_INFO,"  -D         Print the configuration file Directives and exit\n");
-  PrintOut(LOG_INFO,"  -h         Display this help and exit\n");
-  PrintOut(LOG_INFO,"  -i N       Set interval between disk checks to N seconds, where N >= 10\n");
-  PrintOut(LOG_INFO,"  -l local?  Use syslog facility local0 - local7, or daemon\n");
-  PrintOut(LOG_INFO,"  -n         Do not fork into background\n");
-  PrintOut(LOG_INFO,"  -p NAME    Write PID file NAME\n");
-  PrintOut(LOG_INFO,"  -q WHEN    Quit on one of: %s\n", GetValidArgList('q'));
-  PrintOut(LOG_INFO,"  -r TYPE    Report transactions for one of: %s\n", GetValidArgList('r'));
-  PrintOut(LOG_INFO,"  -V         Print License, Copyright, and version information\n");
-#endif
 }
 
-// returns negative if problem, else fd>=0
-static int OpenDevice(char *device, char *mode, int scanning) {
-  int fd;
-  char *s=device;
-  
-  // If there is an ASCII "space" character in the device name,
-  // terminate string there.  This is for 3ware and highpoint devices only.
-  if ((s=strchr(device,' ')))
-    *s='\0';
-
-  // open the device
-  fd = deviceopen(device, mode);
-
-  // if we removed a space, put it back in please
-  if (s)
-    *s=' ';
-
-  // if we failed to open the device, complain!
-  if (fd < 0) {
-
-    // For linux+devfs, a nonexistent device gives a strange error
-    // message.  This makes the error message a bit more sensible.
-    // If no debug and scanning - don't print errors
-    if (debugmode || !scanning) {
-      if (errno==ENOENT || errno==ENOTDIR)
-        errno=ENODEV;
-
-      PrintOut(LOG_INFO,"Device: %s, %s, open() failed\n",
-	       device, strerror(errno));
-    }
-    return -1;
-  }
-  // device opened sucessfully
-  return fd;
-}
-
-int CloseDevice(int fd, char *name){
-  if (deviceclose(fd)){
-    PrintOut(LOG_INFO,"Device: %s, %s, close(%d) failed\n", name, strerror(errno), fd);
+static int CloseDevice(smart_device * device, const char * name)
+{
+  if (!device->close()){
+    PrintOut(LOG_INFO,"Device: %s, %s, close() failed\n", name, device->get_errmsg());
     return 1;
   }
   // device sucessfully closed
   return 0;
 }
 
+// return true if a char is not allowed in a state file name
+static bool not_allowed_in_filename(char c)
+{
+  return !(   ('0' <= c && c <= '9')
+           || ('A' <= c && c <= 'Z')
+           || ('a' <= c && c <= 'z'));
+}
+
 // returns <0 on failure
-int ATAErrorCount(int fd, char *name){
+static int ATAErrorCount(ata_device * device, const char * name,
+                         unsigned char fix_firmwarebug)
+{
   struct ata_smart_errorlog log;
   
-  if (-1==ataReadErrorLog(fd,&log)){
+  if (ataReadErrorLog(device, &log, fix_firmwarebug)){
     PrintOut(LOG_INFO,"Device: %s, Read SMART Error Log Failed\n",name);
     return -1;
   }
@@ -1303,102 +1526,105 @@ int ATAErrorCount(int fd, char *name){
 
 // returns <0 if problem.  Otherwise, bottom 8 bits are the self test
 // error count, and top bits are the power-on hours of the last error.
-int SelfTestErrorCount(int fd, char *name){
+static int SelfTestErrorCount(ata_device * device, const char * name,
+                              unsigned char fix_firmwarebug)
+{
   struct ata_smart_selftestlog log;
 
-  if (-1==ataReadSelfTestLog(fd,&log)){
+  if (ataReadSelfTestLog(device, &log, fix_firmwarebug)){
     PrintOut(LOG_INFO,"Device: %s, Read SMART Self Test Log Failed\n",name);
     return -1;
   }
   
   // return current number of self-test errors
-  return ataPrintSmartSelfTestlog(&log,0);
+  return ataPrintSmartSelfTestlog(&log, false, fix_firmwarebug);
 }
 
-// scan to see what ata devices there are, and if they support SMART
-int ATADeviceScan(cfgfile *cfg, int scanning){
-  int fd, supported=0;
-  struct ata_identify_device drive;
-  char *name=cfg->name;
-  int retainsmartdata=0;
-  int retid;
-  char *mode;
-  
-  // should we try to register this as an ATA device?
-  switch (cfg->controller_type) {
-  case CONTROLLER_ATA:
-  case CONTROLLER_3WARE_678K:
-  case CONTROLLER_MARVELL_SATA:
-  case CONTROLLER_HPT:
-  case CONTROLLER_UNKNOWN:
-    mode="ATA";
-    break;
-  case CONTROLLER_3WARE_678K_CHAR:
-    mode="ATA_3WARE_678K";
-    break;
-  case CONTROLLER_3WARE_9000_CHAR:
-    mode="ATA_3WARE_9000";
-    break;
-  case CONTROLLER_SAT:
-    mode="SCSI";
-    break;
-  default:
-    // not a recognized ATA or SATA device.  We should never enter
-    // this branch.
-    return 1;
+#define SELFTEST_ERRORCOUNT(x) (x & 0xff)
+#define SELFTEST_ERRORHOURS(x) ((x >> 8) & 0xffff)
+
+// Log self-test execution status
+static void log_self_test_exec_status(const char * name, unsigned char status)
+{
+  const char * msg;
+  switch (status >> 4) {
+    case 0x0: msg = "completed without error"; break;
+    case 0x1: msg = "was aborted by the host"; break;
+    case 0x2: msg = "was interrupted by the host with a reset"; break;
+    case 0x3: msg = "could not complete due to a fatal or unknown error"; break;
+    case 0x4: msg = "completed with error (unknown test element)"; break;
+    case 0x5: msg = "completed with error (electrical test element)"; break;
+    case 0x6: msg = "completed with error (servo/seek test element)"; break;
+    case 0x7: msg = "completed with error (read test element)"; break;
+    case 0x8: msg = "completed with error (handling damage?)"; break;
+    default:  msg = 0;
   }
-  
-  // open the device
-  if ((fd=OpenDevice(name, mode, scanning))<0)
-    // device open failed
-    return 1;
-  PrintOut(LOG_INFO,"Device: %s, opened\n", name);
-  
-  // pass user settings on to low-level ATA commands
-  con->controller_port=cfg->controller_port;
-  con->hpt_data[0]=cfg->hpt_data[0];
-  con->hpt_data[1]=cfg->hpt_data[1];
-  con->hpt_data[2]=cfg->hpt_data[2];
-  con->controller_type=cfg->controller_type;
-  con->controller_explicit=cfg->controller_explicit;
-  con->fixfirmwarebug = cfg->fixfirmwarebug;
-  con->satpassthrulen = cfg->satpassthrulen;
-  
+
+  if (msg)
+    PrintOut(((status >> 4) >= 0x4 ? LOG_CRIT : LOG_INFO),
+             "Device: %s, previous self-test %s\n", name, msg);
+  else if ((status >> 4) == 0xf)
+    PrintOut(LOG_INFO, "Device: %s, self-test in progress, %u0%% remaining\n",
+             name, status & 0x0f);
+  else
+    PrintOut(LOG_INFO, "Device: %s, unknown self-test status 0x%02x\n",
+             name, status);
+}
+
+
+// TODO: Add '-F swapid' directive
+const bool fix_swapped_id = false;
+
+// scan to see what ata devices there are, and if they support SMART
+static int ATADeviceScan(dev_config & cfg, dev_state & state, ata_device * atadev)
+{
+  int supported=0;
+  struct ata_identify_device drive;
+  const char *name = cfg.name.c_str();
+  int retid;
+
+  // Device must be open
+
   // Get drive identity structure
-  if ((retid=ataReadHDIdentity (fd,&drive))){
+  if ((retid=ataReadHDIdentity (atadev, &drive))){
     if (retid<0)
       // Unable to read Identity structure
       PrintOut(LOG_INFO,"Device: %s, not ATA, no IDENTIFY DEVICE Structure\n",name);
     else
       PrintOut(LOG_INFO,"Device: %s, packet devices [this device %s] not SMART capable\n",
                name, packetdevicetype(retid-1));
-    CloseDevice(fd, name);
+    CloseDevice(atadev, name);
     return 2; 
   }
+  // Store drive size (for selective self-test only)
+  state.num_sectors = get_num_sectors(&drive);
 
   // Show if device in database, and use preset vendor attribute
   // options unless user has requested otherwise.
-  if (cfg->ignorepresets)
+  if (cfg.ignorepresets)
     PrintOut(LOG_INFO, "Device: %s, smartd database not searched (Directive: -P ignore).\n", name);
   else {
-    // do whatever applypresets decides to do. Will allocate memory if
-    // cfg->attributedefs is needed.
-    if (applypresets(&drive, &cfg->attributedefs, con)<0)
+    // do whatever applypresets decides to do.
+    if (!apply_presets(&drive, cfg.attributedefs, cfg.fix_firmwarebug, fix_swapped_id))
       PrintOut(LOG_INFO, "Device: %s, not found in smartd database.\n", name);
     else
       PrintOut(LOG_INFO, "Device: %s, found in smartd database.\n", name);
-    
-    // then save the correct state of the flag (applypresets may have changed it)
-    cfg->fixfirmwarebug = con->fixfirmwarebug;
   }
-  
+
+  // Set default '-C 197[+]' if no '-C ID' is specified.
+  if (!cfg.curr_pending_set)
+    cfg.curr_pending_id = get_unc_attr_id(false, cfg.attributedefs, cfg.curr_pending_incr);
+  // Set default '-U 198[+]' if no '-U ID' is specified.
+  if (!cfg.offl_pending_set)
+    cfg.offl_pending_id = get_unc_attr_id(true, cfg.attributedefs, cfg.offl_pending_incr);
+
   // If requested, show which presets would be used for this drive
-  if (cfg->showpresets) {
+  if (cfg.showpresets) {
     int savedebugmode=debugmode;
     PrintOut(LOG_INFO, "Device %s: presets are:\n", name);
     if (!debugmode)
       debugmode=2;
-    showpresets(&drive);
+    show_presets(&drive, false);
     debugmode=savedebugmode;
   }
 
@@ -1413,43 +1639,43 @@ int ATADeviceScan(cfgfile *cfg, int scanning){
       PrintOut(LOG_INFO,"Device: %s, ATA IDENTIFY DEVICE words 82-83 don't specify if SMART capable.\n",name);
   
     // should we proceed anyway?
-    if (cfg->permissive){
+    if (cfg.permissive) {
       PrintOut(LOG_INFO,"Device: %s, proceeding since '-T permissive' Directive given.\n",name);
     }
     else {
       PrintOut(LOG_INFO,"Device: %s, to proceed anyway, use '-T permissive' Directive.\n",name);
-      CloseDevice(fd, name);
+      CloseDevice(atadev, name);
       return 2;
     }
   }
   
-  if (ataEnableSmart(fd)){
+  if (ataEnableSmart(atadev)) {
     // Enable SMART command has failed
     PrintOut(LOG_INFO,"Device: %s, could not enable SMART capability\n",name);
-    CloseDevice(fd, name);
+    CloseDevice(atadev, name);
     return 2; 
   }
   
   // disable device attribute autosave...
-  if (cfg->autosave==1){
-    if (ataDisableAutoSave(fd))
+  if (cfg.autosave==1) {
+    if (ataDisableAutoSave(atadev))
       PrintOut(LOG_INFO,"Device: %s, could not disable SMART Attribute Autosave.\n",name);
     else
       PrintOut(LOG_INFO,"Device: %s, disabled SMART Attribute Autosave.\n",name);
   }
 
   // or enable device attribute autosave
-  if (cfg->autosave==2){
-    if (ataEnableAutoSave(fd))
+  if (cfg.autosave==2) {
+    if (ataEnableAutoSave(atadev))
       PrintOut(LOG_INFO,"Device: %s, could not enable SMART Attribute Autosave.\n",name);
     else
       PrintOut(LOG_INFO,"Device: %s, enabled SMART Attribute Autosave.\n",name);
   }
 
   // capability check: SMART status
-  if (cfg->smartcheck && ataSmartStatus2(fd)==-1){
+  if (cfg.smartcheck && ataSmartStatus2(atadev) == -1) {
     PrintOut(LOG_INFO,"Device: %s, not capable of SMART Health Status check\n",name);
-    cfg->smartcheck=0;
+    cfg.smartcheck = false;
   }
   
   // capability check: Read smart values and thresholds.  Note that
@@ -1459,66 +1685,56 @@ int ATADeviceScan(cfgfile *cfg, int scanning){
   // but sadly not for ATA-5.  Sigh.
 
   // do we need to retain SMART data after returning from this routine?
-  retainsmartdata=cfg->usagefailed || cfg->prefail || cfg->usage || cfg->tempdiff || cfg->tempinfo || cfg->tempcrit;
+  bool retainsmartdata = (cfg.usagefailed || cfg.prefail || cfg.usage || cfg.tempdiff || cfg.tempinfo || cfg.tempcrit);
   
   // do we need to get SMART data?
-  if (retainsmartdata || cfg->autoofflinetest || cfg->selftest || cfg->errorlog || cfg->pending!=DONT_MONITOR_UNC) {
+  bool smart_val_ok = false;
+  if (   retainsmartdata || cfg.autoofflinetest || cfg.selftest || cfg.errorlog
+      || cfg.curr_pending_id || cfg.offl_pending_id                            ) {
 
-    unsigned char currentpending, offlinepending;
-
-    cfg->smartval=(struct ata_smart_values *)Calloc(1,sizeof(struct ata_smart_values));
-    cfg->smartthres=(struct ata_smart_thresholds_pvt *)Calloc(1,sizeof(struct ata_smart_thresholds_pvt));
-    
-    if (!cfg->smartval || !cfg->smartthres){
-      PrintOut(LOG_CRIT,"Not enough memory to obtain SMART data\n");
-      EXIT(EXIT_NOMEM);
-    }
-    
-    if (ataReadSmartValues(fd,cfg->smartval) ||
-        ataReadSmartThresholds (fd,cfg->smartthres)){
+    if (ataReadSmartValues(atadev, &state.smartval) ||
+        ataReadSmartThresholds (atadev, &state.smartthres)) {
       PrintOut(LOG_INFO,"Device: %s, Read SMART Values and/or Thresholds Failed\n",name);
-      retainsmartdata=cfg->usagefailed=cfg->prefail=cfg->usage=0;
-      cfg->tempdiff = cfg->tempinfo = cfg->tempcrit = 0;
-      cfg->pending=DONT_MONITOR_UNC;
+      retainsmartdata = cfg.usagefailed = cfg.prefail = cfg.usage = false;
+      cfg.tempdiff = cfg.tempinfo = cfg.tempcrit = 0;
+      cfg.curr_pending_id = cfg.offl_pending_id = 0;
     }
-    
+    else
+      smart_val_ok = true;
+
     // see if the necessary Attribute is there to monitor offline or
     // current pending sectors or temperature
-    TranslatePending(cfg->pending, &currentpending, &offlinepending);
-    
-    if (currentpending && ATAReturnAttributeRawValue(currentpending, cfg->smartval)<0) {
+    if (cfg.curr_pending_id && ATAReturnAttributeRawValue(cfg.curr_pending_id, &state.smartval) < 0) {
       PrintOut(LOG_INFO,"Device: %s, can't monitor Current Pending Sector count - no Attribute %d\n",
-	       name, (int)currentpending);
-      cfg->pending &= 0xff00;
-      cfg->pending |= CUR_UNC_DEFAULT;
+               name, cfg.curr_pending_id);
+      cfg.curr_pending_id = 0;
     }
     
-    if (offlinepending && ATAReturnAttributeRawValue(offlinepending, cfg->smartval)<0) {
-      PrintOut(LOG_INFO,"Device: %s, can't monitor Offline Uncorrectable Sector count  - no Attribute %d\n",
-	       name, (int)offlinepending);
-      cfg->pending &= 0x00ff;
-      cfg->pending |= OFF_UNC_DEFAULT<<8;
+    if (cfg.offl_pending_id && ATAReturnAttributeRawValue(cfg.offl_pending_id, &state.smartval) < 0) {
+      PrintOut(LOG_INFO,"Device: %s, can't monitor Offline Uncorrectable Sector count - no Attribute %d\n",
+               name, cfg.offl_pending_id);
+      cfg.offl_pending_id = 0;
     }
 
-    if (   (cfg->tempdiff || cfg->tempinfo || cfg->tempcrit)
-        && !ATAReturnTemperatureValue(cfg->smartval, cfg->attributedefs)) {
+    if (   (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit)
+        && !ATAReturnTemperatureValue(&state.smartval, cfg.attributedefs)) {
       PrintOut(LOG_CRIT, "Device: %s, can't monitor Temperature, ignoring -W Directive\n", name);
-      cfg->tempdiff = cfg->tempinfo = cfg->tempcrit = 0;
+      cfg.tempdiff = cfg.tempinfo = cfg.tempcrit = 0;
     }
   }
   
   // enable/disable automatic on-line testing
-  if (cfg->autoofflinetest){
+  if (cfg.autoofflinetest) {
     // is this an enable or disable request?
-    const char *what=(cfg->autoofflinetest==1)?"disable":"enable";
-    if (!cfg->smartval)
+    const char *what=(cfg.autoofflinetest==1)?"disable":"enable";
+    if (!smart_val_ok)
       PrintOut(LOG_INFO,"Device: %s, could not %s SMART Automatic Offline Testing.\n",name, what);
     else {
       // if command appears unsupported, issue a warning...
-      if (!isSupportAutomaticTimer(cfg->smartval))
+      if (!isSupportAutomaticTimer(&state.smartval))
         PrintOut(LOG_INFO,"Device: %s, SMART Automatic Offline Testing unsupported...\n",name);
       // ... but then try anyway
-      if ((cfg->autoofflinetest==1)?ataDisableAutoOffline(fd):ataEnableAutoOffline(fd))
+      if ((cfg.autoofflinetest==1)?ataDisableAutoOffline(atadev):ataEnableAutoOffline(atadev))
         PrintOut(LOG_INFO,"Device: %s, %s SMART Automatic Offline Testing failed.\n", name, what);
       else
         PrintOut(LOG_INFO,"Device: %s, %sd SMART Automatic Offline Testing.\n", name, what);
@@ -1526,191 +1742,121 @@ int ATADeviceScan(cfgfile *cfg, int scanning){
   }
   
   // capability check: self-test-log
-  if (cfg->selftest){
+  if (cfg.selftest) {
     int retval;
     
     // start with service disabled, and re-enable it if all works OK
-    cfg->selftest=0;
-    cfg->selflogcount=0;
-    cfg->selfloghour=0;
+    cfg.selftest = false;
+    state.selflogcount = 0;
+    state.selfloghour = 0;
 
-    if (!cfg->smartval)
+    if (!smart_val_ok)
       PrintOut(LOG_INFO, "Device: %s, no SMART Self-Test log (SMART READ DATA failed); disabling -l selftest\n", name);
-    else if (!cfg->permissive && !isSmartTestLogCapable(cfg->smartval, &drive))
+    else if (!cfg.permissive && !isSmartTestLogCapable(&state.smartval, &drive))
       PrintOut(LOG_INFO, "Device: %s, appears to lack SMART Self-Test log; disabling -l selftest (override with -T permissive Directive)\n", name);
-    else if ((retval=SelfTestErrorCount(fd, name))<0)
+    else if ((retval = SelfTestErrorCount(atadev, name, cfg.fix_firmwarebug)) < 0)
       PrintOut(LOG_INFO, "Device: %s, no SMART Self-Test log; remove -l selftest Directive from smartd.conf\n", name);
     else {
-      cfg->selftest=1;
-      cfg->selflogcount=SELFTEST_ERRORCOUNT(retval);
-      cfg->selfloghour =SELFTEST_ERRORHOURS(retval);
+      cfg.selftest = true;
+      state.selflogcount=SELFTEST_ERRORCOUNT(retval);
+      state.selfloghour =SELFTEST_ERRORHOURS(retval);
     }
   }
   
   // capability check: ATA error log
-  if (cfg->errorlog){
+  if (cfg.errorlog) {
     int val;
 
     // start with service disabled, and re-enable it if all works OK
-    cfg->errorlog=0;
-    cfg->ataerrorcount=0;
+    cfg.errorlog = false;
+    state.ataerrorcount=0;
 
-    if (!cfg->smartval)
+    if (!smart_val_ok)
       PrintOut(LOG_INFO, "Device: %s, no SMART Error log (SMART READ DATA failed); disabling -l error\n", name);
-    else if (!cfg->permissive && !isSmartErrorLogCapable(cfg->smartval, &drive))
+    else if (!cfg.permissive && !isSmartErrorLogCapable(&state.smartval, &drive))
       PrintOut(LOG_INFO, "Device: %s, appears to lack SMART Error log; disabling -l error (override with -T permissive Directive)\n", name);
-    else if ((val=ATAErrorCount(fd, name))<0)
+    else if ((val = ATAErrorCount(atadev, name, cfg.fix_firmwarebug)) < 0)
       PrintOut(LOG_INFO, "Device: %s, no SMART Error log; remove -l error Directive from smartd.conf\n", name);
     else {
-        cfg->errorlog=1;
-        cfg->ataerrorcount=val;
+        cfg.errorlog = true;
+        state.ataerrorcount=val;
     }
   }
   
-  // If we don't need to save SMART data, get rid of it now
-  if (!retainsmartdata) {
-    if (cfg->smartval) {
-      cfg->smartval=CheckFree(cfg->smartval, __LINE__,filenameandversion);
-      bytes-=sizeof(struct ata_smart_values);
-    }
-    if (cfg->smartthres) {
-      cfg->smartthres=CheckFree(cfg->smartthres, __LINE__,filenameandversion);
-      bytes-=sizeof(struct ata_smart_thresholds_pvt);
-    }
-  }
-
   // capabilities check -- does it support powermode?
-  if (cfg->powermode) {
-    int powermode=ataCheckPowerMode(fd);
+  if (cfg.powermode) {
+    int powermode = ataCheckPowerMode(atadev);
     
     if (-1 == powermode) {
       PrintOut(LOG_CRIT, "Device: %s, no ATA CHECK POWER STATUS support, ignoring -n Directive\n", name);
-      cfg->powermode=0;
+      cfg.powermode=0;
     } 
     else if (powermode!=0 && powermode!=0x80 && powermode!=0xff) {
       PrintOut(LOG_CRIT, "Device: %s, CHECK POWER STATUS returned %d, not ATA compliant, ignoring -n Directive\n",
 	       name, powermode);
-      cfg->powermode=0;
+      cfg.powermode=0;
     }
   }
 
   // If no tests available or selected, return
-  if (!(cfg->errorlog    || cfg->selftest || cfg->smartcheck || 
-        cfg->usagefailed || cfg->prefail  || cfg->usage      ||
-        cfg->tempdiff    || cfg->tempinfo || cfg->tempcrit     )) {
-    CloseDevice(fd, name);
+  if (!(cfg.errorlog    || cfg.selftest || cfg.smartcheck ||
+        cfg.usagefailed || cfg.prefail  || cfg.usage      ||
+        cfg.tempdiff    || cfg.tempinfo || cfg.tempcrit     )) {
+    CloseDevice(atadev, name);
     return 3;
   }
   
-  // Do we still have entries available?
-  while (numdevata+numdevscsi>=ATAandSCSIdevlist_max)
-    ATAandSCSIdevlist=AllocateMoreSpace(ATAandSCSIdevlist, &ATAandSCSIdevlist_max, "ATA and SCSI devices");
-  
-  // register device
+  // tell user we are registering device
   PrintOut(LOG_INFO,"Device: %s, is SMART capable. Adding to \"monitor\" list.\n",name);
   
-    // record number of device, type of device, increment device count
-  if (cfg->controller_type == CONTROLLER_UNKNOWN)
-    cfg->controller_type=CONTROLLER_ATA;
+  // record number of device, type of device, increment device count
+  if (cfg.dev_type.empty())
+    cfg.dev_type = "ata";
   
   // close file descriptor
-  CloseDevice(fd, name);
+  CloseDevice(atadev, name);
+
+  if (!state_path_prefix.empty() || !attrlog_path_prefix.empty()) {
+    // Build file name for state file
+    char model[40+1], serial[20+1];
+    format_ata_string(model, drive.model, sizeof(model)-1, fix_swapped_id);
+    format_ata_string(serial, drive.serial_no, sizeof(serial)-1, fix_swapped_id);
+    std::replace_if(model, model+strlen(model), not_allowed_in_filename, '_');
+    std::replace_if(serial, serial+strlen(serial), not_allowed_in_filename, '_');
+    if (!state_path_prefix.empty()) {
+      cfg.state_file = strprintf("%s%s-%s.ata.state", state_path_prefix.c_str(), model, serial);
+      // Read previous state
+      if (read_dev_state(cfg.state_file.c_str(), state)) {
+        PrintOut(LOG_INFO, "Device: %s, state read from %s\n", name, cfg.state_file.c_str());
+        // Copy ATA attribute values to temp state
+        state.update_temp_state();
+      }
+    }
+    if (!attrlog_path_prefix.empty())
+      cfg.attrlog_file = strprintf("%s%s-%s.ata.csv", attrlog_path_prefix.c_str(), model, serial);
+  }
+
+  // Start self-test regex check now if time was not read from state file
+  if (!cfg.test_regex.empty() && !state.scheduled_test_next_check)
+    state.scheduled_test_next_check = time(0);
+
   return 0;
-}
-
-// Returns 0 if normal SCSI device.
-// Returns -1 if INQUIRY fails.
-// Returns 2 if ATA device detected behind SAT layer.
-// Returns 3 if ATA device detected behind Marvell controller.
-// Returns 1 if other device detected that we don't want to treat
-//     as a normal SCSI device.
-static int SCSIFilterKnown(int fd, char * device)
-{
-  char req_buff[256];
-  int req_len, avail_len, len;
-
-  memset(req_buff, 0, 96);
-  req_len = 36;
-  if (scsiStdInquiry(fd, (unsigned char *)req_buff, req_len)) {
-    /* Marvell controllers fail on a 36 bytes StdInquiry, but 64 suffices */
-    /* watch this spot ... other devices could lock up here */
-    req_len = 64;
-    if (scsiStdInquiry(fd, (unsigned char *)req_buff, req_len)) {
-      PrintOut(LOG_INFO, "Device: %s, failed on INQUIRY; skip device\n", device);
-      // device doesn't like INQUIRY commands
-      return SCSIFK_FAILED;
-    }
-  }
-  avail_len = req_buff[4] + 5;
-  len = (avail_len < req_len) ? avail_len : req_len;
-  if (len >= 36) {
-    if (0 == strncmp(req_buff + 8, "3ware", 5) || 0 == strncmp(req_buff + 8, "AMCC", 4) ) {
-      PrintOut(LOG_INFO, "Device %s, please try adding '-d 3ware,N'\n", device);
-      PrintOut(LOG_INFO, "Device %s, you may need to replace %s with /dev/twaN or /dev/tweN\n", device, device);
-      return SCSIFK_3WARE;
-    } else if ((len >= 42) && (0 == strncmp(req_buff + 36, "MVSATA", 6))) {
-      PrintOut(LOG_INFO, "Device %s: using '-d marvell' for ATA disk with Marvell driver\n", device);
-      return SCSIFK_MARVELL;
-    } else if ((avail_len >= 36) &&
-               (0 == strncmp(req_buff + 8, "ATA     ", 8)) &&
-	       has_sat_pass_through(fd, 0 /* non-packet dev */)) {
-      PrintOut(LOG_INFO, "Device %s: using '-d sat' for ATA disk behind SAT layer.\n",
-               device);
-      return SCSIFK_SAT;
-    }
-  }
-  return SCSIFK_NORMAL;
 }
 
 // on success, return 0. On failure, return >0.  Never return <0,
 // please.
-static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
-    int k, fd, err, retval; 
-  char *device = cfg->name;
+static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scsidev)
+{
+  int k, err;
+  const char *device = cfg.name.c_str();
   struct scsi_iec_mode_page iec;
   UINT8  tBuf[64];
-  char *mode=NULL;
-  
-  // should we try to register this as a SCSI device?
-  switch (cfg->controller_type) {
-  case CONTROLLER_SCSI:
-  case CONTROLLER_UNKNOWN:
-    mode="SCSI";
-    break;
-  case CONTROLLER_CCISS:
-    mode="CCISS";
-    break;
-  default:
-    return 1;
-  }
-  // pass user settings on to low-level SCSI commands
-  con->controller_port=cfg->controller_port;
-  con->controller_type=cfg->controller_type;
-  
-  // open the device
-  if ((fd = OpenDevice(device, mode, scanning)) < 0)
-    return 1;
-  PrintOut(LOG_INFO,"Device: %s, opened\n", device);
 
-  // early skip if device known and needs to be handled by some other
-  // device type (e.g. '-d 3ware,<n>')
-  if ((retval = SCSIFilterKnown(fd, device))) {
-    CloseDevice(fd, device);
+  // Device must be open
 
-    if (retval==SCSIFK_SAT)
-	// SATA Device behind SAT layer
-	return SCSIFK_SAT;
-
-    if (retval==SCSIFK_MARVELL)
-        // ATA/SATA device behind Marvell driver
-	return SCSIFK_MARVELL;
-    
-    return 2;
-  }
-    
   // check that device is ready for commands. IE stores its stuff on
   // the media.
-  if ((err = scsiTestUnitReady(fd))) {
+  if ((err = scsiTestUnitReady(scsidev))) {
     if (SIMPLE_ERR_NOT_READY == err)
       PrintOut(LOG_INFO, "Device: %s, NOT READY (e.g. spun down); skip device\n", device);
     else if (SIMPLE_ERR_NO_MEDIUM == err)
@@ -1719,7 +1865,7 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
       PrintOut(LOG_INFO, "Device: %s, BECOMING (but not yet) READY; skip device\n", device);
     else
       PrintOut(LOG_CRIT, "Device: %s, failed Test Unit Ready [err=%d]\n", device, err);
-    CloseDevice(fd, device);
+    CloseDevice(scsidev, device);
     return 2; 
   }
   
@@ -1729,15 +1875,15 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
   // that various USB devices that malform the response will lock up
   // if asked for a log page (e.g. temperature) so it is best to
   // bail out now.
-  if (!(err = scsiFetchIECmpage(fd, &iec, cfg->modese_len)))
-    cfg->modese_len = iec.modese_len;
+  if (!(err = scsiFetchIECmpage(scsidev, &iec, state.modese_len)))
+    state.modese_len = iec.modese_len;
   else if (SIMPLE_ERR_BAD_FIELD == err)
     ;  /* continue since it is reasonable not to support IE mpage */
   else { /* any other error (including malformed response) unreasonable */
     PrintOut(LOG_INFO, 
              "Device: %s, Bad IEC (SMART) mode page, err=%d, skip device\n", 
              device, err);
-    CloseDevice(fd, device);
+    CloseDevice(scsidev, device);
     return 3;
   }
   
@@ -1747,24 +1893,20 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
     PrintOut(LOG_INFO, "Device: %s, IE (SMART) not enabled, skip device\n"
 	               "Try 'smartctl -s on %s' to turn on SMART features\n", 
                         device, device);
-    CloseDevice(fd, device);
+    CloseDevice(scsidev, device);
     return 3;
   }
   
-  // Device exists, and does SMART.  Add to list (allocating more space if needed)
-  while (numdevscsi+numdevata >= ATAandSCSIdevlist_max)
-    ATAandSCSIdevlist=AllocateMoreSpace(ATAandSCSIdevlist, &ATAandSCSIdevlist_max, "ATA and SCSI devices");
-  
   // Flag that certain log pages are supported (information may be
   // available from other sources).
-  if (0 == scsiLogSense(fd, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 0)) {
+  if (0 == scsiLogSense(scsidev, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 0)) {
     for (k = 4; k < tBuf[3] + LOGPAGEHDRSIZE; ++k) {
       switch (tBuf[k]) { 
       case TEMPERATURE_LPAGE:
-        cfg->TempPageSupported = 1;
+        state.TempPageSupported = 1;
         break;
       case IE_LPAGE:
-        cfg->SmartPageSupported = 1;
+        state.SmartPageSupported = 1;
         break;
       default:
         break;
@@ -1773,16 +1915,8 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
   }
   
   // record type of device
-  if (cfg->controller_type == CONTROLLER_UNKNOWN)
-          cfg->controller_type = CONTROLLER_SCSI;
-  
-  // get rid of allocated memory only needed for ATA devices.  These
-  // might have been allocated if the user specified Ignore options or
-  // other ATA-only Attribute-specific options on the DEVICESCAN line.
-  cfg->monitorattflags = FreeNonZero(cfg->monitorattflags, NMONITOR*32,__LINE__,filenameandversion);
-  cfg->attributedefs   = FreeNonZero(cfg->attributedefs,   MAX_ATTRIBUTE_NUM,__LINE__,filenameandversion);
-  cfg->smartval        = FreeNonZero(cfg->smartval,        sizeof(struct ata_smart_values),__LINE__,filenameandversion);
-  cfg->smartthres      = FreeNonZero(cfg->smartthres,      sizeof(struct ata_smart_thresholds_pvt),__LINE__,filenameandversion);
+  if (cfg.dev_type.empty())
+    cfg.dev_type = "scsi";
   
   // Check if scsiCheckIE() is going to work
   {
@@ -1791,45 +1925,45 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
     UINT8 currenttemp = 0;
     UINT8 triptemp = 0;
     
-    if (scsiCheckIE(fd, cfg->SmartPageSupported, cfg->TempPageSupported,
+    if (scsiCheckIE(scsidev, state.SmartPageSupported, state.TempPageSupported,
                     &asc, &ascq, &currenttemp, &triptemp)) {
       PrintOut(LOG_INFO, "Device: %s, unexpectedly failed to read SMART values\n", device);
-      cfg->SuppressReport = 1;
-      if (cfg->tempdiff || cfg->tempinfo || cfg->tempcrit) {
+      state.SuppressReport = 1;
+      if (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit) {
         PrintOut(LOG_CRIT, "Device: %s, can't monitor Temperature, ignoring -W Directive\n", device);
-        cfg->tempdiff = cfg->tempinfo = cfg->tempcrit = 0;
+        cfg.tempdiff = cfg.tempinfo = cfg.tempcrit = 0;
       }
     }
   }
   
   // capability check: self-test-log
-  if (cfg->selftest){
-    int retval=scsiCountFailedSelfTests(fd, 0);
+  if (cfg.selftest){
+    int retval = scsiCountFailedSelfTests(scsidev, 0);
     if (retval<0) {
       // no self-test log, turn off monitoring
       PrintOut(LOG_INFO, "Device: %s, does not support SMART Self-Test Log.\n", device);
-      cfg->selftest=0;
-      cfg->selflogcount=0;
-      cfg->selfloghour=0;
+      cfg.selftest = false;
+      state.selflogcount = 0;
+      state.selfloghour = 0;
     }
     else {
       // register starting values to watch for changes
-      cfg->selflogcount=SELFTEST_ERRORCOUNT(retval);
-      cfg->selfloghour =SELFTEST_ERRORHOURS(retval);
+      state.selflogcount=SELFTEST_ERRORCOUNT(retval);
+      state.selfloghour =SELFTEST_ERRORHOURS(retval);
     }
   }
   
   // disable autosave (set GLTSD bit)
-  if (cfg->autosave==1){
-    if (scsiSetControlGLTSD(fd, 1, cfg->modese_len))
+  if (cfg.autosave==1){
+    if (scsiSetControlGLTSD(scsidev, 1, state.modese_len))
       PrintOut(LOG_INFO,"Device: %s, could not disable autosave (set GLTSD bit).\n",device);
     else
       PrintOut(LOG_INFO,"Device: %s, disabled autosave (set GLTSD bit).\n",device);
   }
 
   // or enable autosave (clear GLTSD bit)
-  if (cfg->autosave==2){
-    if (scsiSetControlGLTSD(fd, 0, cfg->modese_len))
+  if (cfg.autosave==2){
+    if (scsiSetControlGLTSD(scsidev, 0, state.modese_len))
       PrintOut(LOG_INFO,"Device: %s, could not enable autosave (clear GLTSD bit).\n",device);
     else
       PrintOut(LOG_INFO,"Device: %s, enabled autosave (cleared GLTSD bit).\n",device);
@@ -1837,43 +1971,44 @@ static int SCSIDeviceScan(cfgfile *cfg, int scanning) {
   
   // tell user we are registering device
   PrintOut(LOG_INFO, "Device: %s, is SMART capable. Adding to \"monitor\" list.\n", device);
-  
+
+  // TODO: Build file name for state file
+  if (!state_path_prefix.empty()) {
+    PrintOut(LOG_INFO, "Device: %s, persistence not yet supported for SCSI; ignoring -s option.\n", device);
+  }
+  // TODO: Build file name for attribute log file
+  if (!attrlog_path_prefix.empty()) {
+    PrintOut(LOG_INFO, "Device: %s, attribute log not yet supported for SCSI; ignoring -A option.\n", device);
+  }
+
   // close file descriptor
-  CloseDevice(fd, device);
+  CloseDevice(scsidev, device);
+
+  // Start self-test regex check now if time was not read from state file
+  if (!cfg.test_regex.empty() && !state.scheduled_test_next_check)
+    state.scheduled_test_next_check = time(0);
+
   return 0;
 }
 
-// modified treatment of SCSI device behind SAT layer
-static int SCSIandSATDeviceScan(cfgfile *cfg, int scanning) {
-  int retval = SCSIDeviceScan(cfg, scanning);
-  cfg->WhichCheckDevice=1; // default SCSI device
-  
-  if (retval==SCSIFK_SAT) {
-    // found SATA device behind SAT translation layer	
-    cfg->controller_type=CONTROLLER_SAT;
-    cfg->WhichCheckDevice=0; // actually SATA device!
-    return ATADeviceScan(cfg, scanning);
-  }
 
-  if (retval==SCSIFK_MARVELL) {
-    // found SATA device behind Marvell controller
-    cfg->controller_type=CONTROLLER_MARVELL_SATA;
-    cfg->WhichCheckDevice=0; // actually SATA device!
-    return ATADeviceScan(cfg, scanning);
-  }
-
-  return retval; 
-}
-
+struct changedattribute_t {
+  unsigned char newval;
+  unsigned char oldval;
+  unsigned char id;
+  unsigned char prefail;
+  unsigned char sameraw;
+};
 
 // We compare old and new values of the n'th attribute.  Note that n
 // is NOT the attribute ID number.. If (Normalized & Raw) equal,
 // then return 0, else nonzero.
-int  ATACompareValues(changedattribute_t *delta,
+static int ATACompareValues(changedattribute_t *delta,
                             struct ata_smart_values *newv,
                             struct ata_smart_values *oldv,
                             struct ata_smart_thresholds_pvt *thresholds,
-                            int n, char *name){
+                            int n, const char * name)
+{
   struct ata_smart_attribute *now,*was;
   struct ata_smart_threshold_entry *thre;
   unsigned char oldval,newval;
@@ -1925,74 +2060,31 @@ int  ATACompareValues(changedattribute_t *delta,
   return 1;
 }
 
-// This looks to see if the corresponding bit of the 32 bytes is set.
-// This wastes a few bytes of storage but eliminates all searching and
-// sorting functions! Entry is ZERO <==> the attribute ON. Calling
-// with set=0 tells you if the attribute is being tracked or not.
-// Calling with set=1 turns the attribute OFF.
-int IsAttributeOff(unsigned char attr, unsigned char **datap, int set, int which, int whatline){
-  unsigned char *data;
-  int loc=attr>>3;
-  int bit=attr & 0x07;
-  unsigned char mask=0x01<<bit;
-
-  if (which>=NMONITOR || which < 0){
-    PrintOut(LOG_CRIT, "Internal error in IsAttributeOff() at line %d of file %s (which=%d)\n%s",
-             whatline, filenameandversion, which, reportbug);
-    EXIT(EXIT_BADCODE);
-  }
-
-  if (*datap == NULL){
-    // NULL data implies Attributes are ON...
-    if (!set)
-      return 0;
-    
-    // we are writing
-    if (!(*datap=(unsigned char *)Calloc(NMONITOR*32, 1))){
-      PrintOut(LOG_CRIT,"No memory to create monattflags\n");
-      EXIT(EXIT_NOMEM);
-    }
-  }
-  
-  // pointer to the 256 bits that we need
-  data=*datap+which*32;
-
-  // attribute zero is always OFF
-  if (!attr)
-    return 1;
-
-  if (!set)
-    return (data[loc] & mask);
-  
-  data[loc]|=mask;
-
-  // return value when setting has no sense
-  return 0;
-}
-
 // If the self-test log has got more self-test errors (or more recent
 // self-test errors) recorded, then notify user.
-void CheckSelfTestLogs(cfgfile *cfg, int newi){
-  char *name=cfg->name;
+static void CheckSelfTestLogs(const dev_config & cfg, dev_state & state, int newi)
+{
+  const char * name = cfg.name.c_str();
 
   if (newi<0)
     // command failed
-    MailWarning(cfg, 8, "Device: %s, Read SMART Self-Test Log Failed", name);
+    MailWarning(cfg, state, 8, "Device: %s, Read SMART Self-Test Log Failed", name);
   else {      
     // old and new error counts
-    int oldc=cfg->selflogcount;
+    int oldc=state.selflogcount;
     int newc=SELFTEST_ERRORCOUNT(newi);
     
     // old and new error timestamps in hours
-    int oldh=cfg->selfloghour;
+    int oldh=state.selfloghour;
     int newh=SELFTEST_ERRORHOURS(newi);
     
     if (oldc<newc) {
       // increase in error count
       PrintOut(LOG_CRIT, "Device: %s, Self-Test Log error count increased from %d to %d\n",
                name, oldc, newc);
-      MailWarning(cfg, 3, "Device: %s, Self-Test Log error count increased from %d to %d",
+      MailWarning(cfg, state, 3, "Device: %s, Self-Test Log error count increased from %d to %d",
                    name, oldc, newc);
+      state.must_write = true;
     } else if (oldh!=newh) {
       // more recent error
       // a 'more recent' error might actually be a smaller hour number,
@@ -2003,110 +2095,141 @@ void CheckSelfTestLogs(cfgfile *cfg, int newi){
       // new failure.
       PrintOut(LOG_CRIT, "Device: %s, new Self-Test Log error at hour timestamp %d\n",
                name, newh);
-      MailWarning(cfg, 3, "Device: %s, new Self-Test Log error at hour timestamp %d\n",
+      MailWarning(cfg, state, 3, "Device: %s, new Self-Test Log error at hour timestamp %d\n",
                    name, newh);
+      state.must_write = true;
     }
     
     // Needed since self-test error count may DECREASE.  Hour might
     // also have changed.
-    cfg->selflogcount= newc;
-    cfg->selfloghour = newh;
+    state.selflogcount= newc;
+    state.selfloghour = newh;
   }
   return;
 }
 
-// returns 1 if time to do test of type testtype, 0 if not time to do
-// test, < 0 if error
-int DoTestNow(cfgfile *cfg, char testtype, time_t testtime) {
-  // start by finding out the time:
-  struct tm *timenow;
-  time_t epochnow;
-  char matchpattern[16];
-  regmatch_t substring;
-  int weekday, length;
-  unsigned short hours;
-  testinfo *dat=cfg->testdata;
+// Test types, ordered by priority.
+static const char test_type_chars[] = "LncrSCO";
+const unsigned num_test_types = sizeof(test_type_chars)-1;
 
+// returns test type if time to do test of type testtype,
+// 0 if not time to do test.
+static char next_scheduled_test(const dev_config & cfg, dev_state & state, bool scsi, time_t usetime = 0)
+{
   // check that self-testing has been requested
-  if (!dat)
+  if (cfg.test_regex.empty())
     return 0;
-  
+
+  // Exit if drive not capable of any test
+  if ( state.not_cap_long && state.not_cap_short &&
+      (scsi || (state.not_cap_conveyance && state.not_cap_offline)))
+    return 0;
+
   // since we are about to call localtime(), be sure glibc is informed
   // of any timezone changes we make.
-  if (!testtime)
+  if (!usetime)
     FixGlibcTimeZoneBug();
   
-  // construct pattern containing the month, day of month, day of
-  // week, and hour
-  epochnow = (!testtime ? time(NULL) : testtime);
-  timenow=localtime(&epochnow);
-  
-  // tm_wday is 0 (Sunday) to 6 (Saturday).  We use 1 (Monday) to 7
-  // (Sunday).
-  weekday=timenow->tm_wday?timenow->tm_wday:7;
-  sprintf(matchpattern, "%c/%02d/%02d/%1d/%02d", testtype, timenow->tm_mon+1, 
-          timenow->tm_mday, weekday, timenow->tm_hour);
-  
-  // if no match, we are done
-  if (regexec(&(dat->cregex), matchpattern, 1, &substring, 0))
+  // Is it time for next check?
+  time_t now = (!usetime ? time(0) : usetime);
+  if (now < state.scheduled_test_next_check)
     return 0;
-  
-  // must match the ENTIRE type/date/time string
-  length=strlen(matchpattern);
-  if (substring.rm_so!=0 || substring.rm_eo!=length)
-    return 0;
-  
-  // never do a second test in the same hour as another test (the % 7 ensures
-  // that the RHS will never be greater than 65535 and so will always fit into
-  // an unsigned short)
-  hours=1+timenow->tm_hour+24*(timenow->tm_yday+366*(timenow->tm_year % 7));
-  if (hours==dat->hour) {
-    if (!testtime && testtype!=dat->testtype)
-      PrintOut(LOG_INFO, "Device: %s, did test of type %c in current hour, skipping test of type %c\n",
-	       cfg->name, dat->testtype, testtype);
-    return 0;
+
+  // Limit time check interval to 90 days
+  if (state.scheduled_test_next_check + (3600L*24*90) < now)
+    state.scheduled_test_next_check = now - (3600L*24*90);
+
+  // Check interval [state.scheduled_test_next_check, now] for scheduled tests
+  char testtype = 0;
+  time_t testtime = 0; int testhour = 0;
+  int maxtest = num_test_types-1;
+
+  for (time_t t = state.scheduled_test_next_check; ; ) {
+    struct tm * tms = localtime(&t);
+    // tm_wday is 0 (Sunday) to 6 (Saturday).  We use 1 (Monday) to 7 (Sunday).
+    int weekday = (tms->tm_wday ? tms->tm_wday : 7);
+    for (int i = 0; i <= maxtest; i++) {
+      // Skip if drive not capable of this test
+      switch (test_type_chars[i]) {
+        case 'L': if (state.not_cap_long)       continue; break;
+        case 'S': if (state.not_cap_short)      continue; break;
+        case 'C': if (scsi || state.not_cap_conveyance) continue; break;
+        case 'O': if (scsi || state.not_cap_offline)    continue; break;
+        case 'c': case 'n':
+        case 'r': if (scsi || state.not_cap_selective)  continue; break;
+        default: continue;
+      }
+      // Try match of "T/MM/DD/d/HH"
+      char pattern[16];
+      snprintf(pattern, sizeof(pattern), "%c/%02d/%02d/%1d/%02d",
+        test_type_chars[i], tms->tm_mon+1, tms->tm_mday, weekday, tms->tm_hour);
+      if (cfg.test_regex.full_match(pattern)) {
+        // Test found
+        testtype = pattern[0];
+        testtime = t; testhour = tms->tm_hour;
+        // Limit further matches to higher priority self-tests
+        maxtest = i-1;
+        break;
+      }
+    }
+    // Exit if no tests left or current time reached
+    if (maxtest < 0)
+      break;
+    if (t >= now)
+      break;
+    // Check next hour
+    if ((t += 3600) > now)
+      t = now;
   }
   
-  // save time and type of the current test; we are ready to do a test
-  dat->hour=hours;
-  dat->testtype=testtype;
-  return 1;
+  // Do next check not before next hour.
+  struct tm * tmnow = localtime(&now);
+  state.scheduled_test_next_check = now + (3600 - tmnow->tm_min*60 - tmnow->tm_sec);
+
+  if (testtype) {
+    state.must_write = true;
+    // Tell user if an old test was found.
+    if (!usetime && !(testhour == tmnow->tm_hour && testtime + 3600 > now)) {
+      char datebuf[DATEANDEPOCHLEN]; dateandtimezoneepoch(datebuf, testtime);
+      PrintOut(LOG_INFO, "Device: %s, old test of type %c not run at %s, starting now.\n",
+        cfg.name.c_str(), testtype, datebuf);
+    }
+  }
+
+  return testtype;
 }
 
 // Print a list of future tests.
-void PrintTestSchedule(cfgfile **ATAandSCSIdevices){
-  int i, t;
-  cfgfile * cfg;
-  char datenow[DATEANDEPOCHLEN], date[DATEANDEPOCHLEN];
-  time_t now; long seconds;
-  int numdev = numdevata+numdevscsi;
-  typedef int cnt_t[4];
-  cnt_t * testcnts; // testcnts[numdev][4]
-  if (numdev <= 0)
+static void PrintTestSchedule(const dev_config_vector & configs, dev_state_vector & states, const smart_device_list & devices)
+{
+  unsigned numdev = configs.size();
+  if (!numdev)
     return;
-  testcnts = (cnt_t *)calloc(numdev, sizeof(testcnts[0]));
-  if (!testcnts)
-    return;
+  std::vector<int> testcnts(numdev * num_test_types, 0);
 
   PrintOut(LOG_INFO, "\nNext scheduled self tests (at most 5 of each type per device):\n");
 
   // FixGlibcTimeZoneBug(); // done in PrintOut()
-  now=time(NULL);
+  time_t now = time(0);
+  char datenow[DATEANDEPOCHLEN], date[DATEANDEPOCHLEN];
   dateandtimezoneepoch(datenow, now);
+
+  long seconds;
   for (seconds=checktime; seconds<3600L*24*90; seconds+=checktime) {
     // Check for each device whether a test will be run
     time_t testtime = now + seconds;
-    for (i=0; i<numdev; i++) {
-	cfg = ATAandSCSIdevices[i];
-      for (t=0; t<(cfg->WhichCheckDevice==0?4:2); t++) {
-        char testtype = "LSCO"[t];
-        if (DoTestNow(cfg, testtype, testtime)) {
-          // Report at most 5 tests of each type
-          if (++testcnts[i][t] <= 5) {
-            dateandtimezoneepoch(date, testtime);
-            PrintOut(LOG_INFO, "Device: %s, will do test %d of type %c at %s\n", cfg->name,
-              testcnts[i][t], testtype, date);
-          }
+    for (unsigned i = 0; i < numdev; i++) {
+      const dev_config & cfg = configs.at(i);
+      dev_state & state = states.at(i);
+      const char * p;
+      char testtype = next_scheduled_test(cfg, state, devices.at(i)->is_scsi(), testtime);
+      if (testtype && (p = strchr(test_type_chars, testtype))) {
+        unsigned t = (p - test_type_chars);
+        // Report at most 5 tests of each type
+        if (++testcnts[i*num_test_types + t] <= 5) {
+          dateandtimezoneepoch(date, testtime);
+          PrintOut(LOG_INFO, "Device: %s, will do test %d of type %c at %s\n", cfg.name.c_str(),
+            testcnts[i*num_test_types + t], testtype, date);
         }
       }
     }
@@ -2115,28 +2238,32 @@ void PrintTestSchedule(cfgfile **ATAandSCSIdevices){
   // Report totals
   dateandtimezoneepoch(date, now+seconds);
   PrintOut(LOG_INFO, "\nTotals [%s - %s]:\n", datenow, date);
-  for (i=0; i<numdev; i++) {
-      cfg = ATAandSCSIdevices[i];
-    for (t=0; t<(cfg->WhichCheckDevice==0?4:2); t++) {
-      PrintOut(LOG_INFO, "Device: %s, will do %3d test%s of type %c\n", cfg->name, testcnts[i][t],
-        (testcnts[i][t]==1?"":"s"), "LSCO"[t]);
+  for (unsigned i = 0; i < numdev; i++) {
+    const dev_config & cfg = configs.at(i);
+    bool scsi = devices.at(i)->is_scsi();
+    for (unsigned t = 0; t < num_test_types; t++) {
+      int cnt = testcnts[i*num_test_types + t];
+      if (cnt == 0 && !strchr((scsi ? "LS" : "LSCO"), test_type_chars[t]))
+        continue;
+      PrintOut(LOG_INFO, "Device: %s, will do %3d test%s of type %c\n", cfg.name.c_str(),
+        cnt, (cnt==1?"":"s"), test_type_chars[t]);
     }
   }
 
-  free(testcnts);
 }
 
 // Return zero on success, nonzero on failure. Perform offline (background)
 // short or long (extended) self test on given scsi device.
-int DoSCSISelfTest(int fd, cfgfile *cfg, char testtype) {
+static int DoSCSISelfTest(const dev_config & cfg, dev_state & state, scsi_device * device, char testtype)
+{
   int retval = 0;
-  char *testname = NULL;
-  char *name = cfg->name;
+  const char *testname = 0;
+  const char *name = cfg.name.c_str();
   int inProgress;
 
-  if (scsiSelfTestInProgress(fd, &inProgress)) {
+  if (scsiSelfTestInProgress(device, &inProgress)) {
     PrintOut(LOG_CRIT, "Device: %s, does not support Self-Tests\n", name);
-    cfg->testdata->not_cap_short=cfg->testdata->not_cap_long=1;
+    state.not_cap_short = state.not_cap_long = true;
     return 1;
   }
 
@@ -2149,11 +2276,11 @@ int DoSCSISelfTest(int fd, cfgfile *cfg, char testtype) {
   switch (testtype) {
   case 'S':
     testname = "Short Self";
-    retval = scsiSmartShortSelfTest(fd);
+    retval = scsiSmartShortSelfTest(device);
     break;
   case 'L':
     testname = "Long Self";
-    retval = scsiSmartExtendSelfTest(fd);
+    retval = scsiSmartExtendSelfTest(device);
     break;
   }
   // If we can't do the test, exit
@@ -2168,9 +2295,9 @@ int DoSCSISelfTest(int fd, cfgfile *cfg, char testtype) {
       PrintOut(LOG_CRIT, "Device: %s, not capable of %s-Test\n", name, 
                testname);
       if ('L'==testtype)
-        cfg->testdata->not_cap_long=1;
+        state.not_cap_long = true;
       else
-        cfg->testdata->not_cap_short=1;
+        state.not_cap_short = true;
      
       return 1;
     }
@@ -2186,48 +2313,62 @@ int DoSCSISelfTest(int fd, cfgfile *cfg, char testtype) {
 
 // Do an offline immediate or self-test.  Return zero on success,
 // nonzero on failure.
-int DoATASelfTest(int fd, cfgfile *cfg, char testtype) {
-  
-  struct ata_smart_values data;
-  char *testname=NULL;
-  int retval, dotest=-1;
-  char *name=cfg->name;
-  
+static int DoATASelfTest(const dev_config & cfg, dev_state & state, ata_device * device, char testtype)
+{
+  const char *name = cfg.name.c_str();
+
   // Read current smart data and check status/capability
-  if (ataReadSmartValues(fd, &data) || !(data.offline_data_collection_capability)) {
+  struct ata_smart_values data;
+  if (ataReadSmartValues(device, &data) || !(data.offline_data_collection_capability)) {
     PrintOut(LOG_CRIT, "Device: %s, not capable of Offline or Self-Testing.\n", name);
     return 1;
   }
   
   // Check for capability to do the test
+  int dotest = -1, mode = 0;
+  const char *testname = 0;
   switch (testtype) {
   case 'O':
     testname="Offline Immediate ";
     if (isSupportExecuteOfflineImmediate(&data))
       dotest=OFFLINE_FULL_SCAN;
     else
-      cfg->testdata->not_cap_offline=1;
+      state.not_cap_offline = true;
     break;
   case 'C':
     testname="Conveyance Self-";
     if (isSupportConveyanceSelfTest(&data))
       dotest=CONVEYANCE_SELF_TEST;
     else
-      cfg->testdata->not_cap_conveyance=1;
+      state.not_cap_conveyance = true;
     break;
   case 'S':
     testname="Short Self-";
     if (isSupportSelfTest(&data))
       dotest=SHORT_SELF_TEST;
     else
-      cfg->testdata->not_cap_short=1;
+      state.not_cap_short = true;
     break;
   case 'L':
     testname="Long Self-";
     if (isSupportSelfTest(&data))
       dotest=EXTEND_SELF_TEST;
     else
-      cfg->testdata->not_cap_long=1;
+      state.not_cap_long = true;
+    break;
+
+  case 'c': case 'n': case 'r':
+    testname = "Selective Self-";
+    if (isSupportSelectiveSelfTest(&data)) {
+      dotest = SELECTIVE_SELF_TEST;
+      switch (testtype) {
+        case 'c': mode = SEL_CONT; break;
+        case 'n': mode = SEL_NEXT; break;
+        case 'r': mode = SEL_REDO; break;
+      }
+    }
+    else
+      state.not_cap_selective = true;
     break;
   }
   
@@ -2239,7 +2380,7 @@ int DoATASelfTest(int fd, cfgfile *cfg, char testtype) {
   
   // If currently running a self-test, do not interrupt it to start another.
   if (15==(data.self_test_exec_status >> 4)) {
-    if (cfg->fixfirmwarebug == FIX_SAMSUNG3 && data.self_test_exec_status == 0xf0) {
+    if (cfg.fix_firmwarebug == FIX_SAMSUNG3 && data.self_test_exec_status == 0xf0) {
       PrintOut(LOG_INFO, "Device: %s, will not skip scheduled %sTest "
                "despite unclear Self-Test byte (SAMSUNG Firmware bug).\n", name, testname);
     } else {
@@ -2249,132 +2390,173 @@ int DoATASelfTest(int fd, cfgfile *cfg, char testtype) {
     }
   }
 
-  // else execute the test, and return status
-  if ((retval=smartcommandhandler(fd, IMMEDIATE_OFFLINE, dotest, NULL)))
+  if (dotest == SELECTIVE_SELF_TEST) {
+    // Set test span
+    ata_selective_selftest_args selargs;
+    selargs.num_spans = 1;
+    selargs.span[0].mode = mode;
+    if (ataWriteSelectiveSelfTestLog(device, selargs, &data, state.num_sectors)) {
+      PrintOut(LOG_CRIT, "Device: %s, prepare %sTest failed\n", name, testname);
+      return 1;
+    }
+    uint64_t start = selargs.span[0].start, end = selargs.span[0].end;
+    PrintOut(LOG_INFO, "Device: %s, %s test span at LBA %"PRIu64" - %"PRIu64" (%"PRIu64" sectors, %u%% - %u%% of disk).\n",
+      name, (selargs.span[0].mode == SEL_NEXT ? "next" : "redo"),
+      start, end, end - start + 1,
+      (unsigned)((100 * start + state.num_sectors/2) / state.num_sectors),
+      (unsigned)((100 * end   + state.num_sectors/2) / state.num_sectors));
+  }
+
+  // execute the test, and return status
+  int retval = smartcommandhandler(device, IMMEDIATE_OFFLINE, dotest, NULL);
+  if (retval) {
     PrintOut(LOG_CRIT, "Device: %s, execute %sTest failed.\n", name, testname);
+    return retval;
+  }
+
+  if (testtype != 'O')
+    // Log next self-test execution status
+    state.smartval.self_test_exec_status = 0xff;
+
+  PrintOut(LOG_INFO, "Device: %s, starting scheduled %sTest.\n", name, testname);
+  return 0;
+}
+
+// Check pending sector count attribute values (-C, -U directives).
+static void check_pending(const dev_config & cfg, dev_state & state,
+                          unsigned char id, bool increase_only,
+                          const ata_smart_values & smartval,
+                          int mailtype, const char * msg)
+{
+  // No report if no sectors pending.
+  int64_t rawval = ATAReturnAttributeRawValue(id, &smartval);
+  if (rawval <= 0)
+    return;
+
+  // If attribute is not reset, report only sector count increases.
+  int64_t prev_rawval = ATAReturnAttributeRawValue(id, &state.smartval);
+  if (!(!increase_only || prev_rawval < rawval))
+    return;
+
+  // Format message.
+  std::string s = strprintf("Device: %s, %"PRId64" %s", cfg.name.c_str(), rawval, msg);
+  if (prev_rawval > 0 && rawval != prev_rawval)
+    s += strprintf(" (changed %+"PRId64")", rawval - prev_rawval);
+
+  PrintOut(LOG_CRIT, "%s\n", s.c_str());
+  MailWarning(cfg, state, mailtype, "%s\n", s.c_str());
+  state.must_write = true;
+}
+
+// Format Temperature value
+static const char * fmt_temp(unsigned char x, char * buf)
+{
+  if (!x) // unset
+    strcpy(buf, "??");
   else
-    PrintOut(LOG_INFO, "Device: %s, starting scheduled %sTest.\n", name, testname);
-  
-  return retval;
+    sprintf(buf, "%u", x);
+  return buf;
 }
 
 // Check Temperature limits
-static void CheckTemperature(cfgfile * cfg, unsigned char currtemp, unsigned char triptemp)
+static void CheckTemperature(const dev_config & cfg, dev_state & state, unsigned char currtemp, unsigned char triptemp)
 {
-  const char *minchg = "", *maxchg = "";
   if (!(0 < currtemp && currtemp < 255)) {
-    PrintOut(LOG_INFO, "Device: %s, failed to read Temperature\n", cfg->name);
+    PrintOut(LOG_INFO, "Device: %s, failed to read Temperature\n", cfg.name.c_str());
     return;
   }
 
-  if (!cfg->temperature) {
-    PrintOut(LOG_INFO, "Device: %s, initial Temperature is %d Celsius\n",
-      cfg->name, (int)currtemp);
+  // Update Max Temperature
+  const char * minchg = "", * maxchg = "";
+  if (currtemp > state.tempmax) {
+    if (state.tempmax)
+      maxchg = "!";
+    state.tempmax = currtemp;
+    state.must_write = true;
+  }
+
+  char buf[20];
+  if (!state.temperature) {
+    // First check
+    if (!state.tempmin || currtemp < state.tempmin)
+        // Delay Min Temperature update by ~ 30 minutes.
+        state.tempmin_delay = time(0) + CHECKTIME - 60;
+    PrintOut(LOG_INFO, "Device: %s, initial Temperature is %d Celsius (Min/Max %s/%u%s)\n",
+      cfg.name.c_str(), (int)currtemp, fmt_temp(state.tempmin, buf), state.tempmax, maxchg);
     if (triptemp)
       PrintOut(LOG_INFO, "    [trip Temperature is %d Celsius]\n", (int)triptemp);
-    cfg->temperature = cfg->tempmin = cfg->tempmax = currtemp;
+    state.temperature = currtemp;
   }
   else {
-    // Update [min,max]
-    if (currtemp < cfg->tempmin) {
-      cfg->tempmin = currtemp; minchg = "!";
-      cfg->tempmininc = 0;
+    if (state.tempmin_delay) {
+      // End Min Temperature update delay if ...
+      if (   (state.tempmin && currtemp > state.tempmin) // current temp exceeds recorded min,
+          || (state.tempmin_delay <= time(0))) {         // or delay time is over.
+        state.tempmin_delay = 0;
+        if (!state.tempmin)
+          state.tempmin = 255;
+      }
     }
-    else if (cfg->tempmininc) {
-      // increase min Temperature during first 30 minutes
-      cfg->tempmin = currtemp;
-      cfg->tempmininc--;
-    }
-    if (currtemp > cfg->tempmax) {
-      cfg->tempmax = currtemp; maxchg = "!";
+
+    // Update Min Temperature
+    if (!state.tempmin_delay && currtemp < state.tempmin) {
+      state.tempmin = currtemp;
+      state.must_write = true;
+      if (currtemp != state.temperature)
+        minchg = "!";
     }
 
     // Track changes
-    if (cfg->tempdiff && (*minchg || *maxchg || abs((int)currtemp - (int)cfg->temperature) >= cfg->tempdiff)) {
-      PrintOut(LOG_INFO, "Device: %s, Temperature changed %+d Celsius to %u Celsius (Min/Max %u%s/%u%s)\n",
-        cfg->name, (int)currtemp-(int)cfg->temperature, currtemp, cfg->tempmin, minchg, cfg->tempmax, maxchg);
-      cfg->temperature = currtemp;
+    if (cfg.tempdiff && (*minchg || *maxchg || abs((int)currtemp - (int)state.temperature) >= cfg.tempdiff)) {
+      PrintOut(LOG_INFO, "Device: %s, Temperature changed %+d Celsius to %u Celsius (Min/Max %s%s/%u%s)\n",
+        cfg.name.c_str(), (int)currtemp-(int)state.temperature, currtemp, fmt_temp(state.tempmin, buf), minchg, state.tempmax, maxchg);
+      state.temperature = currtemp;
     }
   }
 
   // Check limits
-  if (cfg->tempcrit && currtemp >= cfg->tempcrit) {
-    PrintOut(LOG_CRIT, "Device: %s, Temperature %u Celsius reached critical limit of %u Celsius (Min/Max %u%s/%u%s)\n",
-      cfg->name, currtemp, cfg->tempcrit, cfg->tempmin, minchg, cfg->tempmax, maxchg);
-    MailWarning(cfg, 12, "Device: %s, Temperature %d Celsius reached critical limit of %u Celsius (Min/Max %u%s/%u%s)\n",
-      cfg->name, currtemp, cfg->tempcrit, cfg->tempmin, minchg, cfg->tempmax, maxchg);
+  if (cfg.tempcrit && currtemp >= cfg.tempcrit) {
+    PrintOut(LOG_CRIT, "Device: %s, Temperature %u Celsius reached critical limit of %u Celsius (Min/Max %s%s/%u%s)\n",
+      cfg.name.c_str(), currtemp, cfg.tempcrit, fmt_temp(state.tempmin, buf), minchg, state.tempmax, maxchg);
+    MailWarning(cfg, state, 12, "Device: %s, Temperature %d Celsius reached critical limit of %u Celsius (Min/Max %s%s/%u%s)\n",
+      cfg.name.c_str(), currtemp, cfg.tempcrit, fmt_temp(state.tempmin, buf), minchg, state.tempmax, maxchg);
   }
-  else if (cfg->tempinfo && currtemp >= cfg->tempinfo) {
-    PrintOut(LOG_INFO, "Device: %s, Temperature %u Celsius reached limit of %u Celsius (Min/Max %u%s/%u%s)\n",
-      cfg->name, currtemp, cfg->tempinfo, cfg->tempmin, minchg, cfg->tempmax, maxchg);
+  else if (cfg.tempinfo && currtemp >= cfg.tempinfo) {
+    PrintOut(LOG_INFO, "Device: %s, Temperature %u Celsius reached limit of %u Celsius (Min/Max %s%s/%u%s)\n",
+      cfg.name.c_str(), currtemp, cfg.tempinfo, fmt_temp(state.tempmin, buf), minchg, state.tempmax, maxchg);
   }
 }
 
-int ATACheckDevice(cfgfile *cfg, bool allow_selftests){
-  int fd,i;
-  char *name=cfg->name;
-  char *mode="ATA";
-  char testtype=0;
-  
-  // fix firmware bug if requested
-  con->fixfirmwarebug=cfg->fixfirmwarebug;
-  con->controller_port=cfg->controller_port;
-  con->controller_type=cfg->controller_type;
-  con->controller_explicit=cfg->controller_explicit;
-  // Highpoint-specific data
-  con->hpt_data[0]=cfg->hpt_data[0];
-  con->hpt_data[1]=cfg->hpt_data[1];
-  con->hpt_data[2]=cfg->hpt_data[2];
+static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device * atadev, bool allow_selftests)
+{
+  const char * name = cfg.name.c_str();
 
   // If user has asked, test the email warning system
-  if (cfg->mailwarn && cfg->mailwarn->emailtest)
-    MailWarning(cfg, 0, "TEST EMAIL from smartd for device: %s", name);
-
-  if (cfg->controller_type == CONTROLLER_3WARE_9000_CHAR)
-    mode="ATA_3WARE_9000";
-  
-  if (cfg->controller_type == CONTROLLER_3WARE_678K_CHAR)
-    mode="ATA_3WARE_678K";
+  if (cfg.emailtest)
+    MailWarning(cfg, state, 0, "TEST EMAIL from smartd for device: %s", name);
 
   // if we can't open device, fail gracefully rather than hard --
   // perhaps the next time around we'll be able to open it.  ATAPI
   // cd/dvd devices will hang awaiting media if O_NONBLOCK is not
   // given (see linux cdrom driver).
-  if ((fd=OpenDevice(name, mode, 0))<0){
-    MailWarning(cfg, 9, "Device: %s, unable to open device", name);
+  if (!atadev->open()) {
+    PrintOut(LOG_INFO, "Device: %s, open() failed: %s\n", name, atadev->get_errmsg());
+    MailWarning(cfg, state, 9, "Device: %s, unable to open device", name);
     return 1;
-  }
-
-  // if the user has asked, and device is capable (or we're not yet
-  // sure) check whether a self test should be done now.
-  // This check is done before powermode check to avoid missing self
-  // tests on idle or sleeping disks.
-  if (allow_selftests && cfg->testdata) {
-    // long test
-    if (!cfg->testdata->not_cap_long && DoTestNow(cfg, 'L', 0)>0)
-      testtype = 'L';
-    // short test
-    else if (!cfg->testdata->not_cap_short && DoTestNow(cfg, 'S', 0)>0)
-      testtype = 'S';
-    // conveyance test
-    else if (!cfg->testdata->not_cap_conveyance && DoTestNow(cfg, 'C', 0)>0)
-      testtype = 'C';
-    // offline immediate
-    else if (!cfg->testdata->not_cap_offline && DoTestNow(cfg, 'O', 0)>0)
-      testtype = 'O';
-  }
+  } else if (debugmode)
+    PrintOut(LOG_INFO,"Device: %s, opened ATA device\n", name);
 
   // user may have requested (with the -n Directive) to leave the disk
   // alone if it is in idle or sleeping mode.  In this case check the
   // power mode and exit without check if needed
-  if (cfg->powermode){
-    int dontcheck=0, powermode=ataCheckPowerMode(fd);
-    char *mode=NULL;
+  if (cfg.powermode && !state.powermodefail) {
+    int dontcheck=0, powermode=ataCheckPowerMode(atadev);
+    const char * mode = 0;
     if (0 <= powermode && powermode < 0xff) {
       // wait for possible spin up and check again
       int powermode2;
       sleep(5);
-      powermode2 = ataCheckPowerMode(fd);
+      powermode2 = ataCheckPowerMode(atadev);
       if (powermode2 > powermode)
         PrintOut(LOG_INFO, "Device: %s, CHECK POWER STATUS spins up disk (0x%02x -> 0x%02x)\n", name, powermode, powermode2);
       powermode = powermode2;
@@ -2384,19 +2566,19 @@ int ATACheckDevice(cfgfile *cfg, bool allow_selftests){
     case -1:
       // SLEEP
       mode="SLEEP";
-      if (cfg->powermode>=1)
+      if (cfg.powermode>=1)
         dontcheck=1;
       break;
     case 0:
       // STANDBY
       mode="STANDBY";
-      if (cfg->powermode>=2)
+      if (cfg.powermode>=2)
         dontcheck=1;
       break;
     case 0x80:
       // IDLE
       mode="IDLE";
-      if (cfg->powermode>=3)
+      if (cfg.powermode>=3)
         dontcheck=1;
       break;
     case 0xff:
@@ -2407,253 +2589,264 @@ int ATACheckDevice(cfgfile *cfg, bool allow_selftests){
       // UNKNOWN
       PrintOut(LOG_CRIT, "Device: %s, CHECK POWER STATUS returned %d, not ATA compliant, ignoring -n Directive\n",
         name, powermode);
-      cfg->powermode=0;
+      state.powermodefail = true;
       break;
     }
 
     // if we are going to skip a check, return now
     if (dontcheck){
-      // but ignore powermode on scheduled selftest
-      if (!testtype) {
-        CloseDevice(fd, name);
-        if (!cfg->powerskipcnt && !cfg->powerquiet) // report first only and avoid waking up system disk
+      // skip at most powerskipmax checks
+      if (!cfg.powerskipmax || state.powerskipcnt<cfg.powerskipmax) {
+        CloseDevice(atadev, name);
+        if (!state.powerskipcnt && !cfg.powerquiet) // report first only and avoid waking up system disk
           PrintOut(LOG_INFO, "Device: %s, is in %s mode, suspending checks\n", name, mode);
-        cfg->powerskipcnt++;
+        state.powerskipcnt++;
         return 0;
       }
-      PrintOut(LOG_INFO, "Device: %s, %s mode ignored due to scheduled self test (%d check%s skipped)\n",
-        name, mode, cfg->powerskipcnt, (cfg->powerskipcnt==1?"":"s"));
-      cfg->powerskipcnt = 0;
+      else {
+        PrintOut(LOG_INFO, "Device: %s, %s mode ignored due to reached limit of skipped checks (%d check%s skipped)\n",
+          name, mode, state.powerskipcnt, (state.powerskipcnt==1?"":"s"));
+      }
+      state.powerskipcnt = 0;
+      state.tempmin_delay = time(0) + CHECKTIME - 60; // Delay Min Temperature update
     }
-    else if (cfg->powerskipcnt) {
+    else if (state.powerskipcnt) {
       PrintOut(LOG_INFO, "Device: %s, is back in %s mode, resuming checks (%d check%s skipped)\n",
-        name, mode, cfg->powerskipcnt, (cfg->powerskipcnt==1?"":"s"));
-      cfg->powerskipcnt = 0;
+        name, mode, state.powerskipcnt, (state.powerskipcnt==1?"":"s"));
+      state.powerskipcnt = 0;
+      state.tempmin_delay = time(0) + CHECKTIME - 60; // Delay Min Temperature update
     }
   }
 
   // check smart status
-  if (cfg->smartcheck){
-    int status=ataSmartStatus2(fd);
+  if (cfg.smartcheck) {
+    int status=ataSmartStatus2(atadev);
     if (status==-1){
       PrintOut(LOG_INFO,"Device: %s, not capable of SMART self-check\n",name);
-      MailWarning(cfg, 5, "Device: %s, not capable of SMART self-check", name);
+      MailWarning(cfg, state, 5, "Device: %s, not capable of SMART self-check", name);
+      state.must_write = true;
     }
     else if (status==1){
       PrintOut(LOG_CRIT, "Device: %s, FAILED SMART self-check. BACK UP DATA NOW!\n", name);
-      MailWarning(cfg, 1, "Device: %s, FAILED SMART self-check. BACK UP DATA NOW!", name);
+      MailWarning(cfg, state, 1, "Device: %s, FAILED SMART self-check. BACK UP DATA NOW!", name);
+      state.must_write = true;
     }
   }
   
   // Check everything that depends upon SMART Data (eg, Attribute values)
-  if (   cfg->usagefailed || cfg->prefail || cfg->usage || cfg->pending!=DONT_MONITOR_UNC
-      || cfg->tempdiff || cfg->tempinfo || cfg->tempcrit                                 ){
+  if (   cfg.usagefailed || cfg.prefail || cfg.usage
+      || cfg.curr_pending_id || cfg.offl_pending_id
+      || cfg.tempdiff || cfg.tempinfo || cfg.tempcrit || cfg.selftest) {
     struct ata_smart_values     curval;
-    struct ata_smart_thresholds_pvt *thresh=cfg->smartthres;
-    
+    struct ata_smart_thresholds_pvt * thresh = &state.smartthres;
+
     // Read current attribute values. *drive contains old values and thresholds
-    if (ataReadSmartValues(fd,&curval)){
+    if (ataReadSmartValues(atadev, &curval)){
       PrintOut(LOG_CRIT, "Device: %s, failed to read SMART Attribute Data\n", name);
-      MailWarning(cfg, 6, "Device: %s, failed to read SMART Attribute Data", name);
+      MailWarning(cfg, state, 6, "Device: %s, failed to read SMART Attribute Data", name);
+      state.must_write = true;
     }
     else {
       // look for current or offline pending sectors
-      if (cfg->pending != DONT_MONITOR_UNC) {
-	int64_t rawval;
-	unsigned char currentpending, offlinepending;
-	
-	TranslatePending(cfg->pending, &currentpending, &offlinepending);
-	
-	if (currentpending && (rawval=ATAReturnAttributeRawValue(currentpending, &curval))>0) {
-	  // Unreadable pending sectors!!
-	  PrintOut(LOG_CRIT,   "Device: %s, %"PRId64" Currently unreadable (pending) sectors\n", name, rawval);
-	  MailWarning(cfg, 10, "Device: %s, %"PRId64" Currently unreadable (pending) sectors", name, rawval);
-	}
-	
-	if (offlinepending && (rawval=ATAReturnAttributeRawValue(offlinepending, &curval))>0) {
-	  // Unreadable offline sectors!!
-	  PrintOut(LOG_CRIT,   "Device: %s, %"PRId64" Offline uncorrectable sectors\n", name, rawval);
-	  MailWarning(cfg, 11, "Device: %s, %"PRId64" Offline uncorrectable sectors", name, rawval);
-	}
-      }
+      if (cfg.curr_pending_id)
+        check_pending(cfg, state, cfg.curr_pending_id, cfg.curr_pending_incr, curval, 10,
+                      (!cfg.curr_pending_incr ? "Currently unreadable (pending) sectors"
+                                              : "Total unreadable (pending) sectors"    ));
+
+      if (cfg.offl_pending_id)
+        check_pending(cfg, state, cfg.offl_pending_id, cfg.offl_pending_incr, curval, 11,
+                      (!cfg.offl_pending_incr ? "Offline uncorrectable sectors"
+                                              : "Total offline uncorrectable sectors"));
 
       // check temperature limits
-      if (cfg->tempdiff || cfg->tempinfo || cfg->tempcrit)
-        CheckTemperature(cfg, ATAReturnTemperatureValue(&curval, cfg->attributedefs), 0);
+      if (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit)
+        CheckTemperature(cfg, state, ATAReturnTemperatureValue(&curval, cfg.attributedefs), 0);
 
-      if (cfg->usagefailed || cfg->prefail || cfg->usage) {
+      if (cfg.usagefailed || cfg.prefail || cfg.usage) {
 
 	// look for failed usage attributes, or track usage or prefail attributes
-	for (i=0; i<NUMBER_ATA_SMART_ATTRIBUTES; i++){
-	  int att;
-	  changedattribute_t delta;
-	  
+        for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+
 	  // This block looks for usage attributes that have failed.
 	  // Prefail attributes that have failed are returned with a
 	  // positive sign. No failure returns 0. Usage attributes<0.
-	  if (cfg->usagefailed && ((att=ataCheckAttribute(&curval, thresh, i))<0)){
+          int att;
+	  if (cfg.usagefailed && ((att=ataCheckAttribute(&curval, thresh, i))<0)){
 	    
 	    // are we ignoring failures of this attribute?
 	    att *= -1;
-	    if (!IsAttributeOff(att, &cfg->monitorattflags, 0, MONITOR_FAILUSE, __LINE__)){
+            if (!cfg.monitor_attr_flags.is_set(att, MONITOR_IGN_FAILUSE)) {
 	      char attname[64], *loc=attname;
 	      
 	      // get attribute name & skip white space
-	      ataPrintSmartAttribName(loc, att, cfg->attributedefs);
+	      ataPrintSmartAttribName(loc, att, cfg.attributedefs);
 	      while (*loc && *loc==' ') loc++;
 	      
 	      // warning message
 	      PrintOut(LOG_CRIT, "Device: %s, Failed SMART usage Attribute: %s.\n", name, loc);
-	      MailWarning(cfg, 2, "Device: %s, Failed SMART usage Attribute: %s.", name, loc);
+	      MailWarning(cfg, state, 2, "Device: %s, Failed SMART usage Attribute: %s.", name, loc);
+              state.must_write = true;
 	    }
 	  }
 	  
 	  // This block tracks usage or prefailure attributes to see if
 	  // they are changing.  It also looks for changes in RAW values
 	  // if this has been requested by user.
-	  if ((cfg->usage || cfg->prefail) && ATACompareValues(&delta, &curval, cfg->smartval, thresh, i, name)){
-	    unsigned char id=delta.id;
-	    
+          changedattribute_t delta;
+	  if ((cfg.usage || cfg.prefail) && ATACompareValues(&delta, &curval, &state.smartval, thresh, i, name)){
+
+            // Continue if we're not tracking this type of attribute
+            if (!(   ( delta.prefail && cfg.prefail)
+                  || (!delta.prefail && cfg.usage   )))
+              continue;
+
+            // Continue if '-I ID' was specified
+            unsigned char id = delta.id;
+            if (cfg.monitor_attr_flags.is_set(id, MONITOR_IGNORE))
+              continue;
+
 	    // if the only change is the raw value, and we're not
 	    // tracking raw value, then continue loop over attributes
-	    if (!delta.sameraw && delta.newval==delta.oldval && !IsAttributeOff(id, &cfg->monitorattflags, 0, MONITOR_RAW, __LINE__))
+            if (   !delta.sameraw && delta.newval == delta.oldval
+                && !cfg.monitor_attr_flags.is_set(id, MONITOR_RAW))
 	      continue;
-	    
-	    // are we tracking this attribute?
-	    if (!IsAttributeOff(id, &cfg->monitorattflags, 0, MONITOR_IGNORE, __LINE__)){
-	      char newrawstring[64], oldrawstring[64], attname[64], *loc=attname;
-	      
-	      // get attribute name, skip spaces
-	      ataPrintSmartAttribName(loc, id, cfg->attributedefs);
-	      while (*loc && *loc==' ') loc++;
-	      
-	      // has the user asked for us to print raw values?
-	      if (IsAttributeOff(id, &cfg->monitorattflags, 0, MONITOR_RAWPRINT, __LINE__)) {
-		// get raw values (as a string) and add to printout
-		char rawstring[64];
-		ataPrintSmartAttribRawValue(rawstring, curval.vendor_attributes+i, cfg->attributedefs);
-		sprintf(newrawstring, " [Raw %s]", rawstring);
-		ataPrintSmartAttribRawValue(rawstring, cfg->smartval->vendor_attributes+i, cfg->attributedefs);
-		sprintf(oldrawstring, " [Raw %s]", rawstring);
-	      }
-	      else
-		newrawstring[0]=oldrawstring[0]='\0';
-	      
-	      // prefailure attribute
-	      if (cfg->prefail && delta.prefail)
-		PrintOut(LOG_INFO, "Device: %s, SMART Prefailure Attribute: %s changed from %d%s to %d%s\n",
-			 name, loc, delta.oldval, oldrawstring, delta.newval, newrawstring);
-	      
-	      // usage attribute
-	      if (cfg->usage && !delta.prefail)
-		PrintOut(LOG_INFO, "Device: %s, SMART Usage Attribute: %s changed from %d%s to %d%s\n",
-			 name, loc, delta.oldval, oldrawstring, delta.newval, newrawstring);
-	    }
+
+            // get attribute name, skip spaces
+            char attname[64], *loc = attname;
+            ataPrintSmartAttribName(loc, id, cfg.attributedefs);
+            while (*loc && *loc==' ')
+              loc++;
+
+            // has the user asked for us to print raw values?
+            char newrawstring[64], oldrawstring[64];
+            if (cfg.monitor_attr_flags.is_set(id, MONITOR_RAW_PRINT)) {
+              // get raw values (as a string) and add to printout
+              char rawstring[64];
+              ataPrintSmartAttribRawValue(rawstring, curval.vendor_attributes+i, cfg.attributedefs);
+              sprintf(newrawstring, " [Raw %s]", rawstring);
+              ataPrintSmartAttribRawValue(rawstring, state.smartval.vendor_attributes+i, cfg.attributedefs);
+              sprintf(oldrawstring, " [Raw %s]", rawstring);
+            }
+            else
+              newrawstring[0]=oldrawstring[0]='\0';
+
+            // Format message
+            std::string msg = strprintf("Device: %s, SMART %s Attribute: %s changed from %d%s to %d%s",
+                                        name, (delta.prefail ? "Prefailure" : "Usage"), loc,
+                                        delta.oldval, oldrawstring, delta.newval, newrawstring);
+
+            // Report this change as critical ?
+            if (   (delta.newval != delta.oldval && cfg.monitor_attr_flags.is_set(id, MONITOR_AS_CRIT))
+                || (!delta.sameraw               && cfg.monitor_attr_flags.is_set(id, MONITOR_RAW_AS_CRIT))) {
+              PrintOut(LOG_CRIT, "%s\n", msg.c_str());
+              MailWarning(cfg, state, 2, "%s", msg.c_str());
+            }
+            else {
+              PrintOut(LOG_INFO, "%s\n", msg.c_str());
+            }
+            state.must_write = true;
 	  } // endof block tracking usage or prefailure
 	} // end of loop over attributes
 	
+        if (cfg.selftest) {
+          // Log changes of self-test executions status
+          if (   curval.self_test_exec_status != state.smartval.self_test_exec_status
+              || (!allow_selftests && curval.self_test_exec_status != 0x00)          )
+            log_self_test_exec_status(name, curval.self_test_exec_status);
+        }
+
 	// Save the new values into *drive for the next time around
-	*(cfg->smartval)=curval;
+	state.smartval = curval;
       }
     }
   }
   
   // check if number of selftest errors has increased (note: may also DECREASE)
-  if (cfg->selftest)
-    CheckSelfTestLogs(cfg, SelfTestErrorCount(fd, name));
-  
-  // check if number of ATA errors has increased
-  if (cfg->errorlog){
+  if (cfg.selftest)
+    CheckSelfTestLogs(cfg, state, SelfTestErrorCount(atadev, name, cfg.fix_firmwarebug));
 
-    int newc,oldc=cfg->ataerrorcount;
+  // check if number of ATA errors has increased
+  if (cfg.errorlog) {
+
+    int newc, oldc= state.ataerrorcount;
 
     // new number of errors
-    newc=ATAErrorCount(fd, name);
+    newc = ATAErrorCount(atadev, name, cfg.fix_firmwarebug);
 
     // did command fail?
     if (newc<0)
       // lack of PrintOut here is INTENTIONAL
-      MailWarning(cfg, 7, "Device: %s, Read SMART Error Log Failed", name);
+      MailWarning(cfg, state, 7, "Device: %s, Read SMART Error Log Failed", name);
 
     // has error count increased?
     if (newc>oldc){
       PrintOut(LOG_CRIT, "Device: %s, ATA error count increased from %d to %d\n",
                name, oldc, newc);
-      MailWarning(cfg, 4, "Device: %s, ATA error count increased from %d to %d",
+      MailWarning(cfg, state, 4, "Device: %s, ATA error count increased from %d to %d",
                    name, oldc, newc);
+      state.must_write = true;
     }
     
     // this last line is probably not needed, count always increases
     if (newc>=0)
-      cfg->ataerrorcount=newc;
+      state.ataerrorcount=newc;
   }
-  
-  // carry out scheduled self-test
-  if (testtype)
-    DoATASelfTest(fd, cfg, testtype);
-  
+
+  // if the user has asked, and device is capable (or we're not yet
+  // sure) check whether a self test should be done now.
+  if (allow_selftests && !cfg.test_regex.empty()) {
+    char testtype = next_scheduled_test(cfg, state, false/*!scsi*/);
+    if (testtype)
+      DoATASelfTest(cfg, state, atadev, testtype);
+  }
+
   // Don't leave device open -- the OS/user may want to access it
   // before the next smartd cycle!
-  CloseDevice(fd, name);
+  CloseDevice(atadev, name);
+
+  // Copy ATA attribute values to persistent state
+  state.update_persistent_state();
+
   return 0;
 }
 
-int SCSICheckDevice(cfgfile *cfg, bool allow_selftests)
+static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_device * scsidev, bool allow_selftests)
 {
     UINT8 asc, ascq;
     UINT8 currenttemp;
     UINT8 triptemp;
-    int fd;
-    char *name=cfg->name;
+    const char * name = cfg.name.c_str();
     const char *cp;
-    char *mode=NULL;
-
-    // should we try to register this as a SCSI device?
-    switch (cfg->controller_type) {
-    case CONTROLLER_CCISS:
-      mode="CCISS";
-      break;
-    case CONTROLLER_SCSI:
-    case CONTROLLER_UNKNOWN:
-      mode="SCSI";
-      break;
-    default:
-      return 1;
-    }
-
-    // pass user settings on to low-level SCSI commands
-    con->controller_port=cfg->controller_port;
-    con->controller_type=cfg->controller_type;
 
     // If the user has asked for it, test the email warning system
-    if (cfg->mailwarn && cfg->mailwarn->emailtest)
-      MailWarning(cfg, 0, "TEST EMAIL from smartd for device: %s", name);
+    if (cfg.emailtest)
+      MailWarning(cfg, state, 0, "TEST EMAIL from smartd for device: %s", name);
 
     // if we can't open device, fail gracefully rather than hard --
     // perhaps the next time around we'll be able to open it
-    if ((fd=OpenDevice(name, mode, 0))<0) {
-      // Lack of PrintOut() here is intentional!
-      MailWarning(cfg, 9, "Device: %s, unable to open device", name);
+    if (!scsidev->open()) {
+      PrintOut(LOG_INFO, "Device: %s, open() failed: %s\n", name, scsidev->get_errmsg());
+      MailWarning(cfg, state, 9, "Device: %s, unable to open device", name);
       return 1;
     } else if (debugmode)
         PrintOut(LOG_INFO,"Device: %s, opened SCSI device\n", name);
     currenttemp = 0;
     asc = 0;
     ascq = 0;
-    if (! cfg->SuppressReport) {
-        if (scsiCheckIE(fd, cfg->SmartPageSupported, cfg->TempPageSupported,
+    if (!state.SuppressReport) {
+        if (scsiCheckIE(scsidev, state.SmartPageSupported, state.TempPageSupported,
                         &asc, &ascq, &currenttemp, &triptemp)) {
             PrintOut(LOG_INFO, "Device: %s, failed to read SMART values\n",
                       name);
-            MailWarning(cfg, 6, "Device: %s, failed to read SMART values", name);
-            cfg->SuppressReport = 1;
+            MailWarning(cfg, state, 6, "Device: %s, failed to read SMART values", name);
+            state.SuppressReport = 1;
         }
     }
     if (asc > 0) {
         cp = scsiGetIEString(asc, ascq);
         if (cp) {
             PrintOut(LOG_CRIT, "Device: %s, SMART Failure: %s\n", name, cp);
-            MailWarning(cfg, 1,"Device: %s, SMART Failure: %s", name, cp); 
+            MailWarning(cfg, state, 1,"Device: %s, SMART Failure: %s", name, cp);
         } else if (debugmode)
             PrintOut(LOG_INFO,"Device: %s, non-SMART asc,ascq: %d,%d\n",
                      name, (int)asc, (int)ascq);  
@@ -2661,53 +2854,47 @@ int SCSICheckDevice(cfgfile *cfg, bool allow_selftests)
         PrintOut(LOG_INFO,"Device: %s, SMART health: passed\n", name);  
 
     // check temperature limits
-    if (cfg->tempdiff || cfg->tempinfo || cfg->tempcrit)
-      CheckTemperature(cfg, currenttemp, triptemp);
+    if (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit)
+      CheckTemperature(cfg, state, currenttemp, triptemp);
 
     // check if number of selftest errors has increased (note: may also DECREASE)
-    if (cfg->selftest)
-      CheckSelfTestLogs(cfg, scsiCountFailedSelfTests(fd, 0));
+    if (cfg.selftest)
+      CheckSelfTestLogs(cfg, state, scsiCountFailedSelfTests(scsidev, 0));
     
-    if (allow_selftests && cfg->testdata) {
-      // long (extended) background test
-      if (!cfg->testdata->not_cap_long && DoTestNow(cfg, 'L', 0)>0)
-        DoSCSISelfTest(fd, cfg, 'L');
-      // short background test
-      else if (!cfg->testdata->not_cap_short && DoTestNow(cfg, 'S', 0)>0)
-        DoSCSISelfTest(fd, cfg, 'S');
+    if (allow_selftests && !cfg.test_regex.empty()) {
+      char testtype = next_scheduled_test(cfg, state, true/*scsi*/);
+      if (testtype)
+        DoSCSISelfTest(cfg, state, scsidev, testtype);
     }
-    CloseDevice(fd, name);
+    CloseDevice(scsidev, name);
     return 0;
 }
 
 // Checks the SMART status of all ATA and SCSI devices
-void CheckDevicesOnce(cfgfile **ATAandSCSIdevices, bool allow_selftests){
-  int i;
-  
-  for (i=0; i<numdevata+numdevscsi; i++) {
-      if (ATAandSCSIdevices[i]->WhichCheckDevice==1)
-	  SCSICheckDevice(ATAandSCSIdevices[i], allow_selftests);
-      else
-	  ATACheckDevice(ATAandSCSIdevices[i], allow_selftests);
+static void CheckDevicesOnce(const dev_config_vector & configs, dev_state_vector & states,
+                             smart_device_list & devices, bool allow_selftests)
+{
+  for (unsigned i = 0; i < configs.size(); i++) {
+    const dev_config & cfg = configs.at(i);
+    dev_state & state = states.at(i);
+    smart_device * dev = devices.at(i);
+    if (dev->is_ata())
+      ATACheckDevice(cfg, state, dev->to_ata(), allow_selftests);
+    else if (dev->is_scsi())
+      SCSICheckDevice(cfg, state, dev->to_scsi(), allow_selftests);
   }
-
-  return;
 }
 
-#if SCSITIMEOUT
-// This alarm means that a SCSI USB device was hanging
-void AlarmHandler(int signal) {
-  longjmp(registerscsienv, 1);
-}
-#endif
+// Set if Initialize() was called
+static bool is_initialized = false;
 
 // Does initialization right after fork to daemon mode
 void Initialize(time_t *wakeuptime){
 
-  // install goobye message and remove pidfile handler
-  atexit(Goodbye);
+  // Call Goodbye() on exit
+  is_initialized = true;
   
-  // write PID file only after installing exit handler
+  // write PID file
   if (!debugmode)
     WritePidFile();
   
@@ -2767,11 +2954,10 @@ static void ToggleDebugMode()
 }
 #endif
 
-time_t dosleep(time_t wakeuptime){
-  time_t timenow=0;
-  
+static time_t dosleep(time_t wakeuptime, bool & sigwakeup)
+{
   // If past wake-up-time, compute next wake-up-time
-  timenow=time(NULL);
+  time_t timenow=time(NULL);
   while (wakeuptime<=timenow){
     int intervals=1+(timenow-wakeuptime)/checktime;
     wakeuptime+=intervals*checktime;
@@ -2805,6 +2991,7 @@ time_t dosleep(time_t wakeuptime){
     PrintOut(LOG_INFO,"Signal USR1 - checking devices now rather than in %d seconds.\n",
              wakeuptime-timenow>0?(int)(wakeuptime-timenow):0);
     caughtsigUSR1=0;
+    sigwakeup = true;
   }
   
   // return adjusted wakeuptime
@@ -2813,17 +3000,16 @@ time_t dosleep(time_t wakeuptime){
 
 // Print out a list of valid arguments for the Directive d
 void printoutvaliddirectiveargs(int priority, char d) {
-  char *s=NULL;
 
   switch (d) {
   case 'n':
-    PrintOut(priority, "never[,q], sleep[,q], standby[,q], idle[,q]");
+    PrintOut(priority, "never[,N][,q], sleep[,N][,q], standby[,N][,q], idle[,N][,q]");
     break;
   case 's':
     PrintOut(priority, "valid_regular_expression");
     break;
   case 'd':
-    PrintOut(priority, "ata, scsi, marvell, removable, sat, 3ware,N, hpt,L/M/N");
+    PrintOut(priority, "%s", smi()->get_valid_dev_types_str());
     break;
   case 'T':
     PrintOut(priority, "normal, permissive");
@@ -2839,12 +3025,7 @@ void printoutvaliddirectiveargs(int priority, char d) {
     PrintOut(priority, "\"once\", \"daily\", \"diminishing\", \"test\", \"exec\"");
     break;
   case 'v':
-    if (!(s = create_vendor_attribute_arg_list())) {
-      PrintOut(LOG_CRIT,"Insufficient memory to construct argument list\n");
-      EXIT(EXIT_NOMEM);
-    }
-    PrintOut(priority, "\n%s\n", s);
-    s=CheckFree(s, __LINE__,filenameandversion);
+    PrintOut(priority, "\n%s\n", create_vendor_attribute_arg_list().c_str());
     break;
   case 'P':
     PrintOut(priority, "use, ignore, show, showall");
@@ -2856,16 +3037,9 @@ void printoutvaliddirectiveargs(int priority, char d) {
 }
 
 // exits with an error message, or returns integer value of token
-int GetInteger(char *arg, char *name, char *token, int lineno, char *configfile, int min, int max){
-  char *endptr;
-  int val;
-  
-  // check input range
-  if (min<0){
-    PrintOut(LOG_CRIT, "min =%d passed to GetInteger() must be >=0\n", min);
-    return -1;
-  }
-
+int GetInteger(const char *arg, const char *name, const char *token, int lineno, const char *configfile,
+               int min, int max, char * suffix = 0)
+{
   // make sure argument is there
   if (!arg) {
     PrintOut(LOG_CRIT,"File %s line %d (drive %s): Directive: %s takes integer argument from %d to %d.\n",
@@ -2874,8 +3048,18 @@ int GetInteger(char *arg, char *name, char *token, int lineno, char *configfile,
   }
   
   // get argument value (base 10), check that it's integer, and in-range
-  val=strtol(arg,&endptr,10);
-  if (*endptr!='\0' || val<min || val>max )  {
+  char *endptr;
+  int val = strtol(arg,&endptr,10);
+
+  // optional suffix present?
+  if (suffix) {
+    if (!strcmp(endptr, suffix))
+      endptr += strlen(suffix);
+    else
+      *suffix = 0;
+  }
+
+  if (!(!*endptr && min <= val && val <= max)) {
     PrintOut(LOG_CRIT,"File %s line %d (drive %s): Directive: %s has argument: %s; needs integer from %d to %d.\n",
              configfile, lineno, name, token, arg, min, max);
     return -1;
@@ -2912,16 +3096,15 @@ int Get3Integers(const char *arg, const char *name, const char *token, int linen
 // This function returns 1 if it has correctly parsed one token (and
 // any arguments), else zero if no tokens remain.  It returns -1 if an
 // error was encountered.
-int ParseToken(char *token,cfgfile *cfg){
+static int ParseToken(char * token, dev_config & cfg)
+{
   char sym;
-  char *name=cfg->name;
-  int lineno=cfg->lineno;
-  char *delim = " \n\t";
+  const char * name = cfg.name.c_str();
+  int lineno=cfg.lineno;
+  const char *delim = " \n\t";
   int badarg = 0;
   int missingarg = 0;
-  char *arg = NULL;
-  int makemail=0;
-  maildata *mdat=NULL, tempmail;
+  const char *arg = 0;
 
   // is the rest of the line a comment
   if (*token=='#')
@@ -2938,46 +3121,26 @@ int ParseToken(char *token,cfgfile *cfg){
   // token we will be parsing:
   sym=token[1];
 
-  // create temporary maildata structure.  This means we can postpone
-  // allocating space in the data segment until we are sure there are
-  // no errors.
-  if ('m'==sym || 'M'==sym){
-    if (!cfg->mailwarn){
-      memset(&tempmail, 0, sizeof(maildata));
-      mdat=&tempmail;
-      makemail=1;
-    }
-    else
-      mdat=cfg->mailwarn;
-  }
-
   // parse the token and swallow its argument
-  switch (sym) {
-    int val;
+  int val;
+  char plus[] = "+", excl[] = "!";
 
+  switch (sym) {
   case 'C':
     // monitor current pending sector count (default 197)
-    if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 0, 255))<0)
+    if ((val = GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 0, 255, plus)) < 0)
       return -1;
-    if (val==CUR_UNC_DEFAULT)
-      val=0;
-    else if (val==0)
-      val=CUR_UNC_DEFAULT;
-    // set bottom 8 bits to correct value
-    cfg->pending &= 0xff00;
-    cfg->pending |= val;
+    cfg.curr_pending_id = (unsigned char)val;
+    cfg.curr_pending_incr = (*plus == '+');
+    cfg.curr_pending_set = true;
     break;
   case 'U':
     // monitor offline uncorrectable sectors (default 198)
-    if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 0, 255))<0)
+    if ((val = GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 0, 255, plus)) < 0)
       return -1;
-    if (val==OFF_UNC_DEFAULT)
-      val=0;
-    else if (val==0)
-      val=OFF_UNC_DEFAULT;
-    // turn off top 8 bits, then set to correct value
-    cfg->pending &= 0xff;
-    cfg->pending |= (val<<8);
+    cfg.offl_pending_id = (unsigned char)val;
+    cfg.offl_pending_incr = (*plus == '+');
+    cfg.offl_pending_set = true;
     break;
   case 'T':
     // Set tolerance level for SMART command failures
@@ -2987,150 +3150,22 @@ int ParseToken(char *token,cfgfile *cfg){
       // Normal mode: exit on failure of a mandatory S.M.A.R.T. command, but
       // not on failure of an optional S.M.A.R.T. command.
       // This is the default so we don't need to actually do anything here.
-      cfg->permissive=0;
+      cfg.permissive = false;
     } else if (!strcmp(arg, "permissive")) {
       // Permissive mode; ignore errors from Mandatory SMART commands
-      cfg->permissive=1;
+      cfg.permissive = true;
     } else {
       badarg = 1;
     }
     break;
   case 'd':
     // specify the device type
-    cfg->controller_explicit = 1;
     if ((arg = strtok(NULL, delim)) == NULL) {
       missingarg = 1;
-    } else if (!strcmp(arg, "ata")) {
-      cfg->controller_port = 0;
-      cfg->controller_type = CONTROLLER_ATA;
-    } else if (!strcmp(arg, "scsi")) {
-      cfg->controller_port =0;
-      cfg->controller_type = CONTROLLER_SCSI;
-    } else if (!strcmp(arg, "marvell")) {
-      cfg->controller_port =0;
-      cfg->controller_type = CONTROLLER_MARVELL_SATA;
-    } else if (!strncmp(arg, "sat", 3)) {
-      cfg->controller_type = CONTROLLER_SAT;
-      cfg->controller_port = 0;
-      cfg->satpassthrulen = 0;
-      if (strlen(arg) > 3) {
-        int k;
-        char * cp;
-
-        cp = strchr(arg, ',');
-        if (cp && (1 == sscanf(cp + 1, "%d", &k)) &&
-            ((0 == k) || (12 == k) || (16 == k)))
-          cfg->satpassthrulen = k;
-        else {
-          PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive "
-                   "'-d sat,<n>' requires <n> to be 0, 12 or 16\n",
-                   configfile, lineno, name);
-          badarg = 1;
-        }
-      }
-    } else if (!strncmp(arg, "hpt", 3)){
-      unsigned char i, slash = 0;
-      cfg->hpt_data[0] = 0;
-      cfg->hpt_data[1] = 0;
-      cfg->hpt_data[2] = 0;
-      cfg->controller_type = CONTROLLER_HPT;
-      for (i=4; i < strlen(arg); i++) {
-        if(arg[i] == '/') {
-          slash++;
-          if(slash == 3) {
-            PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive "
-                     "'-d hpt,L/M/N' supports 2-3 items\n",
-                     configfile, lineno, name);
-            badarg = TRUE;
-            break;
-          }
-        }
-        else if ((arg[i])>='0' && (arg[i])<='9') {
-          if (cfg->hpt_data[slash]>1) { /* hpt_data[x] max 19 */
-            badarg = TRUE;
-            break;
-          }
-          cfg->hpt_data[slash] = cfg->hpt_data[slash]*10 + arg[i] - '0';
-        }
-        else {
-          badarg = TRUE;
-          break;
-        }
-      }
-      if ( slash == 0 ) {
-        badarg = TRUE;
-      } else if (badarg != TRUE) {
-        if (cfg->hpt_data[0]==0 || cfg->hpt_data[0]>8){
-           PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive "
-                    "'-d hpt,L/M/N' no/invalid controller id L supplied\n",
-                    configfile, lineno, name);
-           badarg = TRUE;
-        }
-        if (cfg->hpt_data[1]==0 || cfg->hpt_data[1]>8){
-          PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive "
-                   "'-d hpt,L/M/N' no/invalid channel number M supplied\n",
-                   configfile, lineno, name);
-          badarg = TRUE;
-        }
-        if (slash==2){
-          if (cfg->hpt_data[2]==0 || cfg->hpt_data[2]>15){
-            PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive "
-                     "'-d hpt,L/M/N' no/invalid pmport number N supplied\n",
-                     configfile, lineno, name);
-            badarg = TRUE;
-          }
-        } else { /* no pmport device */
-          cfg->hpt_data[2]=1;
-        }
-      }
     } else if (!strcmp(arg, "removable")) {
-      cfg->removable = 1;
+      cfg.removable = true;
     } else {
-      // look 3ware,N RAID device
-      int i;
-      char *s;
-      
-      // make a copy of the string to mess with
-      if (!(s = strdup(arg))) {
-        PrintOut(LOG_CRIT,
-                 "No memory to copy argument to -d option - exiting\n");
-        EXIT(EXIT_NOMEM);
-      } else if (!strncmp(s,"3ware,",6)) {
-          if (split_report_arg2(s, &i)){
-              PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive -d 3ware,N requires N integer\n",
-               	       configfile, lineno, name);
-              badarg=1;
-          } else if ( i<0 || i>31) {
-              PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive -d 3ware,N (N=%d) must have 0 <= N <= 31\n",
-                       configfile, lineno, name, i);
-              badarg=1;
-          } else {
-	      // determine type of escalade device from name of device
-	      cfg->controller_type = guess_device_type(name);
-	      if (cfg->controller_type!=CONTROLLER_3WARE_9000_CHAR && cfg->controller_type!=CONTROLLER_3WARE_678K_CHAR)
-	           cfg->controller_type=CONTROLLER_3WARE_678K;
-	    
-              // NOTE: controller_port == disk number + 1
-              cfg->controller_port = i+1;
-          }
-      } else if (!strncmp(s,"cciss,",6)) {
-          if (split_report_arg2(s, &i)){
-              PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive -d cciss,N requires N integer\n",
-               	       configfile, lineno, name);
-              badarg=1;
-          } else if ( i<0 || i>127) {
-              PrintOut(LOG_CRIT, "File %s line %d (drive %s): Directive -d cciss,N (N=%d) must have 0 <= N <= 127\n",
-                       configfile, lineno, name, i);
-              badarg=1;
-          } else {
-              // NOTE: controller_port == disk number + 1
-              cfg->controller_type = CONTROLLER_CCISS;
-              cfg->controller_port = i+1;
-          }
-      } else {
-          badarg=1;
-      }
-      s=CheckFree(s, __LINE__,filenameandversion);
+      cfg.dev_type = arg;
     }
     break;
   case 'F':
@@ -3138,37 +3173,37 @@ int ParseToken(char *token,cfgfile *cfg){
     if ((arg = strtok(NULL, delim)) == NULL) {
       missingarg = 1;
     } else if (!strcmp(arg, "none")) {
-      cfg->fixfirmwarebug = FIX_NONE;
+      cfg.fix_firmwarebug = FIX_NONE;
     } else if (!strcmp(arg, "samsung")) {
-      cfg->fixfirmwarebug = FIX_SAMSUNG;
+      cfg.fix_firmwarebug = FIX_SAMSUNG;
     } else if (!strcmp(arg, "samsung2")) {
-      cfg->fixfirmwarebug = FIX_SAMSUNG2;
+      cfg.fix_firmwarebug = FIX_SAMSUNG2;
     } else if (!strcmp(arg, "samsung3")) {
-      cfg->fixfirmwarebug = FIX_SAMSUNG3;
+      cfg.fix_firmwarebug = FIX_SAMSUNG3;
     } else {
       badarg = 1;
     }
     break;
   case 'H':
     // check SMART status
-    cfg->smartcheck=1;
+    cfg.smartcheck = true;
     break;
   case 'f':
     // check for failure of usage attributes
-    cfg->usagefailed=1;
+    cfg.usagefailed = true;
     break;
   case 't':
     // track changes in all vendor attributes
-    cfg->prefail=1;
-    cfg->usage=1;
+    cfg.prefail = true;
+    cfg.usage = true;
     break;
   case 'p':
     // track changes in prefail vendor attributes
-    cfg->prefail=1;
+    cfg.prefail = true;
     break;
   case 'u':
     //  track changes in usage vendor attributes
-    cfg->usage=1;
+    cfg.usage = true;
     break;
   case 'l':
     // track changes in SMART logs
@@ -3176,31 +3211,31 @@ int ParseToken(char *token,cfgfile *cfg){
       missingarg = 1;
     } else if (!strcmp(arg, "selftest")) {
       // track changes in self-test log
-      cfg->selftest=1;
+      cfg.selftest = true;
     } else if (!strcmp(arg, "error")) {
       // track changes in ATA error log
-      cfg->errorlog=1;
+      cfg.errorlog = true;
     } else {
       badarg = 1;
     }
     break;
   case 'a':
     // monitor everything
-    cfg->smartcheck=1;
-    cfg->prefail=1;
-    cfg->usagefailed=1;
-    cfg->usage=1;
-    cfg->selftest=1;
-    cfg->errorlog=1;
+    cfg.smartcheck = true;
+    cfg.prefail = true;
+    cfg.usagefailed = true;
+    cfg.usage = true;
+    cfg.selftest = true;
+    cfg.errorlog = true;
     break;
   case 'o':
     // automatic offline testing enable/disable
     if ((arg = strtok(NULL, delim)) == NULL) {
       missingarg = 1;
     } else if (!strcmp(arg, "on")) {
-      cfg->autoofflinetest = 2;
+      cfg.autoofflinetest = 2;
     } else if (!strcmp(arg, "off")) {
-      cfg->autoofflinetest = 1;
+      cfg.autoofflinetest = 1;
     } else {
       badarg = 1;
     }
@@ -3209,60 +3244,82 @@ int ParseToken(char *token,cfgfile *cfg){
     // skip disk check if in idle or standby mode
     if (!(arg = strtok(NULL, delim)))
       missingarg = 1;
-    else if (!strcmp(arg, "never")   || !strcmp(arg, "never,q"))
-      cfg->powermode = 0;
-    else if (!strcmp(arg, "sleep")   || !strcmp(arg, "sleep,q"))
-      cfg->powermode = 1;
-    else if (!strcmp(arg, "standby") || !strcmp(arg, "standby,q"))
-      cfg->powermode = 2;
-    else if (!strcmp(arg, "idle")    || !strcmp(arg, "idle,q"))
-      cfg->powermode = 3;
-    else
-      badarg = 1;
-    cfg->powerquiet = !!strchr(arg, ',');
+    else {
+      char *endptr = NULL;
+      char *next = strchr(const_cast<char*>(arg), ',');
+
+      cfg.powerquiet = false;
+      cfg.powerskipmax = 0;
+
+      if (next!=NULL) *next='\0';
+      if (!strcmp(arg, "never"))
+        cfg.powermode = 0;
+      else if (!strcmp(arg, "sleep"))
+        cfg.powermode = 1;
+      else if (!strcmp(arg, "standby"))
+        cfg.powermode = 2;
+      else if (!strcmp(arg, "idle"))
+        cfg.powermode = 3;
+      else
+        badarg = 1;
+
+      // if optional arguments are present
+      if (!badarg && next!=NULL) {
+        next++;
+        cfg.powerskipmax = strtol(next, &endptr, 10);
+        if (endptr == next)
+          cfg.powerskipmax = 0;
+        else {
+          next = endptr + (*endptr != '\0');
+          if (cfg.powerskipmax <= 0)
+            badarg = 1;
+        }
+        if (*next != '\0') {
+          if (!strcmp("q", next))
+            cfg.powerquiet = true;
+          else {
+            badarg = 1;
+          }
+        }
+      }
+    }
     break;
   case 'S':
     // automatic attribute autosave enable/disable
     if ((arg = strtok(NULL, delim)) == NULL) {
       missingarg = 1;
     } else if (!strcmp(arg, "on")) {
-      cfg->autosave = 2;
+      cfg.autosave = 2;
     } else if (!strcmp(arg, "off")) {
-      cfg->autosave = 1;
+      cfg.autosave = 1;
     } else {
       badarg = 1;
     }
     break;
   case 's':
     // warn user, and delete any previously given -s REGEXP Directives
-    if (cfg->testdata){
+    if (!cfg.test_regex.empty()){
       PrintOut(LOG_INFO, "File %s line %d (drive %s): ignoring previous Test Directive -s %s\n",
-               configfile, lineno, name, cfg->testdata->regex);
-      cfg->testdata=FreeTestData(cfg->testdata);
+               configfile, lineno, name, cfg.test_regex.get_pattern());
+      cfg.test_regex = regular_expression();
     }
     // check for missing argument
     if (!(arg = strtok(NULL, delim))) {
       missingarg = 1;
     }
-    // allocate space for structure and string
-    else if (!(cfg->testdata=(testinfo *)Calloc(1, sizeof(testinfo))) || !(cfg->testdata->regex=CustomStrDup(arg, 1, __LINE__,filenameandversion))) {
-      PrintOut(LOG_INFO, "File %s line %d (drive %s): no memory to create Test Directive -s %s!\n",
-               configfile, lineno, name, arg);
-      EXIT(EXIT_NOMEM);
-    }
-    else if ((val=regcomp(&(cfg->testdata->cregex), arg, REG_EXTENDED))) {
-      char errormsg[512];
-      // not a valid regular expression!
-      regerror(val, &(cfg->testdata->cregex), errormsg, 512);
-      PrintOut(LOG_CRIT, "File %s line %d (drive %s): -s argument \"%s\" is INVALID extended regular expression. %s.\n",
-               configfile, lineno, name, arg, errormsg);
-      cfg->testdata=FreeTestData(cfg->testdata);
-      return -1;
+    // Compile regex
+    else {
+      if (!cfg.test_regex.compile(arg, REG_EXTENDED)) {
+        // not a valid regular expression!
+        PrintOut(LOG_CRIT, "File %s line %d (drive %s): -s argument \"%s\" is INVALID extended regular expression. %s.\n",
+                 configfile, lineno, name, arg, cfg.test_regex.get_errmsg());
+        return -1;
+      }
     }
     // Do a bit of sanity checking and warn user if we think that
     // their regexp is "strange". User probably confused about shell
     // glob(3) syntax versus regular expression syntax regexp(7).
-    else if ((int)strlen(arg) != (val=strspn(arg,"0123456789/.-+*|()?^$[]SLCO")))
+    if (arg[(val = strspn(arg, "0123456789/.-+*|()?^$[]SLCOcnr"))])
       PrintOut(LOG_INFO,  "File %s line %d (drive %s): warning, character %d (%c) looks odd in extended regular expression %s\n",
                configfile, lineno, name, val+1, arg[val], arg);
     break;
@@ -3271,12 +3328,10 @@ int ParseToken(char *token,cfgfile *cfg){
     if (!(arg = strtok(NULL,delim)))
       missingarg = 1;
     else {
-      if (mdat->address) {
+      if (!cfg.emailaddress.empty())
         PrintOut(LOG_INFO, "File %s line %d (drive %s): ignoring previous Address Directive -m %s\n",
-                 configfile, lineno, name, mdat->address);
-        mdat->address=FreeNonZero(mdat->address, -1,__LINE__,filenameandversion);
-      }
-      mdat->address=CustomStrDup(arg, 1, __LINE__,filenameandversion);
+                 configfile, lineno, name, cfg.emailaddress.c_str());
+      cfg.emailaddress = arg;
     }
     break;
   case 'M':
@@ -3284,13 +3339,13 @@ int ParseToken(char *token,cfgfile *cfg){
     if (!(arg = strtok(NULL, delim)))
       missingarg = 1;
     else if (!strcmp(arg, "once"))
-      mdat->emailfreq = 1;
+      cfg.emailfreq = 1;
     else if (!strcmp(arg, "daily"))
-      mdat->emailfreq = 2;
+      cfg.emailfreq = 2;
     else if (!strcmp(arg, "diminishing"))
-      mdat->emailfreq = 3;
+      cfg.emailfreq = 3;
     else if (!strcmp(arg, "test"))
-      mdat->emailtest = 1;
+      cfg.emailtest = 1;
     else if (!strcmp(arg, "exec")) {
       // Get the next argument (the command line)
       if (!(arg = strtok(NULL, delim))) {
@@ -3299,12 +3354,10 @@ int ParseToken(char *token,cfgfile *cfg){
         return -1;
       }
       // Free the last cmd line given if any, and copy new one
-      if (mdat->emailcmdline) {
+      if (!cfg.emailcmdline.empty())
         PrintOut(LOG_INFO, "File %s line %d (drive %s): ignoring previous mail Directive -M exec %s\n",
-                 configfile, lineno, name, mdat->emailcmdline);
-        mdat->emailcmdline=FreeNonZero(mdat->emailcmdline, -1,__LINE__,filenameandversion);
-      }
-      mdat->emailcmdline=CustomStrDup(arg, 1, __LINE__,filenameandversion);
+                 configfile, lineno, name, cfg.emailcmdline.c_str());
+      cfg.emailcmdline = arg;
     } 
     else
       badarg = 1;
@@ -3313,41 +3366,41 @@ int ParseToken(char *token,cfgfile *cfg){
     // ignore failure of usage attribute
     if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255))<0)
       return -1;
-    IsAttributeOff(val, &cfg->monitorattflags, 1, MONITOR_FAILUSE, __LINE__);
+    cfg.monitor_attr_flags.set(val, MONITOR_IGN_FAILUSE);
     break;
   case 'I':
     // ignore attribute for tracking purposes
     if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255))<0)
       return -1;
-    IsAttributeOff(val, &cfg->monitorattflags, 1, MONITOR_IGNORE, __LINE__);
+    cfg.monitor_attr_flags.set(val, MONITOR_IGNORE);
     break;
   case 'r':
     // print raw value when tracking
-    if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255))<0)
+    if ((val = GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255, excl)) < 0)
       return -1;
-    IsAttributeOff(val, &cfg->monitorattflags, 1, MONITOR_RAWPRINT, __LINE__);
+    cfg.monitor_attr_flags.set(val, MONITOR_RAW_PRINT);
+    if (*excl == '!') // attribute change is critical
+      cfg.monitor_attr_flags.set(val, MONITOR_AS_CRIT);
     break;
   case 'R':
     // track changes in raw value (forces printing of raw value)
-    if ((val=GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255))<0)
+    if ((val = GetInteger(arg=strtok(NULL,delim), name, token, lineno, configfile, 1, 255, excl)) < 0)
       return -1;
-    IsAttributeOff(val, &cfg->monitorattflags, 1, MONITOR_RAWPRINT, __LINE__);
-    IsAttributeOff(val, &cfg->monitorattflags, 1, MONITOR_RAW, __LINE__);
+    cfg.monitor_attr_flags.set(val, MONITOR_RAW_PRINT|MONITOR_RAW);
+    if (*excl == '!') // raw value change is critical
+      cfg.monitor_attr_flags.set(val, MONITOR_RAW_AS_CRIT);
     break;
   case 'W':
     // track Temperature
     if ((val=Get3Integers(arg=strtok(NULL,delim), name, token, lineno, configfile,
-                          &cfg->tempdiff, &cfg->tempinfo, &cfg->tempcrit))<0)
+                          &cfg.tempdiff, &cfg.tempinfo, &cfg.tempcrit))<0)
       return -1;
-    // increase min Temperature during first 30 minutes
-    if (!(cfg->tempmininc = (unsigned char)(CHECKTIME / checktime)))
-      cfg->tempmininc = 1;
     break;
   case 'v':
     // non-default vendor-specific attribute meaning
     if (!(arg=strtok(NULL,delim))) {
       missingarg = 1;
-    } else if (parse_attribute_def(arg, &cfg->attributedefs)){   
+    } else if (parse_attribute_def(arg, cfg.attributedefs)) {
       badarg = 1;
     }
     break;
@@ -3356,11 +3409,11 @@ int ParseToken(char *token,cfgfile *cfg){
     if (!(arg = strtok(NULL, delim))) {
       missingarg = 1;
     } else if (!strcmp(arg, "use")) {
-      cfg->ignorepresets = FALSE;
+      cfg.ignorepresets = false;
     } else if (!strcmp(arg, "ignore")) {
-      cfg->ignorepresets = TRUE;
+      cfg.ignorepresets = true;
     } else if (!strcmp(arg, "show")) {
-      cfg->showpresets = TRUE;
+      cfg.showpresets = true;
     } else if (!strcmp(arg, "showall")) {
       showallpresets();
     } else {
@@ -3389,99 +3442,13 @@ int ParseToken(char *token,cfgfile *cfg){
     return -1;
   }
 
-  // If this did something to fill the mail structure, and that didn't
-  // already exist, create it and copy.
-  if (makemail) {
-    if (!(cfg->mailwarn=(maildata *)Calloc(1, sizeof(maildata)))) {
-      PrintOut(LOG_INFO, "File %s line %d (drive %s): no memory to create mail warning entry!\n",
-               configfile, lineno, name);
-      EXIT(EXIT_NOMEM);
-    }
-    memcpy(cfg->mailwarn, mdat, sizeof(maildata));
-  }
-  
   return 1;
 }
 
-// Allocate storage for a new cfgfile entry.  If original!=NULL, it's
-// a copy of the original, but with private data storage.  Else all is
-// zeroed.  Returns address, and fails if non memory available.
+// Scan directive for configuration file
+#define SCANDIRECTIVE "DEVICESCAN"
 
-cfgfile *CreateConfigEntry(cfgfile *original){
-  cfgfile *add;
-  
-  // allocate memory for new structure
-  if (!(add=(cfgfile *)Calloc(1,sizeof(cfgfile))))
-    goto badexit;
-  
-  // if old structure was pointed to, copy it
-  if (original)
-    memcpy(add, original, sizeof(cfgfile));
-  
-  // make private copies of data items ONLY if they are in use (non
-  // NULL)
-  add->name         = CustomStrDup(add->name,         0, __LINE__,filenameandversion);
-
-  if (add->testdata) {
-    int val;
-    if (!(add->testdata=(testinfo *)Calloc(1,sizeof(testinfo))))
-      goto badexit;
-    memcpy(add->testdata, original->testdata, sizeof(testinfo));
-    add->testdata->regex = CustomStrDup(add->testdata->regex,   1, __LINE__,filenameandversion);
-    // only POSIX-portable way to make fresh copy of compiled regex is
-    // to recompile it completely.  There is no POSIX
-    // compiled-regex-copy command.
-    if ((val=regcomp(&(add->testdata->cregex), add->testdata->regex, REG_EXTENDED))) {
-      char errormsg[512];
-      regerror(val, &(add->testdata->cregex), errormsg, 512);
-      PrintOut(LOG_CRIT, "unable to recompile regular expression %s. %s\n", add->testdata->regex, errormsg);
-      goto badexit;
-    }
-  }
-  
-  if (add->mailwarn) {
-    if (!(add->mailwarn=(maildata *)Calloc(1,sizeof(maildata))))
-      goto badexit;
-    memcpy(add->mailwarn, original->mailwarn, sizeof(maildata));
-    add->mailwarn->address      = CustomStrDup(add->mailwarn->address,      0, __LINE__,filenameandversion);
-    add->mailwarn->emailcmdline = CustomStrDup(add->mailwarn->emailcmdline, 0, __LINE__,filenameandversion);
-  }
-
-  if (add->attributedefs) {
-    if (!(add->attributedefs=(unsigned char *)Calloc(MAX_ATTRIBUTE_NUM,1)))
-      goto badexit;
-    memcpy(add->attributedefs, original->attributedefs, MAX_ATTRIBUTE_NUM);
-  }
-  
-  if (add->monitorattflags) {
-    if (!(add->monitorattflags=(unsigned char *)Calloc(NMONITOR*32, 1)))
-      goto badexit;
-    memcpy(add->monitorattflags, original->monitorattflags, NMONITOR*32);
-  }
-  
-  if (add->smartval) {
-    if (!(add->smartval=(struct ata_smart_values *)Calloc(1,sizeof(struct ata_smart_values))))
-      goto badexit;
-  }
-  
-  if (add->smartthres) {
-    if (!(add->smartthres=(struct ata_smart_thresholds_pvt *)Calloc(1,sizeof(struct ata_smart_thresholds_pvt))))
-      goto badexit;
-  }
-
-  return add;
-
- badexit:
-  PrintOut(LOG_CRIT, "No memory to create entry from configuration file\n");
-  EXIT(EXIT_NOMEM);
-}
-
-
-
-// This is the routine that adds things to the cfgentries list. To
-// prevent memory leaks when re-reading the configuration file many
-// times, this routine MUST deallocate any memory other than that
-// pointed to within cfg-> before it returns.
+// This is the routine that adds things to the conf_entries list.
 //
 // Return values are:
 //  1: parsed a normal line
@@ -3490,11 +3457,11 @@ cfgfile *CreateConfigEntry(cfgfile *original){
 // -2: found an error
 //
 // Note: this routine modifies *line from the caller!
-int ParseConfigLine(int entry, int lineno,char *line){
+static int ParseConfigLine(dev_config_vector & conf_entries, int entry, int lineno, /*const*/ char * line)
+{
   char *token=NULL;
   char *name=NULL;
-  char *delim = " \n\t";
-  cfgfile *cfg=NULL;
+  const char *delim = " \n\t";
   int devscan=0;
 
   // get first token: device name. If a comment, skip line
@@ -3511,22 +3478,15 @@ int ParseConfigLine(int entry, int lineno,char *line){
     }
   }
   
-  // Is there space for another entry?  If not, allocate more
-  while (entry>=cfgentries_max)
-    cfgentries=AllocateMoreSpace(cfgentries, &cfgentries_max, "configuration file device");
-
   // We've got a legit entry, make space to store it
-  cfg=cfgentries[entry]=CreateConfigEntry(NULL);
-  cfg->name = CustomStrDup(name, 1, __LINE__,filenameandversion);
+  conf_entries.push_back( dev_config() );
+  dev_config & cfg = conf_entries.back();
+
+  cfg.name = name;
 
   // Store line number, and by default check for both device types.
-  cfg->lineno=lineno;
-  
-  // Try and recognize if a IDE or SCSI device.  These can be
-  // overwritten by configuration file directives.
-  if (cfg->controller_type==CONTROLLER_UNKNOWN)
-    cfg->controller_type = guess_device_type(cfg->name);
-  
+  cfg.lineno=lineno;
+
   // parse tokens one at a time from the file.
   while ((token=strtok(NULL,delim))){
     int retval=ParseToken(token,cfg);
@@ -3549,113 +3509,50 @@ int ParseConfigLine(int entry, int lineno,char *line){
     }
   }
   
-  // If we found 3ware/cciss controller, then modify device name by adding a SPACE
-  if (cfg->controller_port) {
-    int len=17+strlen(cfg->name);
-    char *newname;
-    
-    if (devscan){
-      PrintOut(LOG_CRIT, "smartd: can not scan for 3ware/cciss devices (line %d of file %s)\n",
-               lineno, configfile);
-      return -2;
-    }
-    
-    if (!(newname=(char *)calloc(len,1))) {
-      PrintOut(LOG_INFO,"No memory to parse file: %s line %d, %s\n", configfile, lineno, strerror(errno));
-      EXIT(EXIT_NOMEM);
-    }
-    
-    // Make new device name by adding a space then RAID disk number
-    snprintf(newname, len, "%s [%s_disk_%02d]", cfg->name, (cfg->controller_type == CONTROLLER_CCISS) ? "cciss" : "3ware", 
-		                                cfg->controller_port-1);
-    cfg->name=CheckFree(cfg->name, __LINE__,filenameandversion);
-    cfg->name=newname;
-    bytes+=16;
-  }
-
-  if (cfg->hpt_data[0]) {
-      int len=17+strlen(cfg->name);
-      char *newname;
-
-      if (devscan){
-        PrintOut(LOG_CRIT, "smartd: can not scan for highpoint devices (line %d of file %s)\n",
-                 lineno, configfile);
-        return -2;
-      }
-
-      if (!(newname=(char *)calloc(len,1))) {
-        PrintOut(LOG_INFO,"No memory to parse file: %s line %d, %s\n", configfile, lineno, strerror(errno));
-        EXIT(EXIT_NOMEM);
-      }
-
-      // Make new device name by adding a space then RAID disk number
-      snprintf(newname, len, "%s [hpt_%d/%d/%d]", cfg->name, cfg->hpt_data[0],
-               cfg->hpt_data[1], cfg->hpt_data[2]);
-      cfg->name=CheckFree(cfg->name, __LINE__,filenameandversion);
-      cfg->name=newname;
-      bytes+=16;
-  }
-
   // If NO monitoring directives are set, then set all of them.
-  if (!(cfg->smartcheck || cfg->usagefailed || cfg->prefail  || 
-        cfg->usage      || cfg->selftest    || cfg->errorlog ||  
-        cfg->tempdiff   || cfg->tempinfo    || cfg->tempcrit   )) {
+  if (!(cfg.smartcheck || cfg.usagefailed || cfg.prefail  ||
+        cfg.usage      || cfg.selftest    || cfg.errorlog ||
+       cfg.tempdiff   || cfg.tempinfo    || cfg.tempcrit   )) {
     
     PrintOut(LOG_INFO,"Drive: %s, implied '-a' Directive on line %d of file %s\n",
-             cfg->name, cfg->lineno, configfile);
+             cfg.name.c_str(), cfg.lineno, configfile);
     
-    cfg->smartcheck=1;
-    cfg->usagefailed=1;
-    cfg->prefail=1;
-    cfg->usage=1;
-    cfg->selftest=1;
-    cfg->errorlog=1;
+    cfg.smartcheck = true;
+    cfg.usagefailed = true;
+    cfg.prefail = true;
+    cfg.usage = true;
+    cfg.selftest = true;
+    cfg.errorlog = true;
   }
   
   // additional sanity check. Has user set -M options without -m?
-  if (cfg->mailwarn && !cfg->mailwarn->address && (cfg->mailwarn->emailcmdline || cfg->mailwarn->emailfreq || cfg->mailwarn->emailtest)){
+  if (cfg.emailaddress.empty() && (!cfg.emailcmdline.empty() || cfg.emailfreq || cfg.emailtest)){
     PrintOut(LOG_CRIT,"Drive: %s, -M Directive(s) on line %d of file %s need -m ADDRESS Directive\n",
-             cfg->name, cfg->lineno, configfile);
+             cfg.name.c_str(), cfg.lineno, configfile);
     return -2;
   }
   
   // has the user has set <nomailer>?
-  if (cfg->mailwarn && cfg->mailwarn->address && !strcmp(cfg->mailwarn->address,"<nomailer>")){
+  if (cfg.emailaddress == "<nomailer>") {
     // check that -M exec is also set
-    if (!cfg->mailwarn->emailcmdline){
+    if (cfg.emailcmdline.empty()){
       PrintOut(LOG_CRIT,"Drive: %s, -m <nomailer> Directive on line %d of file %s needs -M exec Directive\n",
-               cfg->name, cfg->lineno, configfile);
+               cfg.name.c_str(), cfg.lineno, configfile);
       return -2;
     }
-    // now free memory.  From here on the sign of <nomailer> is
-    // address==NULL and cfg->emailcmdline!=NULL
-    cfg->mailwarn->address=FreeNonZero(cfg->mailwarn->address, -1,__LINE__,filenameandversion);
+    // From here on the sign of <nomailer> is address.empty() and !cfg.emailcmdline.empty()
+    cfg.emailaddress.clear();
   }
 
-  // set cfg->emailfreq to 1 (once) if user hasn't set it
-  if (cfg->mailwarn && !cfg->mailwarn->emailfreq)
-    cfg->mailwarn->emailfreq = 1;
-
-  entry++;
+  // set cfg.emailfreq to 1 (once) if user hasn't set it
+  if ((!cfg.emailaddress.empty() || !cfg.emailcmdline.empty()) && !cfg.emailfreq)
+    cfg.emailfreq = 1;
 
   if (devscan)
     return -1;
   else
     return 1;
 }
-
-// clean up utility for ParseConfigFile()
-void cleanup(FILE **fpp, int is_stdin){
-  if (*fpp){
-    // (*fpp != stdin) does not work here if stdin has been closed & reopened
-    if (!is_stdin)
-      fclose(*fpp);
-    *fpp=NULL;
-  }
-
-  return;
-}
-
 
 // Parses a configuration file.  Return values are:
 //  N=>0: found N entries
@@ -3665,21 +3562,20 @@ void cleanup(FILE **fpp, int is_stdin){
 //
 // In the case where the return value is 0, there are three
 // possiblities:
-// Empty configuration file ==> cfgentries==NULL
-// No configuration file    ==> cfgentries[0]->lineno == 0
-// SCANDIRECTIVE found      ==> cfgentries[0]->lineno != 0
-int ParseConfigFile(){
-  FILE *fp=NULL;
-  int entry=0,lineno=1,cont=0,contlineno=0;
-  char line[MAXLINELEN+2];
-  char fullline[MAXCONTLINE+1];
+// Empty configuration file ==> conf_entries.empty()
+// No configuration file    ==> conf_entries[0].lineno == 0
+// SCANDIRECTIVE found      ==> conf_entries[0].lineno != 0
+static int ParseConfigFile(dev_config_vector & conf_entries)
+{
+  // maximum line length in configuration file
+  const int MAXLINELEN = 256;
+  // maximum length of a continued line in configuration file
+  const int MAXCONTLINE = 1023;
 
-  int is_stdin = (configfile == configfile_stdin); // pointer comparison ok here
-
+  stdio_file f;
   // Open config file, if it exists and is not <stdin>
-  if (!is_stdin) {
-    fp=fopen(configfile,"r");
-    if (fp==NULL && (errno!=ENOENT || configfile_alt)) {
+  if (!(configfile == configfile_stdin)) { // pointer comparison ok here
+    if (!f.open(configfile,"r") && (errno!=ENOENT || !configfile_alt.empty())) {
       // file exists but we can't read it or it should exist due to '-c' option
       int ret = (errno!=ENOENT ? -3 : -2);
       PrintOut(LOG_CRIT,"%s: Unable to open configuration file %s\n",
@@ -3688,34 +3584,31 @@ int ParseConfigFile(){
     }
   }
   else // read from stdin ('-c -' option)
-    fp = stdin;
-  
+    f.open(stdin);
+
   // No configuration file found -- use fake one
-  if (fp==NULL) {
-    int len=strlen(SCANDIRECTIVE)+4;
-    char *fakeconfig=(char *)calloc(len,1);
-  
-    if (!fakeconfig || 
-        (len-1) != snprintf(fakeconfig, len, "%s -a", SCANDIRECTIVE) ||
-        -1 != ParseConfigLine(entry, 0, fakeconfig)
-        ) {
-      PrintOut(LOG_CRIT,"Internal error in ParseConfigFile() at line %d of file %s\n%s", 
-               __LINE__, filenameandversion, reportbug);
-      EXIT(EXIT_BADCODE);
-    }
-    fakeconfig=CheckFree(fakeconfig, __LINE__,filenameandversion);
+  int entry = 0;
+  if (!f) {
+    char fakeconfig[] = SCANDIRECTIVE" -a"; // TODO: Remove this hack, build cfg_entry.
+
+    if (ParseConfigLine(conf_entries, entry, 0, fakeconfig) != -1)
+      throw std::logic_error("Internal error parsing "SCANDIRECTIVE);
     return 0;
   }
 
 #ifdef __CYGWIN__
-  setmode(fileno(fp), O_TEXT); // Allow files with \r\n
+  setmode(fileno(f), O_TEXT); // Allow files with \r\n
 #endif
 
   // configuration file exists
   PrintOut(LOG_INFO,"Opened configuration file %s\n",configfile);
 
   // parse config file line by line
-  while (1) {
+  int lineno = 1, cont = 0, contlineno = 0;
+  char line[MAXLINELEN+2];
+  char fullline[MAXCONTLINE+1];
+
+  for (;;) {
     int len=0,scandevice;
     char *lastslash;
     char *comment;
@@ -3725,22 +3618,18 @@ int ParseConfigFile(){
     memset(line,0,sizeof(line));
 
     // get a line
-    code=fgets(line,MAXLINELEN+2,fp);
+    code=fgets(line, MAXLINELEN+2, f);
     
     // are we at the end of the file?
     if (!code){
       if (cont) {
-        scandevice=ParseConfigLine(entry,contlineno,fullline);
+        scandevice = ParseConfigLine(conf_entries, entry, contlineno, fullline);
         // See if we found a SCANDIRECTIVE directive
-        if (scandevice==-1) {
-          cleanup(&fp, is_stdin);
+        if (scandevice==-1)
           return 0;
-        }
         // did we find a syntax error
-        if (scandevice==-2) {
-          cleanup(&fp, is_stdin);
+        if (scandevice==-2)
           return -1;
-        }
         // the final line is part of a continuation line
         cont=0;
         entry+=scandevice;
@@ -3754,14 +3643,13 @@ int ParseConfigFile(){
     // See if line is too long
     len=strlen(line);
     if (len>MAXLINELEN){
-      char *warn;
+      const char *warn;
       if (line[len-1]=='\n')
         warn="(including newline!) ";
       else
         warn="";
       PrintOut(LOG_CRIT,"Error: line %d of file %s %sis more than MAXLINELEN=%d characters.\n",
                (int)contlineno,configfile,warn,(int)MAXLINELEN);
-      cleanup(&fp, is_stdin);
       return -1;
     }
 
@@ -3775,7 +3663,6 @@ int ParseConfigFile(){
     if (cont+len>MAXCONTLINE){
       PrintOut(LOG_CRIT,"Error: continued line %d (actual line %d) of file %s is more than MAXCONTLINE=%d characters.\n",
                lineno, (int)contlineno, configfile, (int)MAXCONTLINE);
-      cleanup(&fp, is_stdin);
       return -1;
     }
     
@@ -3790,36 +3677,22 @@ int ParseConfigFile(){
     }
 
     // Not a continuation line. Parse it
-    scandevice=ParseConfigLine(entry,contlineno,fullline);
+    scandevice = ParseConfigLine(conf_entries, entry, contlineno, fullline);
 
     // did we find a scandevice directive?
-    if (scandevice==-1) {
-      cleanup(&fp, is_stdin);
+    if (scandevice==-1)
       return 0;
-    }
     // did we find a syntax error
-    if (scandevice==-2) {
-      cleanup(&fp, is_stdin);
+    if (scandevice==-2)
       return -1;
-    }
 
     entry+=scandevice;
     lineno++;
     cont=0;
   }
-  cleanup(&fp, is_stdin);
-  
+
   // note -- may be zero if syntax of file OK, but no valid entries!
   return entry;
-}
-
-
-// Prints copyright, license and version information
-void PrintCopyleft(void){
-  debugmode=1;
-  PrintHead();
-  PrintCVS();
-  return;
 }
 
 /* Prints the message "=======> VALID ARGUMENTS ARE: <LIST>  <=======\n", where
@@ -3831,22 +3704,34 @@ void PrintValidArgs(char opt) {
   if (!(s = GetValidArgList(opt)))
     PrintOut(LOG_CRIT, "Error constructing argument list for option %c", opt);
   else
-    PrintOut(LOG_CRIT, (char *)s);
+    PrintOut(LOG_CRIT, "%s", (char *)s);
   PrintOut(LOG_CRIT, " <=======\n");
+}
+
+// Return true if absolute path name
+static bool is_abs_path(const char * path)
+{
+  if (*path == '/')
+    return true;
+#if defined(_WIN32) || defined(__CYGWIN__)
+  if (*path == '\\')
+    return true;
+  int n = -1;
+  sscanf(path, "%*1[A-Za-z]:%*1[/\\]%n", &n);
+  if (n > 0)
+    return true;
+#endif
+  return false;
 }
 
 // Parses input line, prints usage message and
 // version/license/copyright messages
 void ParseOpts(int argc, char **argv){
-  extern char *optarg;
-  extern int  optopt, optind, opterr;
   int optchar;
-  int badarg;
   char *tailptr;
   long lchecktime;
   // Please update GetValidArgList() if you edit shortopts
-  const char *shortopts = "c:l:q:dDni:p:r:Vh?";
-#ifdef HAVE_GETOPT_LONG
+  const char *shortopts = "c:l:q:dDni:p:r:s:A:B:Vh?";
   char *arg;
   // Please update GetValidArgList() if you edit longopts
   struct option longopts[] = {
@@ -3861,6 +3746,9 @@ void ParseOpts(int argc, char **argv){
 #endif
     { "pidfile",        required_argument, 0, 'p' },
     { "report",         required_argument, 0, 'r' },
+    { "savestates",     required_argument, 0, 's' },
+    { "attributelog",   required_argument, 0, 'A' },
+    { "drivedb",        required_argument, 0, 'B' },
 #if defined(_WIN32) || defined(__CYGWIN__)
     { "service",        no_argument,       0, 'n' },
 #endif
@@ -3871,19 +3759,15 @@ void ParseOpts(int argc, char **argv){
     { "usage",          no_argument,       0, 'h' },
     { 0,                0,                 0, 0   }
   };
-#endif
-  
+
   opterr=optopt=0;
-  badarg=FALSE;
-  
+  bool badarg = false;
+  bool no_defaultdb = false; // set true on '-B FILE'
+
   // Parse input options.  This horrible construction is so that emacs
   // indents properly.  Sorry.
   while (-1 != (optchar = 
-#ifdef HAVE_GETOPT_LONG
                 getopt_long(argc, argv, shortopts, longopts, NULL)
-#else
-                getopt(argc, argv, shortopts)
-#endif
                 )) {
     
     switch(optchar) {
@@ -3904,7 +3788,7 @@ void ParseOpts(int argc, char **argv){
       } else if (!(strcmp(optarg,"errors"))) {
         quit=5;
       } else {
-        badarg = TRUE;
+        badarg = true;
       }
       break;
     case 'l':
@@ -3928,11 +3812,11 @@ void ParseOpts(int argc, char **argv){
       else if (!strcmp(optarg, "local7"))
         facility=LOG_LOCAL7;
       else
-        badarg = TRUE;
+        badarg = true;
       break;
     case 'd':
       // enable debug mode
-      debugmode = TRUE;
+      debugmode = 1;
       break;
     case 'n':
       // don't fork()
@@ -3942,7 +3826,7 @@ void ParseOpts(int argc, char **argv){
       break;
     case 'D':
       // print summary of all valid directives
-      debugmode = TRUE;
+      debugmode = 1;
       Directives();
       EXIT(0);
       break;
@@ -3974,7 +3858,7 @@ void ParseOpts(int argc, char **argv){
           EXIT(EXIT_NOMEM);
         }
         if (split_report_arg(s, &i)) {
-          badarg = TRUE;
+          badarg = true;
         } else if (i<1 || i>3) {
           debugmode=1;
           PrintHead();
@@ -3988,25 +3872,47 @@ void ParseOpts(int argc, char **argv){
         } else if (!strcmp(s,"scsiioctl")) {
           con->reportscsiioctl = i;
         } else {
-          badarg = TRUE;
+          badarg = true;
         }
-        s=CheckFree(s, __LINE__,filenameandversion);
+        free(s);  // TODO: use std::string
       }
       break;
     case 'c':
       // alternate configuration file
       if (strcmp(optarg,"-"))
-        configfile=configfile_alt=CustomStrDup(optarg, 1, __LINE__,filenameandversion);
+        configfile = (configfile_alt = optarg).c_str();
       else // read from stdin
         configfile=configfile_stdin;
       break;
     case 'p':
       // output file with PID number
-      pid_file=CustomStrDup(optarg, 1, __LINE__,filenameandversion);
+      pid_file = optarg;
+      break;
+    case 's':
+      // path prefix of persistent state file
+      state_path_prefix = optarg;
+      break;
+    case 'A':
+      // path prefix of attribute log file
+      attrlog_path_prefix = optarg;
+      break;
+    case 'B':
+      {
+        const char * path = optarg;
+        if (*path == '+' && path[1])
+          path++;
+        else
+          no_defaultdb = true;
+        unsigned char savedebug = debugmode; debugmode = 1;
+        if (!read_drive_database(path))
+          EXIT(EXIT_BADCMD);
+        debugmode = savedebug;
+      }
       break;
     case 'V':
       // print version and CVS info
-      PrintCopyleft();
+      debugmode = 1;
+      PrintOut(LOG_INFO, "%s", format_version_info("smartd", true /*full*/).c_str());
       EXIT(0);
       break;
     case 'h':
@@ -4021,7 +3927,6 @@ void ParseOpts(int argc, char **argv){
       // unrecognized option
       debugmode=1;
       PrintHead();
-#ifdef HAVE_GETOPT_LONG
       // Point arg to the argument in which this option was found.
       arg = argv[optind-1];
       // Check whether the option is a long option that doesn't map to -h.
@@ -4036,7 +3941,6 @@ void ParseOpts(int argc, char **argv){
         PrintOut(LOG_CRIT, "\nUse smartd --help to get a usage summary\n\n");
         EXIT(EXIT_BADCMD);
       }
-#endif
       if (optopt) {
         // Iff optopt holds a valid option then argument must be missing.
         if (strchr(shortopts, optopt) != NULL){
@@ -4076,87 +3980,81 @@ void ParseOpts(int argc, char **argv){
   }
 
   // no pidfile in debug mode
-  if (debugmode && pid_file) {
+  if (debugmode && !pid_file.empty()) {
     debugmode=1;
     PrintHead();
     PrintOut(LOG_CRIT, "=======> INVALID CHOICE OF OPTIONS: -d and -p <======= \n\n");
-    PrintOut(LOG_CRIT, "Error: pid file %s not written in debug (-d) mode\n\n", pid_file);
-    pid_file=FreeNonZero(pid_file, -1,__LINE__,filenameandversion);
+    PrintOut(LOG_CRIT, "Error: pid file %s not written in debug (-d) mode\n\n", pid_file.c_str());
     EXIT(EXIT_BADCMD);
   }
-  
+
+  // absolute path is required due to chdir('/') after fork().
+  if (!state_path_prefix.empty() && !debugmode && !is_abs_path(state_path_prefix.c_str())) {
+    debugmode=1;
+    PrintHead();
+    PrintOut(LOG_CRIT, "=======> INVALID CHOICE OF OPTIONS: -s <======= \n\n");
+    PrintOut(LOG_CRIT, "Error: relative path %s is only allowed in debug (-d) mode\n\n",
+      state_path_prefix.c_str());
+    EXIT(EXIT_BADCMD);
+  }
+
+  // absolute path is required due to chdir('/') after fork().
+  if (!attrlog_path_prefix.empty() && !debugmode && !is_abs_path(attrlog_path_prefix.c_str())) {
+    debugmode=1;
+    PrintHead();
+    PrintOut(LOG_CRIT, "=======> INVALID CHOICE OF OPTIONS: -s <======= \n\n");
+    PrintOut(LOG_CRIT, "Error: relative path %s is only allowed in debug (-d) mode\n\n",
+      attrlog_path_prefix.c_str());
+    EXIT(EXIT_BADCMD);
+  }
+
+  // Read or init drive database
+  if (!no_defaultdb) {
+    unsigned char savedebug = debugmode; debugmode = 1;
+    if (!read_default_drive_databases())
+        EXIT(EXIT_BADCMD);
+    debugmode = savedebug;
+  }
+
   // print header
   PrintHead();
-  
-  return;
 }
 
 // Function we call if no configuration file was found or if the
 // SCANDIRECTIVE Directive was found.  It makes entries for device
-// names returned by make_device_names() in os_OSNAME.c
-int MakeConfigEntries(const char *type, int start){
-  int i;
-  int num;
-  char** devlist = NULL;
-  cfgfile *first=cfgentries[0],*cfg=first;
-
-  // Hack! This is to make DEVICESCAN work on ATA devices behind
-  // a SCSI to ATA Translation (SAT) Layer.
-  // This will work on a general OS if the way that SAT devices are
-  // named is the same as SCSI devices.
-  // The BETTER solution is to modify make_device_names to recognize
-  // the additional type "SAT".  This requires changing os_*.cpp.
-
-  const char *basetype = type;
-  if (!strcmp(type,"SAT") )
-    basetype = "SCSI";
-
+// names returned by scan_smart_devices() in os_OSNAME.cpp
+static int MakeConfigEntries(const dev_config & base_cfg,
+  dev_config_vector & conf_entries, smart_device_list & scanned_devs, const char * type)
+{
   // make list of devices
-  if ((num=make_device_names(&devlist,basetype))<0)
+  smart_device_list devlist;
+  if (!smi()->scan_smart_devices(devlist, (*type ? type : 0)))
     PrintOut(LOG_CRIT,"Problem creating device name scan list\n");
   
   // if no devices, or error constructing list, return
-  if (num<=0)
+  if (devlist.size() <= 0)
     return 0;
-  
-  // loop over entries to create
-  for (i=0; i<num; i++){
-    
-    // make storage and copy for all but first entry
-    if (start+i) {
-      // allocate more storage if needed
-      while (cfgentries_max<=start+i)
-        cfgentries=AllocateMoreSpace(cfgentries, &cfgentries_max, "simulated configuration file device");
-      cfg=cfgentries[start+i]=CreateConfigEntry(first);
-    }
 
-    // ATA or SCSI?
-    if (!strcmp(type,"ATA") )
-      cfg->controller_type = CONTROLLER_ATA;
-    if (!strcmp(type,"SCSI") ) 
-      cfg->controller_type = CONTROLLER_SCSI;
-    if (!strcmp(type,"SAT") )
-      cfg->controller_type = CONTROLLER_SAT;
-    
-    // remove device name, if it's there, and put in correct one
-    cfg->name=FreeNonZero(cfg->name, -1,__LINE__,filenameandversion);
-    // save pointer to the device name created within
-    // make_device_names
-    cfg->name=devlist[i];
+  // loop over entries to create
+  for (unsigned i = 0; i < devlist.size(); i++) {
+    // Move device pointer
+    smart_device * dev = devlist.release(i);
+    scanned_devs.push_back(dev);
+
+    // Copy configuration, update device and type name
+    conf_entries.push_back(base_cfg);
+    dev_config & cfg = conf_entries.back();
+    cfg.name = dev->get_info().info_name;
+    cfg.dev_type = type;
   }
   
-  // If needed, free memory used for devlist: pointers now in
-  // cfgentries[]->names.  If num==0 we never get to this point, but
-  // that's OK.  If we realloc()d the array length in
-  // make_device_names() that was ALREADY equivalent to calling
-  // free().
-  devlist = FreeNonZero(devlist,(sizeof (char*) * num),__LINE__, filenameandversion);
-  
-  return num;
+  return devlist.size();
 }
  
-void CanNotRegister(char *name, char *type, int line, int scandirective){
-  if( !debugmode && scandirective == 1 ) { return; }
+static void CanNotRegister(const char *name, const char *type, int line, bool scandirective)
+{
+  if (!debugmode && scandirective)
+    return;
   if (line)
     PrintOut(scandirective?LOG_INFO:LOG_CRIT,
              "Unable to register %s device %s at line %d of file %s\n",
@@ -4171,205 +4069,172 @@ void CanNotRegister(char *name, char *type, int line, int scandirective){
 // had errors, else number of entries which may be zero or positive. 
 // If we found no configuration file, or it contained SCANDIRECTIVE,
 // then *scanning is set to 1, else 0.
-int ReadOrMakeConfigEntries(int *scanning){
-  int entries;
-  
-  // deallocate any cfgfile data structures in memory
-  RmAllConfigEntries();
-  
+static int ReadOrMakeConfigEntries(dev_config_vector & conf_entries, smart_device_list & scanned_devs)
+{
   // parse configuration file configfile (normally /etc/smartd.conf)  
-  if ((entries=ParseConfigFile())<0) {
- 
+  int entries = ParseConfigFile(conf_entries);
+
+  if (entries < 0) {
     // There was an error reading the configuration file.
-    RmAllConfigEntries();
+    conf_entries.clear();
     if (entries == -1)
       PrintOut(LOG_CRIT, "Configuration file %s has fatal syntax errors.\n", configfile);
     return entries;
   }
 
-  // did we find entries or scan?
-  *scanning=0;
-  
   // no error parsing config file.
   if (entries) {
     // we did not find a SCANDIRECTIVE and did find valid entries
     PrintOut(LOG_INFO, "Configuration file %s parsed.\n", configfile);
   }
-  else if (cfgentries && cfgentries[0]) {
+  else if (conf_entries.size() == 1) {
     // we found a SCANDIRECTIVE or there was no configuration file so
     // scan.  Configuration file's first entry contains all options
     // that were set
-    cfgfile *first=cfgentries[0];
+    dev_config first = conf_entries.front();
+    conf_entries.clear();
 
-    // By default scan for ATA, SCSI and SAT devices
-    int doata=1, doscsi=1, dosat=1;
-
-    if (first->controller_type==CONTROLLER_SCSI) {
-      doata = 0;
-      dosat = 0;
-    } else if (first->controller_type==CONTROLLER_ATA) {
-      doscsi = 0;
-      dosat = 0;
-    } else if (first->controller_type==CONTROLLER_SAT) {
-      doata = 0;
-      doscsi = 0;
-    } else
-      dosat = 0;
-// The code in this block has been neutered by D. Gilbert
-// on 20070226. smartd can't cope ATA disk behind a SAT
-// transport seamlessly _without_ a bigger restructuring
-// of smartd than this code tried. It made ATA disks
-// behind a SAT interface automatically detected only by
-// killing support for real SCSI disks. Sorry, no.
-
-    *scanning=1;
-    
-    if (first->lineno)
+    if (first.lineno)
       PrintOut(LOG_INFO,"Configuration file %s was parsed, found %s, scanning devices\n", configfile, SCANDIRECTIVE);
     else
       PrintOut(LOG_INFO,"No configuration file %s found, scanning devices\n", configfile);
     
-    // make config list of ATA devices to search for
-    if (doata)
-      entries+=MakeConfigEntries("ATA", entries);
-    // make config list of SCSI devices to search for
-    if (doscsi)
-      entries+=MakeConfigEntries("SCSI", entries);
-    if (dosat)
-      entries+=MakeConfigEntries("SAT", entries);
+    // make config list of devices to search for
+    MakeConfigEntries(first, conf_entries, scanned_devs, first.dev_type.c_str());
 
     // warn user if scan table found no devices
-    if (!entries) {
+    if (conf_entries.empty())
       PrintOut(LOG_CRIT,"In the system's table of devices NO devices found to scan\n");
-      // get rid of fake entry with SCANDIRECTIVE as name
-      RmConfigEntry(cfgentries, __LINE__);
-    }
   } 
   else
     PrintOut(LOG_CRIT,"Configuration file %s parsed but has no entries (like /dev/hda)\n",configfile);
   
-  return entries;
+  return conf_entries.size();
 }
 
 
-// This function tries devices from cfgentries.  Each one that can be
+// This function tries devices from conf_entries.  Each one that can be
 // registered is moved onto the [ata|scsi]devices lists and removed
-// from the cfgentries list, else it's memory is deallocated.
-void RegisterDevices(int scanning){
-  int i;
-  
+// from the conf_entries list.
+static void RegisterDevices(const dev_config_vector & conf_entries, smart_device_list & scanned_devs,
+                            dev_config_vector & configs, dev_state_vector & states, smart_device_list & devices)
+{
   // start by clearing lists/memory of ALL existing devices
-  RmAllDevEntries();
-  numdevata=numdevscsi=0;
-  
+  configs.clear();
+  devices.clear();
+  states.clear();
+
   // Register entries
-  for (i=0; i<cfgentries_max ; i++){
-    
-    cfgfile *ent=cfgentries[i];
-    
-    // skip any NULL entries (holes)
-    if (!ent)
+  for (unsigned i = 0; i < conf_entries.size(); i++){
+
+    dev_config cfg = conf_entries[i];
+
+    // get device of appropriate type
+    // TODO: exception handling
+    smart_device * dev = 0;
+    bool scanning = false;
+
+    // Device may already be detected during devicescan
+    if (i < scanned_devs.size()) {
+      dev = scanned_devs.release(i);
+      if (dev)
+        scanning = true;
+    }
+
+    if (!dev) {
+      dev = smi()->get_smart_device(cfg.name.c_str(), cfg.dev_type.c_str());
+      if (!dev) {
+        if (cfg.dev_type.empty())
+          PrintOut(LOG_INFO,"Device: %s, unable to autodetect device type\n", cfg.name.c_str());
+        else
+          PrintOut(LOG_INFO,"Device: %s, unsupported device type '%s'\n", cfg.name.c_str(), cfg.dev_type.c_str());
+        continue;
+      }
+    }
+
+    // Save old info
+    smart_device::device_info oldinfo = dev->get_info();
+
+    // Open with autodetect support, may return 'better' device
+    dev = dev->autodetect_open();
+
+    // Report if type has changed
+    if (/* ent->dev_type && */ oldinfo.dev_type != dev->get_dev_type())
+      PrintOut(LOG_INFO,"Device: %s, type changed from '%s' to '%s'\n",
+        cfg.name.c_str(), oldinfo.dev_type.c_str(), dev->get_dev_type());
+
+    if (!dev->is_open()) {
+      // For linux+devfs, a nonexistent device gives a strange error
+      // message.  This makes the error message a bit more sensible.
+      // If no debug and scanning - don't print errors
+      if (debugmode || !scanning)
+        PrintOut(LOG_INFO, "Device: %s, open() failed: %s\n", dev->get_info_name(), dev->get_errmsg());
+      delete dev;
       continue;
-    
+    }
+
+    // Update informal name
+    cfg.name = dev->get_info().info_name;
+    PrintOut(LOG_INFO, "Device: %s, opened\n", cfg.name.c_str());
+
+    // Prepare initial state
+    dev_state state;
+
     // register ATA devices
-    if (ent->controller_type!=CONTROLLER_SCSI && ent->controller_type!=CONTROLLER_CCISS){
-      if (ATADeviceScan(ent, scanning))
-        CanNotRegister(ent->name, "ATA", ent->lineno, scanning);
+    if (dev->is_ata()){
+      if (ATADeviceScan(cfg, state, dev->to_ata())) {
+        CanNotRegister(cfg.name.c_str(), "ATA", cfg.lineno, scanning);
+        delete dev; dev = 0;
+      }
       else {
         // move onto the list of ata devices
-        cfgentries[i]=NULL;
-        while (numdevata+numdevscsi>=ATAandSCSIdevlist_max)
-	    ATAandSCSIdevlist=AllocateMoreSpace(ATAandSCSIdevlist, &ATAandSCSIdevlist_max, "ATA and SCSI devices");
-	ent->WhichCheckDevice=0;
-        ATAandSCSIdevlist[numdevscsi+numdevata]=ent;
-        numdevata++;
+        configs.push_back(cfg);
+        states.push_back(state);
+        devices.push_back(dev);
       }
     }
     
-    // then register SCSI devices
-    if (ent->controller_type==CONTROLLER_SCSI || ent->controller_type==CONTROLLER_CCISS || 
-        ent->controller_type==CONTROLLER_UNKNOWN){
-      int retscsi=0;
-
-#if SCSITIMEOUT
-      struct sigaction alarmAction, defaultaction;
-
-      // Set up an alarm handler to catch USB devices that hang on
-      // SCSI scanning...
-      alarmAction.sa_handler= AlarmHandler;
-      alarmAction.sa_flags  = SA_RESTART;
-      if (sigaction(SIGALRM, &alarmAction, &defaultaction)) {
-        // if we can't set timeout, just scan device
-        PrintOut(LOG_CRIT, "Unable to initialize SCSI timeout mechanism.\n");
-        retscsi=SCSIandSATDeviceScan(ent, scanning);
-      }
-      else {
-        // prepare return point in case of bad SCSI device
-        if (setjmp(registerscsienv))
-          // SCSI device timed out!
-          retscsi=-1;
-        else {
-        // Set alarm, make SCSI call, reset alarm
-          alarm(SCSITIMEOUT);
-          retscsi=SCSIandSATDeviceScan(ent, scanning);
-          alarm(0);
-        }
-        if (sigaction(SIGALRM, &defaultaction, NULL)){
-          PrintOut(LOG_CRIT, "Unable to clear SCSI timeout mechanism.\n");
-        }
-      }
-#else
-      retscsi=SCSIandSATDeviceScan(ent, scanning);
-#endif   
-
-      // Now scan SCSI device...
-      if (retscsi){
-        if (retscsi<0)
-          PrintOut(LOG_CRIT, "Device %s timed out (poorly-implemented USB device?)\n", ent->name);
-        CanNotRegister(ent->name, "SCSI", ent->lineno, scanning);
+    // or register SCSI devices
+    else if (dev->is_scsi()){
+      if (SCSIDeviceScan(cfg, state, dev->to_scsi())) {
+        CanNotRegister(cfg.name.c_str(), "SCSI", cfg.lineno, scanning);
+        delete dev; dev = 0;
       }
       else {
         // move onto the list of scsi devices
-        cfgentries[i]=NULL;
-        while (numdevscsi+numdevata>=ATAandSCSIdevlist_max)
-	  ATAandSCSIdevlist=AllocateMoreSpace(ATAandSCSIdevlist, &ATAandSCSIdevlist_max, "ATA and SCSI devices");
-        ATAandSCSIdevlist[numdevata+numdevscsi]=ent;
-        numdevscsi++;
+        configs.push_back(cfg);
+        states.push_back(state);
+        devices.push_back(dev);
       }
     }
     
     // if device is explictly listed and we can't register it, then
     // exit unless the user has specified that the device is removable
-    if (cfgentries[i]  && !scanning){
-      if (ent->removable || quit==2)
-        PrintOut(LOG_INFO, "Device %s not available\n", ent->name);
+    if (!dev && !scanning) {
+      if (cfg.removable || quit==2)
+        PrintOut(LOG_INFO, "Device %s not available\n", cfg.name.c_str());
       else {
-        PrintOut(LOG_CRIT, "Unable to register device %s (no Directive -d removable). Exiting.\n", ent->name);
+        PrintOut(LOG_CRIT, "Unable to register device %s (no Directive -d removable). Exiting.\n", cfg.name.c_str());
         EXIT(EXIT_BADDEV);
       }
     }
-    
-    // free up memory if device could not be registered
-    RmConfigEntry(cfgentries+i, __LINE__);
   }
-  
-  return;
 }
 
 
-#ifndef _WIN32
-// Main function
-int main(int argc, char **argv)
-#else
-// Windows: internal main function started direct or by service control manager
-static int smartd_main(int argc, char **argv)
-#endif
+// Main program without exception handling
+int main_worker(int argc, char **argv)
 {
+  // Initialize interface
+  smart_interface::init();
+  if (!smi())
+    return 1;
+
   // external control variables for ATA disks
   smartmonctrl control;
 
   // is it our first pass through?
-  int firstpass=1;
+  bool firstpass = true;
 
   // next time to wake up
   time_t wakeuptime;
@@ -4382,14 +4247,20 @@ static int smartd_main(int argc, char **argv)
   ParseOpts(argc,argv);
   
   // do we mute printing from ataprint commands?
-  con->printing_switchable=0;
-  con->dont_print=debugmode?0:1;
+  con->printing_switchable = false;
+  con->dont_print = !debugmode;
   
-  // don't exit on bad checksums
-  con->checksumfail=0;
-  
+  // Configuration for each device
+  dev_config_vector configs;
+  // Device states
+  dev_state_vector states;
+  // Devices to monitor
+  smart_device_list devices;
+
+  bool write_states_always = true;
+
   // the main loop of the code
-  while (1){
+  for (;;) {
 
     // are we exiting from a signal?
     if (caughtsigEXIT) {
@@ -4400,14 +4271,19 @@ static int smartd_main(int argc, char **argv)
       
       PrintOut(isok?LOG_INFO:LOG_CRIT, "smartd received signal %d: %s\n",
                caughtsigEXIT, strsignal(caughtsigEXIT));
-      
-      EXIT(isok?0:EXIT_SIGNAL);
+
+      if (!isok)
+        return EXIT_SIGNAL;
+
+      // Write state files
+      if (!state_path_prefix.empty())
+        write_all_dev_states(configs, states);
+
+      return 0;
     }
 
     // Should we (re)read the config file?
     if (firstpass || caughtsigHUP){
-      int entries, scanning=0;
-
       if (!firstpass) {
 #ifdef __CYGWIN__
         // Workaround for missing SIGQUIT via keyboard on Cygwin
@@ -4422,6 +4298,10 @@ static int smartd_main(int argc, char **argv)
           caughtsigHUP=2;
         }
 #endif
+        // Write state files
+        if (!state_path_prefix.empty())
+          write_all_dev_states(configs, states);
+
         PrintOut(LOG_INFO,
                  caughtsigHUP==1?
                  "Signal HUP - rereading configuration file %s\n":
@@ -4429,28 +4309,40 @@ static int smartd_main(int argc, char **argv)
                  configfile);
       }
 
-      // clears cfgentries, (re)reads config file, makes >=0 entries
-      entries=ReadOrMakeConfigEntries(&scanning);
+      {
+        dev_config_vector conf_entries; // Entries read from smartd.conf
+        smart_device_list scanned_devs; // Devices found during scan
+        // (re)reads config file, makes >=0 entries
+        int entries = ReadOrMakeConfigEntries(conf_entries, scanned_devs);
 
-      if (entries>=0) {
-        // checks devices, then moves onto ata/scsi list or deallocates.
-        RegisterDevices(scanning);
-      }
-      else if (quit==2 || ((quit==0 || quit==1) && !firstpass)) {
-        // user has asked to continue on error in configuration file
-        if (!firstpass)
-          PrintOut(LOG_INFO,"Reusing previous configuration\n");
-      }
-      else {
-        // exit with configuration file error status
-        int status = (entries==-3 ? EXIT_READCONF : entries==-2 ? EXIT_NOCONF : EXIT_BADCONF);
-        EXIT(status);
+        if (entries>=0) {
+          // checks devices, then moves onto ata/scsi list or deallocates.
+          RegisterDevices(conf_entries, scanned_devs, configs, states, devices);
+          if (!(configs.size() == devices.size() && configs.size() == states.size()))
+            throw std::logic_error("Invalid result from RegisterDevices");
+        }
+        else if (quit==2 || ((quit==0 || quit==1) && !firstpass)) {
+          // user has asked to continue on error in configuration file
+          if (!firstpass)
+            PrintOut(LOG_INFO,"Reusing previous configuration\n");
+        }
+        else {
+          // exit with configuration file error status
+          int status = (entries==-3 ? EXIT_READCONF : entries==-2 ? EXIT_NOCONF : EXIT_BADCONF);
+          EXIT(status);
+        }
       }
 
       // Log number of devices we are monitoring...
-      if (numdevata+numdevscsi || quit==2 || (quit==1 && !firstpass))
+      if (devices.size() > 0 || quit==2 || (quit==1 && !firstpass)) {
+        int numata = 0;
+        for (unsigned i = 0; i < devices.size(); i++) {
+          if (devices.at(i)->is_ata())
+            numata++;
+        }
         PrintOut(LOG_INFO,"Monitoring %d ATA and %d SCSI devices\n",
-                 numdevata, numdevscsi);
+                 numata, devices.size() - numata);
+      }
       else {
         PrintOut(LOG_INFO,"Unable to monitor any SMART enabled devices. Try debug (-d) option. Exiting...\n");
         EXIT(EXIT_NODEV);
@@ -4458,18 +4350,30 @@ static int smartd_main(int argc, char **argv)
 
       if (quit==4) {
         // user has asked to print test schedule
-        PrintTestSchedule(ATAandSCSIdevlist);
+        PrintTestSchedule(configs, states, devices);
         EXIT(0);
       }
       
       // reset signal
       caughtsigHUP=0;
+
+      // Always write state files after (re)configuration
+      write_states_always = true;
     }
 
     // check all devices once,
     // self tests are not started in first pass unless '-q onecheck' is specified
-    CheckDevicesOnce(ATAandSCSIdevlist, (!firstpass || quit==3)); 
-    
+    CheckDevicesOnce(configs, states, devices, (!firstpass || quit==3));
+
+     // Write state files
+    if (!state_path_prefix.empty())
+      write_all_dev_states(configs, states, write_states_always);
+    write_states_always = false;
+
+    // Write attribute logs
+    if (!attrlog_path_prefix.empty())
+      write_all_dev_attrlogs(configs, states);
+
     // user has asked us to exit after first check
     if (quit==3) {
       PrintOut(LOG_INFO,"Started with '-q onecheck' option. All devices sucessfully checked once.\n"
@@ -4485,12 +4389,50 @@ static int smartd_main(int argc, char **argv)
     // set exit and signal handlers, write PID file, set wake-up time
     if (firstpass){
       Initialize(&wakeuptime);
-      firstpass=0;
+      firstpass = false;
     }
     
     // sleep until next check time, or a signal arrives
-    wakeuptime=dosleep(wakeuptime);
+    wakeuptime = dosleep(wakeuptime, write_states_always);
   }
+}
+
+
+#ifndef _WIN32
+// Main program
+int main(int argc, char **argv)
+#else
+// Windows: internal main function started direct or by service control manager
+static int smartd_main(int argc, char **argv)
+#endif
+{
+  int status;
+  try {
+    // Do the real work ...
+    status = main_worker(argc, argv);
+  }
+  catch (int ex) {
+    // EXIT(status) arrives here
+    status = ex;
+  }
+  catch (const std::bad_alloc & /*ex*/) {
+    // Memory allocation failed (also thrown by std::operator new)
+    PrintOut(LOG_CRIT, "Smartd: Out of memory\n");
+    status = EXIT_NOMEM;
+  }
+  catch (const std::exception & ex) {
+    // Other fatal errors
+    PrintOut(LOG_CRIT, "Smartd: Exception: %s\n", ex.what());
+    status = EXIT_BADCODE;
+  }
+
+  if (is_initialized)
+    status = Goodbye(status);
+
+#ifdef _WIN32
+  daemon_winsvc_exitcode = status;
+#endif
+  return status;
 }
 
 

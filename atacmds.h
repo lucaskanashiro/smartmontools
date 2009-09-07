@@ -3,7 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,7 +26,9 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h,v 1.90 2008/03/04 22:09:47 ballen4705 Exp $\n"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 2859 2009-07-23 18:55:06Z chrfranke $"
+
+#include "dev_interface.h" // ata_device
 
 // Macro to check expected size of struct at compile time using a
 // dummy typedef.  On size mismatch, compiler reports a negative array
@@ -64,11 +67,22 @@ typedef enum {
   WRITE_LOG
 } smart_command_set;
 
+// Possible values for fix_firmwarebug.
+enum {
+  FIX_NOTSPECIFIED = 0,
+  FIX_NONE,
+  FIX_SAMSUNG,
+  FIX_SAMSUNG2,
+  FIX_SAMSUNG3
+};
+
 // ATA Specification Command Register Values (Commands)
-#define ATA_IDENTIFY_DEVICE             0xec                                              
+#define ATA_IDENTIFY_DEVICE             0xec
 #define ATA_IDENTIFY_PACKET_DEVICE      0xa1
 #define ATA_SMART_CMD                   0xb0
 #define ATA_CHECK_POWER_MODE            0xe5
+// 48-bit commands
+#define ATA_READ_LOG_EXT                0x2F
 
 // ATA Specification Feature Register Values (SMART Subcommands).
 // Note that some are obsolete as of ATA-7.
@@ -298,6 +312,90 @@ struct ata_smart_errorlog {
 #pragma pack()
 ASSERT_SIZEOF_STRUCT(ata_smart_errorlog, 512);
 
+
+// Extended Comprehensive SMART Error Log data structures
+// See Section A.7 of
+//   AT Attachment 8 - ATA/ATAPI Command Set (ATA8-ACS)
+//   T13/1699-D Revision 6a (Working Draft), September 6, 2008.
+
+// Command data structure
+// Table A.9 of T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_exterrlog_command
+{
+  unsigned char device_control_register;
+  unsigned char features_register;
+  unsigned char features_register_hi;
+  unsigned char count_register;
+  unsigned char count_register_hi;
+  unsigned char lba_low_register;
+  unsigned char lba_low_register_hi;
+  unsigned char lba_mid_register;
+  unsigned char lba_mid_register_hi;
+  unsigned char lba_high_register;
+  unsigned char lba_high_register_hi;
+  unsigned char device_register;
+  unsigned char command_register;
+
+  unsigned char reserved;
+  unsigned int timestamp;
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_exterrlog_command, 18);
+
+// Error data structure
+// Table A.10 T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_exterrlog_error
+{
+  unsigned char device_control_register;
+  unsigned char error_register;
+  unsigned char count_register;
+  unsigned char count_register_hi;
+  unsigned char lba_low_register;
+  unsigned char lba_low_register_hi;
+  unsigned char lba_mid_register;
+  unsigned char lba_mid_register_hi;
+  unsigned char lba_high_register;
+  unsigned char lba_high_register_hi;
+  unsigned char device_register;
+  unsigned char status_register;
+
+  unsigned char extended_error[19];
+  unsigned char state;
+  unsigned short timestamp;
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_exterrlog_error, 34);
+
+// Error log data structure
+// Table A.8 of T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_exterrlog_error_log
+{
+  ata_smart_exterrlog_command commands[5];
+  ata_smart_exterrlog_error error;
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_exterrlog_error_log, 124);
+
+// Ext. Comprehensive SMART error log
+// Table A.7 of T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_exterrlog
+{
+  unsigned char version;
+  unsigned char reserved1;
+  unsigned short error_log_index;
+  ata_smart_exterrlog_error_log error_logs[4];
+  unsigned short device_error_count;
+  unsigned char reserved2[9];
+  unsigned char checksum;
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_exterrlog, 512);
+
+
 // Table 45 of T13/1321D Rev 1 spec (Self-test log descriptor entry)
 #pragma pack(1)
 struct ata_smart_selftestlog_struct {
@@ -323,6 +421,42 @@ struct ata_smart_selftestlog {
 } ATTR_PACKED;
 #pragma pack()
 ASSERT_SIZEOF_STRUCT(ata_smart_selftestlog, 512);
+
+// Extended SMART Self-test log data structures
+// See Section A.8 of
+//   AT Attachment 8 - ATA/ATAPI Command Set (ATA8-ACS)
+//   T13/1699-D Revision 6a (Working Draft), September 6, 2008.
+
+// Extended Self-test log descriptor entry
+// Table A.13 of T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_extselftestlog_desc
+{
+  unsigned char self_test_type;
+  unsigned char self_test_status;
+  unsigned short timestamp;
+  unsigned char checkpoint;
+  unsigned char failing_lba[6];
+  unsigned char vendorspecific[15];
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_extselftestlog_desc, 26);
+
+// Extended Self-test log data structure
+// Table A.12 of T13/1699-D Revision 6a
+#pragma pack(1)
+struct ata_smart_extselftestlog
+{
+  unsigned char version;
+  unsigned char reserved1;
+  unsigned short log_desc_index;
+  struct ata_smart_extselftestlog_desc log_descs[19];
+  unsigned char vendor_specifc[2];
+  unsigned char reserved2[11];
+  unsigned char chksum;
+} ATTR_PACKED;
+#pragma pack()
+ASSERT_SIZEOF_STRUCT(ata_smart_extselftestlog, 512);
 
 // SMART LOG DIRECTORY Table 52 of T13/1532D Vol 1 Rev 1a
 #pragma pack(1)
@@ -457,97 +591,141 @@ struct ata_sct_temperature_history_table
 #pragma pack()
 ASSERT_SIZEOF_STRUCT(ata_sct_temperature_history_table, 512);
 
+// Possible values for span_args.mode
+enum {
+  SEL_RANGE, // MIN-MAX
+  SEL_REDO,  // redo this
+  SEL_NEXT,  // do next range
+  SEL_CONT   // redo or next depending of last test status
+};
+
+// Arguments for selective self-test
+struct ata_selective_selftest_args
+{
+  // Arguments for each span
+  struct span_args
+  {
+    uint64_t start;   // First block
+    uint64_t end;     // Last block
+    int mode;         // SEL_*, see above
+
+    span_args()
+      : start(0), end(0), mode(SEL_RANGE) { }
+  };
+
+  span_args span[5];  // Range and mode for 5 spans
+  int num_spans;      // Number of spans
+  int pending_time;   // One plus time in minutes to wait after powerup before restarting
+                      // interrupted offline scan after selective self-test.
+  int scan_after_select; // Run offline scan after selective self-test:
+                      // 0: don't change,
+                      // 1: turn off scan after selective self-test,
+                      // 2: turn on scan after selective self-test.
+
+  ata_selective_selftest_args()
+    : num_spans(0), pending_time(0), scan_after_select(0) { }
+};
+
 
 // Get information from drive
-int ataReadHDIdentity(int device, struct ata_identify_device *buf);
-int ataCheckPowerMode(int device);
+int ataReadHDIdentity(ata_device * device, struct ata_identify_device *buf);
+int ataCheckPowerMode(ata_device * device);
 
 /* Read S.M.A.R.T information from drive */
-int ataReadSmartValues(int device,struct ata_smart_values *);
-int ataReadSmartThresholds(int device, struct ata_smart_thresholds_pvt *);
-int ataReadErrorLog(int device, struct ata_smart_errorlog *);
-int ataReadSelfTestLog(int device, struct ata_smart_selftestlog *);
-int ataReadSelectiveSelfTestLog(int device, struct ata_selective_self_test_log *data);
-int ataSmartStatus(int device);
-int ataSetSmartThresholds(int device, struct ata_smart_thresholds_pvt *);
-int ataReadLogDirectory(int device, struct ata_smart_log_directory *);
+int ataReadSmartValues(ata_device * device,struct ata_smart_values *);
+int ataReadSmartThresholds(ata_device * device, struct ata_smart_thresholds_pvt *);
+int ataReadErrorLog (ata_device * device, ata_smart_errorlog *data,
+                     unsigned char fix_firmwarebug);
+int ataReadSelfTestLog(ata_device * device, ata_smart_selftestlog * data,
+                       unsigned char fix_firmwarebug);
+int ataReadSelectiveSelfTestLog(ata_device * device, struct ata_selective_self_test_log *data);
+int ataSetSmartThresholds(ata_device * device, struct ata_smart_thresholds_pvt *);
+int ataReadLogDirectory(ata_device * device, ata_smart_log_directory *, bool gpl);
+
+// Read GP Log page(s)
+bool ataReadLogExt(ata_device * device, unsigned char logaddr,
+                   unsigned char features, unsigned page,
+                   void * data, unsigned nsectors);
+// Read SMART Log page(s)
+bool ataReadSmartLog(ata_device * device, unsigned char logaddr,
+                     void * data, unsigned nsectors);
+// Read SMART Extended Comprehensive Error Log
+bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
+                        unsigned nsectors);
+// Read SMART Extended Self-test Log
+bool ataReadExtSelfTestLog(ata_device * device, ata_smart_extselftestlog * log,
+                           unsigned nsectors);
 
 // Read SCT information
-int ataReadSCTStatus(int device, ata_sct_status_response * sts);
-int ataReadSCTTempHist(int device, ata_sct_temperature_history_table * tmh,
+int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts);
+int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * tmh,
                        ata_sct_status_response * sts);
 // Set SCT temperature logging interval
-int ataSetSCTTempInterval(int device, unsigned interval, bool persistent);
+int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persistent);
 
 
 /* Enable/Disable SMART on device */
-int ataEnableSmart ( int device );
-int ataDisableSmart (int device );
-int ataEnableAutoSave(int device);
-int ataDisableAutoSave(int device);
+int ataEnableSmart (ata_device * device);
+int ataDisableSmart (ata_device * device);
+int ataEnableAutoSave(ata_device * device);
+int ataDisableAutoSave(ata_device * device);
 
 /* Automatic Offline Testing */
-int ataEnableAutoOffline ( int device );
-int ataDisableAutoOffline (int device );
+int ataEnableAutoOffline (ata_device * device);
+int ataDisableAutoOffline (ata_device * device);
 
 /* S.M.A.R.T. test commands */
-int ataSmartOfflineTest (int device);
-int ataSmartExtendSelfTest (int device);
-int ataSmartShortSelfTest (int device);
-int ataSmartShortCapSelfTest (int device);
-int ataSmartExtendCapSelfTest (int device);
-int ataSmartSelfTestAbort (int device);
+int ataSmartOfflineTest (ata_device * device);
+int ataSmartExtendSelfTest (ata_device * device);
+int ataSmartShortSelfTest (ata_device * device);
+int ataSmartShortCapSelfTest (ata_device * device);
+int ataSmartExtendCapSelfTest (ata_device * device);
+int ataSmartSelfTestAbort (ata_device * device);
+int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_args & args,
+                                 const ata_smart_values * sv, uint64_t num_sectors);
 
 // Returns the latest compatibility of ATA/ATAPI Version the device
 // supports. Returns -1 if Version command is not supported
-int ataVersionInfo (const char **description, struct ata_identify_device *drive, unsigned short *minor);
+int ataVersionInfo(const char ** description, const ata_identify_device * drive, unsigned short * minor);
 
 // If SMART supported, this is guaranteed to return 1 if SMART is enabled, else 0.
-int ataDoesSmartWork(int device);
+int ataDoesSmartWork(ata_device * device);
 
 // returns 1 if SMART supported, 0 if not supported or can't tell
-int ataSmartSupport ( struct ata_identify_device *drive);
+int ataSmartSupport(const ata_identify_device * drive);
 
 // Return values:
 //  1: SMART enabled
 //  0: SMART disabled
 // -1: can't tell if SMART is enabled -- try issuing ataDoesSmartWork command to see
-int ataIsSmartEnabled(struct ata_identify_device *drive);
+int ataIsSmartEnabled(const ata_identify_device * drive);
 
 /* Check SMART for Threshold failure */
 // onlyfailed=0 : are or were any age or prefailure attributes <= threshold
 // onlyfailed=1:  are any prefailure attributes <= threshold now
-int ataCheckSmart ( struct ata_smart_values *data, struct ata_smart_thresholds_pvt *thresholds, int onlyfailed);
+int ataCheckSmart(const ata_smart_values * data, const ata_smart_thresholds_pvt * thresholds, int onlyfailed);
 
-int ataSmartStatus2(int device);
+int ataSmartStatus2(ata_device * device);
 
-// int isOfflineTestTime ( struct ata_smart_values data)
-//  returns S.M.A.R.T. Offline Test Time in seconds
-int isOfflineTestTime ( struct ata_smart_values *data);
+int isSmartErrorLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
 
-int isShortSelfTestTime ( struct ata_smart_values *data);
+int isSmartTestLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
 
-int isExtendedSelfTestTime ( struct ata_smart_values *data);
+int isGeneralPurposeLoggingCapable(const ata_identify_device * identity);
 
-int isSmartErrorLogCapable(struct ata_smart_values *data, struct ata_identify_device *identity);
+int isSupportExecuteOfflineImmediate(const ata_smart_values * data);
 
-int isSmartTestLogCapable(struct ata_smart_values *data, struct ata_identify_device *identity);
+int isSupportAutomaticTimer(const ata_smart_values * data);
 
-int isGeneralPurposeLoggingCapable(struct ata_identify_device *identity);
+int isSupportOfflineAbort(const ata_smart_values * data);
 
-int isSupportExecuteOfflineImmediate ( struct ata_smart_values *data);
+int isSupportOfflineSurfaceScan(const ata_smart_values * data);
 
-int isSupportAutomaticTimer ( struct ata_smart_values *data);
+int isSupportSelfTest(const ata_smart_values * data);
 
-int isSupportOfflineAbort ( struct ata_smart_values *data);
+int isSupportConveyanceSelfTest(const ata_smart_values * data);
 
-int isSupportOfflineSurfaceScan ( struct ata_smart_values *data);
-
-int isSupportSelfTest (struct ata_smart_values *data);
-
-int isSupportConveyanceSelfTest(struct ata_smart_values *data);
-
-int isSupportSelectiveSelfTest(struct ata_smart_values *data);
+int isSupportSelectiveSelfTest(const ata_smart_values * data);
 
 inline bool isSCTCapable(const ata_identify_device *drive)
   { return !!(drive->words088_255[206-88] & 0x01); } // 0x01 = SCT support
@@ -558,19 +736,20 @@ inline bool isSCTFeatureControlCapable(const ata_identify_device *drive)
 inline bool isSCTDataTableCapable(const ata_identify_device *drive)
   { return ((drive->words088_255[206-88] & 0x21) == 0x21); } // 0x20 = SCT Data Table support
 
-int ataSmartTest(int device, int testtype, struct ata_smart_values *data, uint64_t num_sectors);
+int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest_args & args,
+                 const ata_smart_values * sv, uint64_t num_sectors);
 
-int TestTime(struct ata_smart_values *data,int testtype);
+int TestTime(const ata_smart_values * data, int testtype);
 
 // Prints the raw value (with appropriate formatting) into the
 // character string out.
 int64_t ataPrintSmartAttribRawValue(char *out, 
-                                    struct ata_smart_attribute *attribute,
-                                    unsigned char *defs);
+                                    const ata_smart_attribute * attribute,
+                                    const unsigned char * defs);
 
 // Prints Attribute Name for standard SMART attributes. Writes a
 // 30 byte string with attribute name into output
-void ataPrintSmartAttribName(char *output, unsigned char id, unsigned char *definitions);
+void ataPrintSmartAttribName(char * out, unsigned char id, const unsigned char * definitions);
 
 // This checks the n'th attribute in the attribute list, NOT the
 // attribute with id==n.  If the attribute does not exist, or the
@@ -578,8 +757,8 @@ void ataPrintSmartAttribName(char *output, unsigned char id, unsigned char *defi
 // <= threshold (failing) then we the attribute number if it is a
 // prefail attribute.  Else we return minus the attribute number if it
 // is a usage attribute.
-int ataCheckAttribute(struct ata_smart_values *data,
-                      struct ata_smart_thresholds_pvt *thresholds,
+int ataCheckAttribute(const ata_smart_values * data,
+                      const ata_smart_thresholds_pvt * thresholds,
                       int n);
 
 // External handler function, for when a checksum is not correct.  Can
@@ -591,11 +770,11 @@ void checksumwarning(const char *string);
 // Returns raw value of Attribute with ID==id. This will be in the
 // range 0 to 2^48-1 inclusive.  If the Attribute does not exist,
 // return -1.
-int64_t ATAReturnAttributeRawValue(unsigned char id, struct ata_smart_values *data);
+int64_t ATAReturnAttributeRawValue(unsigned char id, const ata_smart_values * data);
 
 // Return Temperature Attribute raw value selected according to possible
 // non-default interpretations. If the Attribute does not exist, return 0
-unsigned char ATAReturnTemperatureValue(/*const*/ struct ata_smart_values *data, const unsigned char *defs);
+unsigned char ATAReturnTemperatureValue(const ata_smart_values * data, const unsigned char * defs);
 
 
 // This are the meanings of the Self-test failure checkpoint byte.
@@ -609,41 +788,62 @@ const char *SelfTestFailureCodeName(unsigned char which);
 
 #define MAX_ATTRIBUTE_NUM 256
 
-extern const char *vendorattributeargs[];
-
 // function to parse pairs like "9,minutes" or "220,temp".  See end of
 // extern.h for definition of defs[].  Returns 0 if pair recognized,
-// else 1 if there is a problem.  Allocates memory for array if the
-// array address is *defs==NULL.
-int parse_attribute_def(char *pair, unsigned char **defs);
+// else 1 if there is a problem.
+int parse_attribute_def(const char * pair, unsigned char * defs);
 
-// Function to return a string containing a list of the arguments in
-// vendorattributeargs[].  Returns NULL if the required memory can't
-// be allocated.
-char *create_vendor_attribute_arg_list(void);
+// Get ID and increase flag of current pending or offline
+// uncorrectable attribute.
+unsigned char get_unc_attr_id(bool offline, const unsigned char * defs,
+                              bool & increase);
+
+// Return a multiline string containing a list of valid arguments for
+// parse_attribute_def().
+std::string create_vendor_attribute_arg_list();
 
 
 // These are two of the functions that are defined in os_*.c and need
 // to be ported to get smartmontools onto another OS.
-int ata_command_interface(int device, smart_command_set command, int select, char *data);
-int escalade_command_interface(int fd, int escalade_port, int escalade_type, smart_command_set command, int select, char *data);
-int marvell_command_interface(int device, smart_command_set command, int select, char *data);
-int highpoint_command_interface(int device, smart_command_set command, int select, char *data);
+// Moved to C++ interface
+//int ata_command_interface(int device, smart_command_set command, int select, char *data);
+//int escalade_command_interface(int fd, int escalade_port, int escalade_type, smart_command_set command, int select, char *data);
+//int marvell_command_interface(int device, smart_command_set command, int select, char *data);
+//int highpoint_command_interface(int device, smart_command_set command, int select, char *data);
+//int areca_command_interface(int fd, int disknum, smart_command_set command, int select, char *data);
 
-// "smartctl -r ataioctl,2 ..." output parser pseudo-device
-int parsedev_open(const char * name);
-void parsedev_close(int fd);
 
 // Optional functions of os_*.c
 #ifdef HAVE_ATA_IDENTIFY_IS_CACHED
 // Return true if OS caches the ATA identify sector
-int ata_identify_is_cached(int fd);
+//int ata_identify_is_cached(int fd);
 #endif
 
 // This function is exported to give low-level capability
-int smartcommandhandler(int device, smart_command_set command, int select, char *data);
+int smartcommandhandler(ata_device * device, smart_command_set command, int select, char *data);
+
+// Print one self-test log entry.
+bool ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
+                                unsigned char test_status,
+                                unsigned short timestamp,
+                                uint64_t failing_lba,
+                                bool print_error_only, bool & print_header);
+
+// Print Smart self-test log, used by smartctl and smartd.
+int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
+                             unsigned char fix_firmwarebug);
+
+// Get number of sectors from IDENTIFY sector.
+uint64_t get_num_sectors(const ata_identify_device * drive);
+
+// Convenience function for formatting strings from ata_identify_device.
+void format_ata_string(char * out, const char * in, int n, bool fix_swap);
+inline void format_ata_string(char * out, const unsigned char * in, int n, bool fix_swap)
+  { format_ata_string(out, (const char *)in, n, fix_swap); }
 
 // Utility routines.
+unsigned char checksum(const void * data);
+
 void swap2(char *location);
 void swap4(char *location);
 void swap8(char *location);
@@ -654,5 +854,9 @@ inline void swapx(unsigned int * p)
   { swap4((char*)p); }
 inline void swapx(uint64_t * p)
   { swap8((char*)p); }
+
+// Return pseudo-device to parse "smartctl -r ataioctl,2 ..." output
+// and simulate an ATA device with same behaviour
+ata_device * get_parsed_ata_device(smart_interface * intf, const char * dev_name);
 
 #endif /* ATACMDS_H_ */
