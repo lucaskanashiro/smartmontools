@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2008 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 #include <stdexcept>
 
-const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp,v 1.5 2009/01/30 18:34:55 chrfranke Exp $"
+const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp 2915 2009-09-18 21:17:37Z chrfranke $"
   DEV_INTERFACE_H_CVSID;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -217,29 +217,27 @@ void tunnelled_device_base::release(const smart_device * dev)
 // Pointer to (usually singleton) interface object returned by ::smi()
 smart_interface * smart_interface::s_instance;
 
-const char * smart_interface::get_os_version_str()
+std::string smart_interface::get_os_version_str()
 {
   return SMARTMONTOOLS_BUILD_HOST;
 }
 
-const char * smart_interface::get_valid_dev_types_str()
+std::string smart_interface::get_valid_dev_types_str()
 {
-  static std::string buf;
-  if (!buf.empty())
-    return buf.c_str();
   // default
-  buf = "ata, scsi, sat[,N][+TYPE]";
+  std::string s =
+    "ata, scsi, sat[,N][+TYPE], usbcypress[,X], usbjmicron[,x][,N], usbsunplus";
   // append custom
-  const char * add = get_valid_custom_dev_types_str();
-  if (!add || !*add)
-    return buf.c_str();
-  buf += ", "; buf += add;
-  return buf.c_str();
+  std::string s2 = get_valid_custom_dev_types_str();
+  if (!s2.empty()) {
+    s += ", "; s += s2;
+  }
+  return s;
 }
 
-const char * smart_interface::get_app_examples(const char * /*appname*/)
+std::string smart_interface::get_app_examples(const char * /*appname*/)
 {
-  return 0;
+  return "";
 }
 
 void smart_interface::set_err(int no, const char * msg, ...)
@@ -342,7 +340,7 @@ smart_device * smart_interface::get_custom_smart_device(const char * /*name*/, c
   return 0;
 }
 
-const char * smart_interface::get_valid_custom_dev_types_str()
+std::string smart_interface::get_valid_custom_dev_types_str()
 {
-  return 0;
+  return "";
 }

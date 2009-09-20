@@ -43,7 +43,9 @@ configure-stamp: debian/stamp-patched
 				--sysconfdir=/etc		 \
 				--mandir=/usr/share/man		 \
 				--with-initscriptdir=/etc/init.d \
-				--with-docdir=/usr/share/doc/smartmontools
+				--with-docdir=/usr/share/doc/smartmontools \
+				--with-selinux \
+				--with-libcap-ng=yes
 	touch configure-stamp
 
 

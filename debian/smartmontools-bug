@@ -4,7 +4,7 @@
 #
 # check what IDE_TASK options are set in the kernel:
 
-echo "Ouput of $0:" >&3
+echo "Output of $0:" >&3
 CONFIG=/boot/config-`uname -r`
 if [ -r "$CONFIG" ]; then
 	grep IDE_TASK $CONFIG >&3

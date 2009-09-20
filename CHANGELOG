@@ -1,11 +1,12 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 2879 2009-08-29 17:19:00Z chrfranke $
+$Id: CHANGELOG 2918 2009-09-20 11:51:42Z samm2 $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
 
 Maintainers / Developers Key (alphabetic order):
+[AS]  Alex Samorukov
 [BA]  Bruce Allen
 [OB]  Oliver Bock
 [EB]  Erik Inge Bolsø
@@ -41,6 +42,42 @@ Maintainers / Developers Key (alphabetic order):
 NOTES FOR FUTURE RELEASES: see TODO file.
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+  [AS] FreeBSD: fix FTBFS on GNU/kFreeBSD (reported by derevko).
+
+  [AS] FreeBSD: Add USB autodetection to smartd DEVICESCAN directive.
+
+  [CF] Add USB ID of Myson Century CS8818, add some comments.
+
+  [CF] Return info strings from 'smart_interface::get_*()' functions as
+       'std::string' instead of 'const char *'. Static buffers are no
+       longer needed.
+
+  [SZ] FreeBSD: Fix highpoint type detection and ioctl failed for parameter
+       error.
+
+  [CF] Linux: Add USB autodetection to smartd DEVICESCAN directive.
+
+  [CF] Add USB IDs of Maxtor Basics Desktop and ISD-300A1.
+
+  [AS] Use malloc() to ensure that the read buffer lands on a single
+       page.  This avoids some bugs seen on LSI controlers under
+       FreeBSD.
+
+  [CF] Add missing help text for '-d usb*' options.
+
+  [CF] Linux: Dereference '/dev/disk/by-*/*' symlink before device type
+       autodetection.
+
+  [AS] FreeBSD: Support SATA disks attached to a SAS controller (based on
+       patch from freebsd ports tree).
+
+  [AS] FreeBSD: Added FreeBSD 8 libusb2 device autodetecion, new
+       configure check for -lusb.
+
+  [AS] FreeBSD: Added USB device autodetection and fixed -d switch behavior.
+
+  [AS] FreeBSD: Migrate os_freebsd.cpp to new interface.
 
   [CF] Fix max number of 3ware devices, 128 devices are supported again.
        Regression was introduced during migration to new interface.

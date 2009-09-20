@@ -1,3 +1,16 @@
+smartmontools (5.38+svn2920-1) unstable; urgency=low
+
+  * [a94eb83] run.d/10mail: Do not exit silently if /usr/bin/mail is
+    missing (Closes: #541192) - thanks to Francesco Potorti`
+  * [0197215] Enabled SELinux support
+  * [091eb3a] debian/smartmontools-bug: Fixed a spelling error (Closes:
+    #547197) - thanks to Sandro Tosi
+  * [5496574] Imported Upstream version 5.38+svn2920
+  * [5d593fa] Removed patches merged in upstream: 64_r2898.patch,
+    65_freebsd.patch
+
+ -- Giuseppe Iuculano <giuseppe@iuculano.it>  Sun, 20 Sep 2009 14:51:52 +0200
+
 smartmontools (5.38+svn2879-4) unstable; urgency=low
 
   * [af11f9b] debian/patches/65_freebsd.patch: The os_freebsd.cpp uses

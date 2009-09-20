@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
-# Send mail if /usr/bin/mail exists or exit silently
-[ -x /usr/bin/mail ] || exit 0
+# Send mail if /usr/bin/mail exists
+[ -x /usr/bin/mail ] || (echo "Your system does not have /usr/bin/mail.  Install the mailx or mailutils package" ; exit 0)
 
 input=$1
 shift

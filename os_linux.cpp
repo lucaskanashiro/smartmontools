@@ -90,7 +90,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 2879 2009-08-29 17:19:00Z chrfranke $" \
+const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 2915 2009-09-18 21:17:37Z chrfranke $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_LINUX_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 /* for passing global control variables */
@@ -2709,17 +2709,17 @@ static bool read_id(const std::string & path, unsigned short & id)
   return ok;
 }
 
-// Get USB bridge ID for "/dev/sdX"
-static bool get_usb_id(const char * path, unsigned short & vendor_id,
+// Get USB bridge ID for "sdX"
+static bool get_usb_id(const char * name, unsigned short & vendor_id,
                        unsigned short & product_id, unsigned short & version)
 {
-  // Only "/dev/sdX" supported
-  if (!(!strncmp(path, "/dev/sd", 7) && !strchr(path + 7, '/')))
+  // Only "sdX" supported
+  if (!(!strncmp(name, "sd", 2) && !strchr(name, '/')))
     return false;
 
   // Start search at dir referenced by symlink "/sys/block/sdX/device"
   // -> "/sys/devices/.../usb*/.../host*/target*/..."
-  std::string dir = strprintf("/sys/block/%s/device", path + 5);
+  std::string dir = strprintf("/sys/block/%s/device", name);
 
   // Stop search at "/sys/devices"
   struct stat st;
@@ -2755,7 +2755,7 @@ class linux_smart_interface
 : public /*implements*/ smart_interface
 {
 public:
-  virtual const char * get_app_examples(const char * appname);
+  virtual std::string get_app_examples(const char * appname);
 
   virtual bool scan_smart_devices(smart_device_list & devlist, const char * type,
     const char * pattern = 0);
@@ -2769,20 +2769,20 @@ protected:
 
   virtual smart_device * get_custom_smart_device(const char * name, const char * type);
 
-  virtual const char * get_valid_custom_dev_types_str();
+  virtual std::string get_valid_custom_dev_types_str();
 
 private:
   bool get_dev_list(smart_device_list & devlist, const char * pattern,
-    bool scan_ata, bool scan_scsi, const char * req_type);
+    bool scan_ata, bool scan_scsi, const char * req_type, bool autodetect);
 
   smart_device * missing_option(const char * opt);
 };
 
-const char * linux_smart_interface::get_app_examples(const char * appname)
+std::string linux_smart_interface::get_app_examples(const char * appname)
 {
   if (!strcmp(appname, "smartctl"))
     return smartctl_examples;
-  return 0;
+  return "";
 }
 
 
@@ -2790,7 +2790,8 @@ const char * linux_smart_interface::get_app_examples(const char * appname)
 // have device entries for devices that exist.  So if we get the equivalent of
 // ls /dev/hd[a-t], we have all the ATA devices on the system
 bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
-  const char * pattern, bool scan_ata, bool scan_scsi, const char * req_type)
+  const char * pattern, bool scan_ata, bool scan_scsi,
+  const char * req_type, bool autodetect)
 {
   // Use glob to look for any directory entries matching the pattern
   glob_t globbuf;
@@ -2867,10 +2868,15 @@ bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
 
     if (name) {
       // Found a name, add device to list.
-      if (is_scsi)
-        devlist.add(new linux_scsi_device(this, name, req_type));
+      smart_device * dev;
+      if (autodetect)
+        dev = autodetect_smart_device(name);
+      else if (is_scsi)
+        dev = new linux_scsi_device(this, name, req_type);
       else
-        devlist.add(new linux_ata_device(this, name, req_type));
+        dev = new linux_ata_device(this, name, req_type);
+      if (dev) // autodetect_smart_device() may return nullptr.
+        devlist.add(dev);
     }
   }
 
@@ -2897,9 +2903,9 @@ bool linux_smart_interface::scan_smart_devices(smart_device_list & devlist,
     return true;
 
   if (scan_ata)
-    get_dev_list(devlist,"/dev/hd[a-t]", true, false, type);
-  if (scan_scsi)
-    get_dev_list(devlist, "/dev/sd[a-z]", false, true, type);
+    get_dev_list(devlist, "/dev/hd[a-t]", true, false, type, false);
+  if (scan_scsi) // Try USB autodetection if no type specifed
+    get_dev_list(devlist, "/dev/sd[a-z]", false, true, type, !*type);
 
   // if we found traditional links, we are done
   if (devlist.size() > 0)
@@ -2907,7 +2913,7 @@ bool linux_smart_interface::scan_smart_devices(smart_device_list & devlist,
 
   // else look for devfs entries without traditional links
   // TODO: Add udev support
-  return get_dev_list(devlist, "/dev/discs/disc*", scan_ata, scan_scsi, type);
+  return get_dev_list(devlist, "/dev/discs/disc*", scan_ata, scan_scsi, type, false);
 }
 
 ata_device * linux_smart_interface::get_ata_device(const char * name, const char * type)
@@ -2924,6 +2930,12 @@ smart_device * linux_smart_interface::missing_option(const char * opt)
 {
   set_err(EINVAL, "requires option '%s'", opt);
   return 0;
+}
+
+// Return true if STR starts with PREFIX.
+static bool str_starts_with(const char * str, const char * prefix)
+{
+  return !strncmp(str, prefix, strlen(prefix));
 }
 
 // Guess device type (ata or scsi) based on device name (Linux
@@ -2952,8 +2964,15 @@ smart_device * linux_smart_interface::autodetect_smart_device(const char * name)
   if (!dev_name || !(len = strlen(dev_name)))
     return 0;
 
+  // Dereference if /dev/disk/by-*/* symlink
+  char linkbuf[100];
+  if (   str_starts_with(dev_name, "/dev/disk/by-")
+      && readlink(dev_name, linkbuf, sizeof(linkbuf)) > 0
+      && str_starts_with(linkbuf, "../../")) {
+    dev_name = linkbuf + sizeof("../../")-1;
+  }
   // Remove the leading /dev/... if it's there
-  if (!strncmp(lin_dev_prefix, dev_name, dev_prefix_len)) {
+  else if (!strncmp(lin_dev_prefix, dev_name, dev_prefix_len)) {
     if (len <= dev_prefix_len)
       // if nothing else in the string, unrecognized
       return 0;
@@ -2977,7 +2996,7 @@ smart_device * linux_smart_interface::autodetect_smart_device(const char * name)
 
     // Try to detect possible USB->(S)ATA bridge
     unsigned short vendor_id = 0, product_id = 0, version = 0;
-    if (get_usb_id(name, vendor_id, product_id, version)) {
+    if (get_usb_id(dev_name, vendor_id, product_id, version)) {
       const char * usbtype = get_usb_dev_type_by_id(vendor_id, product_id, version);
       if (!usbtype)
         return 0;
@@ -3124,7 +3143,7 @@ smart_device * linux_smart_interface::get_custom_smart_device(const char * name,
   return 0;
 }
 
-const char * linux_smart_interface::get_valid_custom_dev_types_str()
+std::string linux_smart_interface::get_valid_custom_dev_types_str()
 {
   return "marvell, areca,N, 3ware,N, hpt,L/M/N, megaraid,N"
 #ifdef HAVE_LINUX_CCISS_IOCTL_H
