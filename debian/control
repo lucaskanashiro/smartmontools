@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: Giuseppe Iuculano <giuseppe@iuculano.it>
 Uploaders: Florian Maier <contact@marsmenschen.com>
-Build-Depends: debhelper (>= 7), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev
+Build-Depends: debhelper (>= 7), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !avr32]
 Standards-Version: 3.8.3
 Vcs-Git: git://git.debian.org/collab-maint/smartmontools.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/smartmontools.git

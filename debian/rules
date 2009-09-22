@@ -8,6 +8,10 @@
 # for quilt
 include /usr/share/quilt/quilt.make
 
+DEB_BUILD_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_OS)
+ifeq ($(DEB_HOST_ARCH_OS),linux)
+	CONFIGURE_ARGS += --with-selinux
+endif
 
 CFLAGS += -fsigned-char -Wall
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
@@ -44,8 +48,7 @@ configure-stamp: debian/stamp-patched
 				--mandir=/usr/share/man		 \
 				--with-initscriptdir=/etc/init.d \
 				--with-docdir=/usr/share/doc/smartmontools \
-				--with-selinux \
-				--with-libcap-ng=yes
+				${CONFIGURE_ARGS}
 	touch configure-stamp
 
 
