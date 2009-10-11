@@ -9,8 +9,14 @@
 include /usr/share/quilt/quilt.make
 
 DEB_BUILD_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_OS)
+DEB_BUILD_ARCH_CPU ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU)
+
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIGURE_ARGS += --with-selinux
+endif
+
+ifeq ($(DEB_BUILD_ARCH_CPU),armel)
+	CONFIGURE_ARGS += --without-libcap-ng 
 endif
 
 CFLAGS += -fsigned-char -Wall

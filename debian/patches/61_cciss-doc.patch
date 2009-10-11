@@ -8,7 +8,7 @@ minor exceptions
 
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -548,10 +548,11 @@ Section below!
+@@ -546,10 +546,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
@@ -24,7 +24,7 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -613,6 +614,13 @@ Section below!
+@@ -611,6 +612,13 @@ Section below!
  .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
@@ -38,7 +38,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -718,6 +726,10 @@ these disks.  Areca firmware version 1.4
+@@ -716,6 +724,10 @@ these disks.  Areca firmware version 1.4
  smartmontools must be used; Please see the \fBsmartctl\fP man page for
  further details.
  
@@ -49,7 +49,7 @@ minor exceptions
  .TP
  .B \-d TYPE
  Specifies the type of the device.  This Directive may be used multiple
-@@ -1249,9 +1261,9 @@ is set to the argument of \-M exec, if p
+@@ -1247,9 +1259,9 @@ is set to the argument of \-M exec, if p
  .IP \fBSMARTD_DEVICE\fP 4
  is set to the device path (examples: /dev/hda, /dev/sdb).
  .IP \fBSMARTD_DEVICETYPE\fP 4
@@ -63,7 +63,7 @@ minor exceptions
  is set to the device description.  For SMARTD_DEVICETYPE of ata or
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -86,6 +86,12 @@ DEVICESCAN -m root -M exec /usr/share/sm
+@@ -86,6 +86,12 @@ DEVICESCAN -n standby -m root -M exec /u
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -118,7 +118,7 @@ minor exceptions
  .TP
  .B \-d TYPE
  Specifies the type of the device.  This Directive may be used multiple
-@@ -819,9 +830,9 @@ is set to the argument of \-M exec, if p
+@@ -821,9 +832,9 @@ is set to the argument of \-M exec, if p
  .IP \fBSMARTD_DEVICE\fP 4
  is set to the device path (examples: /dev/hda, /dev/sdb).
  .IP \fBSMARTD_DEVICETYPE\fP 4

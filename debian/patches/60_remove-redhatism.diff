@@ -1,6 +1,6 @@
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -471,15 +471,6 @@ and stop it by using the command:
+@@ -470,15 +470,6 @@ and stop it by using the command:
  .B /usr/local/etc/rc.d/init.d/smartd stop
  
  .fi

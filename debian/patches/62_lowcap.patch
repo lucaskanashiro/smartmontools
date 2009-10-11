@@ -1,19 +1,8 @@
 Drop all unnecessary capabilities
 Origin Fedora
---- a/Makefile.am
-+++ b/Makefile.am
-@@ -45,7 +45,7 @@ smartd_SOURCES =  smartd.cpp      \
-                   utility.cpp     \
-                   utility.h
- 
--smartd_LDADD = @os_deps@ @os_libs@
-+smartd_LDADD = @os_deps@ @os_libs@ @CAPNG_LDADD@
- smartd_DEPENDENCIES = @os_deps@
- 
- EXTRA_smartd_SOURCES = os_darwin.cpp    \
 --- a/configure.in
 +++ b/configure.in
-@@ -204,6 +204,40 @@ if test "$with_selinux" = "yes"; then
+@@ -219,6 +219,40 @@ if test "$with_selinux" = "yes"; then
  	AC_DEFINE(WITH_SELINUX, [1], [Define to 1 if SELinux support is enabled])
  fi
  
@@ -54,6 +43,32 @@ Origin Fedora
  if test "$prefix" = "NONE"; then
      dnl no prefix and no mandir, so use ${prefix}/share/man as default
      if test "$mandir" = '${prefix}/man'; then
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -45,7 +45,7 @@ smartd_SOURCES =  smartd.cpp      \
+                   utility.cpp     \
+                   utility.h
+ 
+-smartd_LDADD = @os_deps@ @os_libs@
++smartd_LDADD = @os_deps@ @os_libs@ @CAPNG_LDADD@
+ smartd_DEPENDENCIES = @os_deps@
+ 
+ EXTRA_smartd_SOURCES = os_darwin.cpp    \
+--- a/smartd.8.in
++++ b/smartd.8.in
+@@ -175,6 +175,12 @@ input. This is useful for commands like:
+ to perform quick and simple checks without a configuration file.
+ 
+ .TP
++.B \-C, \-\-capabilities
++Use possix \fBcapabilities(7)\fP (EXPERIMENTAL).
++
++Warning: Mail notification does not work when used.
++
++.TP
+ .B \-d, \-\-debug
+ Runs \fBsmartd\fP in "debug" mode. In this mode, it displays status
+ information to STDOUT rather than logging it to SYSLOG and does not
 --- a/smartd.cpp
 +++ b/smartd.cpp
 @@ -77,6 +77,10 @@ extern "C" int __stdcall FreeConsole(voi
@@ -67,20 +82,101 @@ Origin Fedora
  // locally included files
  #include "int64.h"
  #include "atacmds.h"
-@@ -4257,7 +4261,15 @@ int main_worker(int argc, char **argv)
-   // Devices to monitor
-   smart_device_list devices;
+@@ -190,6 +194,11 @@ static int facility=LOG_DAEMON;
+ static bool do_fork=true;
+ #endif
  
--  bool write_states_always = true;
-+  bool write_states_always = true
-+	  ;
++#ifdef HAVE_LIBCAP_NG
++// enable possix capabilities
++static bool enable_capabilities=false;
++#endif
++
+ // used for control of printing, passing arguments to atacmds.c
+ smartmonctrl *con=NULL;
+ 
+@@ -912,6 +921,15 @@ static void MailWarning(const dev_config
+       return;
+   }
+ 
++#ifdef HAVE_LIBCAP_NG
++  if (enable_capabilities) {
++    PrintOut(LOG_ERR,"Sending a mail was supressed. "
++		     "Mails can't be send when capabilites are enabled\n");
++    return;
++  }
++
++#endif
++
+   // record the time of this mail message, and the first mail message
+   if (!mail->logged)
+     mail->firstsent=epoch;
+@@ -1468,6 +1486,11 @@ void Usage (void){
+   PrintOut(LOG_INFO,"        Quit on one of: %s\n\n", GetValidArgList('q'));
+   PrintOut(LOG_INFO,"  -r, --report=TYPE\n");
+   PrintOut(LOG_INFO,"        Report transactions for one of: %s\n\n", GetValidArgList('r'));
++#ifdef HAVE_LIBCAP_NG
++  PrintOut(LOG_INFO,"  -C, --usecapabilities\n");
++  PrintOut(LOG_INFO,"        Use possix capabilities (EXPERIMENTAL).\n"
++		  "        Warning: Mail notification does not work when used.\n");
++#endif
+   PrintOut(LOG_INFO,"  -s PREFIX, --savestates=PREFIX\n");
+   PrintOut(LOG_INFO,"        Save disk states to {PREFIX}MODEL-SERIAL.TYPE.state\n");
+ #ifdef SMARTMONTOOLS_SAVESTATES
+@@ -3731,7 +3754,7 @@ void ParseOpts(int argc, char **argv){
+   char *tailptr;
+   long lchecktime;
+   // Please update GetValidArgList() if you edit shortopts
+-  const char *shortopts = "c:l:q:dDni:p:r:s:A:B:Vh?";
++  const char *shortopts = "c:l:q:dDni:p:r:s:A:B:VCh?";
+   char *arg;
+   // Please update GetValidArgList() if you edit longopts
+   struct option longopts[] = {
+@@ -3757,6 +3780,9 @@ void ParseOpts(int argc, char **argv){
+     { "copyright",      no_argument,       0, 'V' },
+     { "help",           no_argument,       0, 'h' },
+     { "usage",          no_argument,       0, 'h' },
++#ifdef HAVE_LIBCAP_NG
++    { "usecapabilities",no_argument,       0, 'C' },
++#endif
+     { 0,                0,                 0, 0   }
+   };
+ 
+@@ -3915,6 +3941,12 @@ void ParseOpts(int argc, char **argv){
+       PrintOut(LOG_INFO, "%s", format_version_info("smartd", true /*full*/).c_str());
+       EXIT(0);
+       break;
++#ifdef HAVE_LIBCAP_NG
++    case 'C':
++      //enable possix capabilities
++      enable_capabilities=1;
++      break;
++#endif
+     case 'h':
+       // help: print summary of command-line options
+       debugmode=1;
+@@ -4259,6 +4291,17 @@ int main_worker(int argc, char **argv)
+ 
+   bool write_states_always = true;
+ 
 +#ifdef HAVE_LIBCAP_NG
 +  // Drop capabilities
-+  capng_clear(CAPNG_SELECT_BOTH);
-+  capng_updatev(CAPNG_ADD, (capng_type_t)(CAPNG_EFFECTIVE|CAPNG_PERMITTED),
-+		  CAP_SYS_ADMIN, CAP_SYS_RAWIO, -1);
-+  capng_apply(CAPNG_SELECT_BOTH);
++  if (enable_capabilities) {
++	  capng_clear(CAPNG_SELECT_BOTH);
++	  capng_updatev(CAPNG_ADD, (capng_type_t)(CAPNG_EFFECTIVE|CAPNG_PERMITTED),
++			  CAP_SYS_ADMIN, CAP_MKNOD, CAP_SYS_RAWIO, -1);
++	  capng_apply(CAPNG_SELECT_BOTH);
++  }
 +#endif
- 
++
++
    // the main loop of the code
    for (;;) {
+ 
+@@ -4353,7 +4396,6 @@ int main_worker(int argc, char **argv)
+         PrintTestSchedule(configs, states, devices);
+         EXIT(0);
+       }
+-      
+       // reset signal
+       caughtsigHUP=0;
+ 

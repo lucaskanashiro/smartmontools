@@ -1,6 +1,6 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 2918 2009-09-20 11:51:42Z samm2 $
+$Id: CHANGELOG 2951 2009-10-08 23:43:46Z samm2 $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
@@ -42,6 +42,44 @@ Maintainers / Developers Key (alphabetic order):
 NOTES FOR FUTURE RELEASES: see TODO file.
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+  [AS] Linux: Autodetect DELL PERC and MegaRAID controllers. 
+       Hiding debug messages coming from megaraid code.  
+
+  [AS] Linux: Fixed SATA drives support on megaraid device (see ticket #15).
+
+  [AS] FreeBSD: Removed all old detection code, moving everything to
+       the objects. Now we are using CAM/ATA enumerators to guess device
+       type.
+
+  [AS] FreeBSD: Added autodetection for the ada disks (untested).
+       Code for USB device detection refactored.
+
+  [AS] FreeBSD: cam_get_umassno rewritten using XPT_PATH_INQ
+
+  [AS] FreeBSD: do not open/close cam device on every request for SCSI 
+       disks. Use com->camdev both for SCSI and ATAPICAM.
+
+  [AS] FreeBSD: added support for the ada disks, based on agapon patch
+
+  [CF] Add names for attributes 184 and 188, see ticket #17.
+
+  [CF] configure.in: Change configure date syntax.
+       Add message to '-mno-cygwin' option check.
+
+  [GK] Add names for some attributes used in MLC flash drives:
+       175, 176, 177, 181, 182
+
+  [CF] Windows: Check support of gcc '-mno-cygwin' option in configure.
+       This option has been removed in Cygwin gcc 4.x.  Update INSTALL
+       instructions accordingly.
+
+  [CF] Increase SCSI_TIMEOUT_DEFAULT from 6 to 20 seconds to avoid
+       timeouts when a disk spins up from standby mode.
+
+  [CF] Add USB ID of AcomData 504 (OnSpec USB bridge).
+
+  [AS] Correcting manual pages (FreeBSD related)
 
   [AS] FreeBSD: fix FTBFS on GNU/kFreeBSD (reported by derevko).
 

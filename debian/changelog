@@ -1,3 +1,19 @@
+smartmontools (5.38+svn2956-1) unstable; urgency=low
+
+  * [283f281] Updated my email address and removed DM-Upload-Allowed
+    control field
+  * [eb07ddf] Imported Upstream version 5.38+svn2956
+    + Added a note in smartctl (8) about 2^16 wrap of LifeTime value in
+      Self-test log. (Closes: #535298)
+  * [ed382e8] Refreshed patches
+  * [f4ff277] Updated lowcap patch, make capabilities optional and
+    clarify that mail notification could not work when used. (Closes:
+    #544940)
+  * [a7e19a3] Do not Build-depends in libcap-ng-dev in armel, libcap-ng
+    is broken in this arch. (Closes: #548438)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 11 Oct 2009 09:42:47 +0200
+
 smartmontools (5.38+svn2920-2) unstable; urgency=low
 
   * [a117ede] Enable Selinux only in linux platforms
