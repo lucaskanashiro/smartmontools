@@ -1,6 +1,6 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 2951 2009-10-08 23:43:46Z samm2 $
+$Id: CHANGELOG 2993 2009-12-04 17:29:50Z chrfranke $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
@@ -43,8 +43,107 @@ NOTES FOR FUTURE RELEASES: see TODO file.
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
 
-  [AS] Linux: Autodetect DELL PERC and MegaRAID controllers. 
-       Hiding debug messages coming from megaraid code.  
+  [CF] Linux: Add workaround for Adaptec series 2, 5 and 5Z controllers
+       with firmware >= 17380.  Patch was provided by Phil Wilson, see:
+       http://linux.adaptec.com/2009/07/24/using-smartmontools-538-with-series-255z-controllers-with-firmware-17380-onwards
+
+  [CF] configure.in: Add '-fno-strict-aliasing' to CXXFLAGS if supported.
+       This suppresses gcc 4.4.1 warnings on Linux and avoids possible
+       unsafe optimizations (ticket #23).
+       Patch was provided by Manfred Schwarb.
+
+  [CF] Avoid truncation of configure arguments in '-V' output.
+
+  [AS] Added USB IDs of WD Passport USB Portable
+
+  [CF] Linux: Fix segfault in 3ware interface (ticket #22).
+
+  [MS] knowndrives.cpp updates:
+       - Hitachi Deskstar 7K2000
+       - Seagate Momentus 7200 FDE.2 series
+
+  [CF] Add USB ID of WD My Passport 070A.
+       knowndrives.cpp update:
+       - WD My Passport hard drive (USB interface)
+
+  [CF] smartd: Write 'worst' attribute value to '.state' file also.
+       This allows to use state persistence with 'raw64' attributes.
+
+  [CF] Rework ATA SMART attribute check in smartctl and smartd.
+       smartd: Ignore normalized attribute value and threshold
+       if 'raw64' or 'hex64' format is selected.
+
+  [CF] Add USB IDs of Iomega LPHD080-0, 2 Genesys Logic bridges and
+       Initio 316000.
+
+  [MS] knowndrives.cpp update: Hitachi Travelstar 5K320 series
+
+  [CF] smartctl: Ignore normalized attribute value and threshold
+       if 'raw64' or 'hex64' format is selected.
+
+  [CF] knowndrives.cpp updates:
+       - add OCZ-Vertex raw64 attributes
+       - add OCZ-Agility
+       Thanks to Marcin Marszalek for the patch.
+
+  [CF] Add '-v ID,hex*' print formats. Fix '-v N,FORMAT,NAME' parsing.
+
+  [CF] Add '-v ID,raw64[,...]' print format based on a patch provided
+       by Marcin Marszalek.
+
+  [CF] Add '-v ID,RAW_FORMAT[,ATTR_NAME]' option. This allows to add new
+       attributes without the need to enhance the '-v' option.
+       Rework attribute name and raw value formatting.
+
+  [CF] Fix auto_ptr initialization in linux_scsi_device::autodetect_open().
+
+  [CF] Remove duplicate function smart_device_list::add().
+       Replace calls with push_back().
+
+  [MS] attribute update:
+       trim attribute names to 23 chars
+
+  [CF] Add smart pointer class template to manage device object pointers.
+       Remove related 'delete' calls and 'try/catch' blocks.
+
+  [CF] do_release: Replace generation of '*.asc' by '*.md5' and '*.sha1'.
+
+  [MS] attribute updates:
+       - change attributes 202,204,205 to the meanings as found in wdidle3.exe
+         retain old entries as comments (possible Fujitsu use)
+       - add attribute 240 as found in Fujitsu MHY2xxxBH
+
+  [MS] attributes updates:
+       - attributes 225, 232 and 233 for Intel X25-E SSD
+       - non-conflicting attributes extracted from wdidle3.exe
+         (thanks to Franc Zabkar and Dan Lukes)
+
+  [CF] Update Windows and ./configure info in INSTALL file.
+
+  [CF] Update 'do_release' script for SVN.
+
+  [MS] knowndrives.cpp updates:
+       - Western Digital MyPassport Essential hard drive (USB interface)
+       - Seagate Momentus 7200.4 series
+       - Western Digital Raptor X
+       - Intel X25-E SSD
+
+  [CF] knowndrives.cpp updates:
+       - New Seagate 7200.11 firmware version
+       - Update IBM link
+
+  [CF] smartctl: Use printf() instead of pout() for exception error
+       messages to avoid access to bogus 'con->dont_print'.
+
+  [CF] smartd: Add missing help texts for '-A', '-B' and '-s'.
+
+  [CF] Add missing check for log page 0x11 support to smartctl
+       '-l sataphy' option.
+
+  [CF] Add USB ID of Freecom Hard Drive XS.
+
+  [AS] Linux: Autodetect DELL PERC and MegaRAID controllers.
+       Hiding debug messages coming from megaraid code.
 
   [AS] Linux: Fixed SATA drives support on megaraid device (see ticket #15).
 
@@ -57,7 +156,7 @@ NOTES FOR FUTURE RELEASES: see TODO file.
 
   [AS] FreeBSD: cam_get_umassno rewritten using XPT_PATH_INQ
 
-  [AS] FreeBSD: do not open/close cam device on every request for SCSI 
+  [AS] FreeBSD: do not open/close cam device on every request for SCSI
        disks. Use com->camdev both for SCSI and ATAPICAM.
 
   [AS] FreeBSD: added support for the ada disks, based on agapon patch

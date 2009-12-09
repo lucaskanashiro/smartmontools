@@ -1,5 +1,6 @@
 Drop all unnecessary capabilities
 Origin Fedora
+
 --- a/configure.in
 +++ b/configure.in
 @@ -219,6 +219,40 @@ if test "$with_selinux" = "yes"; then
@@ -94,10 +95,21 @@ Origin Fedora
  // used for control of printing, passing arguments to atacmds.c
  smartmonctrl *con=NULL;
  
-@@ -912,6 +921,15 @@ static void MailWarning(const dev_config
+@@ -875,8 +884,7 @@ static void MailWarning(const dev_config
+   const char *unknown="[Unknown]";
+ 
+   // See if user wants us to send mail
+-  if (cfg.emailaddress.empty() && cfg.emailcmdline.empty())
+-    return;
++
+ 
+   std::string address = cfg.emailaddress;
+   const char * executable = cfg.emailcmdline.c_str();
+@@ -917,6 +925,15 @@ static void MailWarning(const dev_config
+     if  (epoch<(mail->lastsent+days))
        return;
    }
- 
++
 +#ifdef HAVE_LIBCAP_NG
 +  if (enable_capabilities) {
 +    PrintOut(LOG_ERR,"Sending a mail was supressed. "
@@ -106,23 +118,22 @@ Origin Fedora
 +  }
 +
 +#endif
-+
+ 
    // record the time of this mail message, and the first mail message
    if (!mail->logged)
-     mail->firstsent=epoch;
-@@ -1468,6 +1486,11 @@ void Usage (void){
-   PrintOut(LOG_INFO,"        Quit on one of: %s\n\n", GetValidArgList('q'));
-   PrintOut(LOG_INFO,"  -r, --report=TYPE\n");
-   PrintOut(LOG_INFO,"        Report transactions for one of: %s\n\n", GetValidArgList('r'));
+@@ -1464,6 +1481,11 @@ void Usage (void){
+   PrintOut(LOG_INFO,"\n");
+   PrintOut(LOG_INFO,"  -c NAME|-, --configfile=NAME|-\n");
+   PrintOut(LOG_INFO,"        Read configuration file NAME or stdin [default is %s]\n\n", configfile);
 +#ifdef HAVE_LIBCAP_NG
-+  PrintOut(LOG_INFO,"  -C, --usecapabilities\n");
++  PrintOut(LOG_INFO,"  -C, --capabilities\n");
 +  PrintOut(LOG_INFO,"        Use possix capabilities (EXPERIMENTAL).\n"
-+		  "        Warning: Mail notification does not work when used.\n");
++		    "        Warning: Mail notification does not work when used.\n\n");
 +#endif
-   PrintOut(LOG_INFO,"  -s PREFIX, --savestates=PREFIX\n");
-   PrintOut(LOG_INFO,"        Save disk states to {PREFIX}MODEL-SERIAL.TYPE.state\n");
- #ifdef SMARTMONTOOLS_SAVESTATES
-@@ -3731,7 +3754,7 @@ void ParseOpts(int argc, char **argv){
+   PrintOut(LOG_INFO,"  -d, --debug\n");
+   PrintOut(LOG_INFO,"        Start smartd in debug mode\n\n");
+   PrintOut(LOG_INFO,"  -D, --showdirectives\n");
+@@ -3701,7 +3723,7 @@ void ParseOpts(int argc, char **argv){
    char *tailptr;
    long lchecktime;
    // Please update GetValidArgList() if you edit shortopts
@@ -131,17 +142,17 @@ Origin Fedora
    char *arg;
    // Please update GetValidArgList() if you edit longopts
    struct option longopts[] = {
-@@ -3757,6 +3780,9 @@ void ParseOpts(int argc, char **argv){
+@@ -3727,6 +3749,9 @@ void ParseOpts(int argc, char **argv){
      { "copyright",      no_argument,       0, 'V' },
      { "help",           no_argument,       0, 'h' },
      { "usage",          no_argument,       0, 'h' },
 +#ifdef HAVE_LIBCAP_NG
-+    { "usecapabilities",no_argument,       0, 'C' },
++    { "capabilities",   no_argument,       0, 'C' },
 +#endif
      { 0,                0,                 0, 0   }
    };
  
-@@ -3915,6 +3941,12 @@ void ParseOpts(int argc, char **argv){
+@@ -3885,6 +3910,12 @@ void ParseOpts(int argc, char **argv){
        PrintOut(LOG_INFO, "%s", format_version_info("smartd", true /*full*/).c_str());
        EXIT(0);
        break;
@@ -154,29 +165,40 @@ Origin Fedora
      case 'h':
        // help: print summary of command-line options
        debugmode=1;
-@@ -4259,6 +4291,17 @@ int main_worker(int argc, char **argv)
+@@ -4224,6 +4255,16 @@ int main_worker(int argc, char **argv)
  
    bool write_states_always = true;
  
 +#ifdef HAVE_LIBCAP_NG
 +  // Drop capabilities
 +  if (enable_capabilities) {
-+	  capng_clear(CAPNG_SELECT_BOTH);
-+	  capng_updatev(CAPNG_ADD, (capng_type_t)(CAPNG_EFFECTIVE|CAPNG_PERMITTED),
-+			  CAP_SYS_ADMIN, CAP_MKNOD, CAP_SYS_RAWIO, -1);
-+	  capng_apply(CAPNG_SELECT_BOTH);
++    capng_clear(CAPNG_SELECT_BOTH);
++    capng_updatev(CAPNG_ADD, (capng_type_t)(CAPNG_EFFECTIVE|CAPNG_PERMITTED),
++                CAP_SYS_ADMIN, CAP_MKNOD, CAP_SYS_RAWIO, -1);
++    capng_apply(CAPNG_SELECT_BOTH);
 +  }
 +#endif
-+
 +
    // the main loop of the code
    for (;;) {
  
-@@ -4353,7 +4396,6 @@ int main_worker(int argc, char **argv)
+@@ -4318,7 +4359,18 @@ int main_worker(int argc, char **argv)
          PrintTestSchedule(configs, states, devices);
          EXIT(0);
        }
 -      
++
++#ifdef HAVE_LIBCAP_NG
++      if (enable_capabilities) {
++        for (unsigned i = 0; i < configs.size(); i++) {
++	  if (configs.at(i).emailaddress.empty()) {
++            PrintOut(LOG_WARNING,"Mail can't be enabled together with --capabilities. All mail will be suppressed.\n");
++            break;
++          }
++        }
++      }
++#endif
++
        // reset signal
        caughtsigHUP=0;
  

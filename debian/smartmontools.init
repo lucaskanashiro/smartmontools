@@ -126,7 +126,7 @@ case "$1" in
 	fi
         ;;
   status)
-	status_of_proc -p "$PIDFILE" "$DAEMON" "smartd" && exit 0 || exit $?
+	status_of_proc $DAEMON smartd && exit 0 || exit $?
 	;;
   *)
 	echo "Usage: /etc/init.d/smartmontools {start|stop|restart|reload|force-reload|status}"

@@ -90,7 +90,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 2951 2009-10-08 23:43:46Z samm2 $" \
+const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 2993 2009-12-04 17:29:50Z chrfranke $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_LINUX_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 /* for passing global control variables */
@@ -493,6 +493,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
 #define SG_IO_RESP_SENSE_LEN 64 /* large enough see buffer */
 #define LSCSI_DRIVER_MASK  0xf /* mask out "suggestions" */
 #define LSCSI_DRIVER_SENSE  0x8 /* alternate CHECK CONDITION indication */
+#define LSCSI_DID_ERROR 0x7 /* Need to work around aacraid driver quirk */
 #define LSCSI_DRIVER_TIMEOUT  0x6
 #define LSCSI_DID_TIME_OUT  0x3
 #define LSCSI_DID_BUS_BUSY  0x2
@@ -617,7 +618,10 @@ static int sg_io_cmnd_io(int dev_fd, struct scsi_cmnd_io * iop, int report,
                 (LSCSI_DID_TIME_OUT == io_hdr.host_status))
                 return -ETIMEDOUT;
             else
-                return -EIO;    /* catch all */
+               /* Check for DID_ERROR - workaround for aacraid driver quirk */
+               if (LSCSI_DID_ERROR != io_hdr.host_status) {
+                       return -EIO; /* catch all if not DID_ERR */
+               }
         }
         if (0 != masked_driver_status) {
             if (LSCSI_DRIVER_TIMEOUT == masked_driver_status)
@@ -902,6 +906,8 @@ linux_megaraid_device::~linux_megaraid_device() throw()
 
 smart_device * linux_megaraid_device::autodetect_open()
 {
+  int report = con->reportscsiioctl; 
+
   // Open device
   if (!open())
     return this;
@@ -924,21 +930,16 @@ smart_device * linux_megaraid_device::autodetect_open()
   if (len < 36)
       return this;
 
-  printf("Got MegaRAID inquiry.. %s\n", req_buff+8);
+  if (report)
+    printf("Got MegaRAID inquiry.. %s\n", req_buff+8);
 
   // Use INQUIRY to detect type
-  smart_device * newdev = 0;
-  try {
+  {
     // SAT or USB ?
-    newdev = smi()->autodetect_sat_device(this, req_buff, len);
+    ata_device * newdev = smi()->autodetect_sat_device(this, req_buff, len);
     if (newdev)
       // NOTE: 'this' is now owned by '*newdev'
       return newdev;
-  }
-  catch (...) {
-    // Cleanup if exception occurs after newdev was allocated
-    delete newdev;
-    throw;
   }
 
   // Nothing special found
@@ -1051,12 +1052,12 @@ bool linux_megaraid_device::scsi_pass_through(scsi_cmnd_io *iop)
     // Emulate SMART STATUS CHECK drive reply
     // smartctl fail to work without this
     if(iop->cmnd[2]==0x2c) {
-      iop->resp_sense_len=22;
-      iop->sensep[0]=0x72; // response code
-      iop->sensep[7]=0x0e; // no idea what it is, copied from sat device answer
-      iop->sensep[8]=0x09; // 
-      iop->sensep[17]=0x4f; // lm
-      iop->sensep[19]=0xc2; // lh
+      iop->resp_sense_len=22; // copied from real response
+      iop->sensep[0]=0x72; // descriptor format
+      iop->sensep[7]=0x0e; // additional length
+      iop->sensep[8]=0x09; // description pointer
+      iop->sensep[17]=0x4f; // low cylinder GOOD smart status
+      iop->sensep[19]=0xc2; // high cylinder GOOD smart status
     }
     return true;
   }
@@ -1544,7 +1545,7 @@ bool linux_escalade_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out 
       passthru->size++;
   }
   else
-    set_err(EINVAL);
+    return set_err(EINVAL);
 
   // Now send the command down through an ioctl()
   int ioctlreturn;
@@ -1608,7 +1609,7 @@ bool linux_escalade_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out 
   }
 
   // Return register values
-  {
+  if (passthru) {
     ata_out_regs_48bit & r = out.out_regs;
     r.error           = passthru->features;
     r.sector_count_16 = passthru->sector_count;
@@ -2668,45 +2669,43 @@ smart_device * linux_scsi_device::autodetect_open()
   int avail_len = req_buff[4] + 5;
   int len = (avail_len < req_len ? avail_len : req_len);
   if (len < 36)
-      return this;
+    return this;
 
   // Use INQUIRY to detect type
-  smart_device * newdev = 0;
-  try {
-    // 3ware ?
-    if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4)) {
-      close();
-      set_err(EINVAL, "AMCC/3ware controller, please try adding '-d 3ware,N',\n"
-                      "you may need to replace %s with /dev/twaN or /dev/tweN", get_dev_name());
-      return this;
-    }
-    // DELL?
-    if (!memcmp(req_buff + 8, "DELL    PERC", 12) || !memcmp(req_buff + 8, "MegaRAID", 8)) {
-      close();
-      set_err(EINVAL, "DELL or MegaRaid controller, please try adding '-d megaraid,N'");
-      return this;
-    }
-    
-    // Marvell ?
-    if (len >= 42 && !memcmp(req_buff + 36, "MVSATA", 6)) {
-      //pout("Device %s: using '-d marvell' for ATA disk with Marvell driver\n", get_dev_name());
-      close();
-      newdev = new linux_marvell_device(smi(), get_dev_name(), get_req_type());
-      newdev->open(); // TODO: Can possibly pass open fd
-      delete this;
-      return newdev;
-    }
 
-    // SAT or USB ?
-    newdev = smi()->autodetect_sat_device(this, req_buff, len);
+  // 3ware ?
+  if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4)) {
+    close();
+    set_err(EINVAL, "AMCC/3ware controller, please try adding '-d 3ware,N',\n"
+                    "you may need to replace %s with /dev/twaN or /dev/tweN", get_dev_name());
+    return this;
+  }
+
+  // DELL?
+  if (!memcmp(req_buff + 8, "DELL    PERC", 12) || !memcmp(req_buff + 8, "MegaRAID", 8)) {
+    close();
+    set_err(EINVAL, "DELL or MegaRaid controller, please try adding '-d megaraid,N'");
+    return this;
+  }
+
+  // Marvell ?
+  if (len >= 42 && !memcmp(req_buff + 36, "MVSATA", 6)) {
+    //pout("Device %s: using '-d marvell' for ATA disk with Marvell driver\n", get_dev_name());
+    close();
+    smart_device_auto_ptr newdev(
+      new linux_marvell_device(smi(), get_dev_name(), get_req_type())
+    );
+    newdev->open(); // TODO: Can possibly pass open fd
+    delete this;
+    return newdev.release();
+  }
+
+  // SAT or USB ?
+  {
+    smart_device * newdev = smi()->autodetect_sat_device(this, req_buff, len);
     if (newdev)
       // NOTE: 'this' is now owned by '*newdev'
       return newdev;
-  }
-  catch (...) {
-    // Cleanup if exception occurs after newdev was allocated
-    delete newdev;
-    throw;
   }
 
   // Nothing special found
@@ -2896,7 +2895,7 @@ bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
       else
         dev = new linux_ata_device(this, name, req_type);
       if (dev) // autodetect_smart_device() may return nullptr.
-        devlist.add(dev);
+        devlist.push_back(dev);
     }
   }
 

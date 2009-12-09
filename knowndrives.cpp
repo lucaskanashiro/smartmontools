@@ -35,7 +35,7 @@
 
 #include <stdexcept>
 
-const char *knowndrives_c_cvsid="$Id: knowndrives.cpp,v 1.207 2009/07/04 23:24:37 manfred99 Exp $"
+const char *knowndrives_c_cvsid="$Id: knowndrives.cpp 2986 2009-11-16 22:43:50Z manfred99 $"
 ATACMDS_H_CVSID CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID KNOWNDRIVES_H_CVSID UTILITY_H_CVSID;
 
 #define MODEL_STRING_LENGTH                         40
@@ -70,8 +70,53 @@ static const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "OCZ Vertex SSD",
-    "OCZ-VERTEX.*",
-    "", "", ""
+    "OCZ[ -]VERTEX.*",
+    "", "",
+    " -v 9,raw64"
+    " -v 12,raw64"
+    " -v 184,raw64,Initial_Bad_Block_Count"
+    " -v 195,raw64,Program_Failure_Blk_Ct"
+    " -v 196,raw64,Erase_Failure_Blk_Ct"
+    " -v 197,raw64,Read_Failure_Blk_Ct"
+    " -v 198,raw64,Read_Sectors_Tot_Ct"
+    " -v 199,raw64,Write_Sectors_Tot_Ct"
+    " -v 200,raw64,Read_Commands_Tot_Ct"
+    " -v 201,raw64,Write_Commands_Tot_Ct"
+    " -v 202,raw64,Error_Bits_Flash_Tot_Ct"
+    " -v 203,raw64,Corr_Read_Errors_Tot_Ct"
+    " -v 204,raw64,Bad_Block_Full_Flag"
+    " -v 205,raw64,Max_PE_Count_Spec"
+    " -v 206,raw64,Min_Erase_Count"
+    " -v 207,raw64,Max_Erase_Count"
+    " -v 208,raw64,Average_Erase_Count"
+    " -v 209,raw64,Remaining_Lifetime_Perc"
+  },
+  { "OCZ Agility SSD",
+    "OCZ[ -]AGILITY",
+    "", "",
+    " -v 9,raw64"
+    " -v 12,raw64"
+    " -v 184,raw64,Initial_Bad_Block_Count"
+    " -v 195,raw64,Program_Failure_Blk_Ct"
+    " -v 196,raw64,Erase_Failure_Blk_Ct"
+    " -v 197,raw64,Read_Failure_Blk_Ct"
+    " -v 198,raw64,Read_Sectors_Tot_Ct"
+    " -v 199,raw64,Write_Sectors_Tot_Ct"
+    " -v 200,raw64,Read_Commands_Tot_Ct"
+    " -v 201,raw64,Write_Commands_Tot_Ct"
+    " -v 202,raw64,Error_Bits_Flash_Tot_Ct"
+    " -v 203,raw64,Corr_Read_Errors_Tot_Ct"
+    " -v 204,raw64,Bad_Block_Full_Flag"
+    " -v 205,raw64,Max_PE_Count_Spec"
+    " -v 206,raw64,Min_Erase_Count"
+    " -v 207,raw64,Max_Erase_Count"
+    " -v 208,raw64,Average_Erase_Count"
+    " -v 209,raw64,Remaining_Lifetime_Perc"
+  },
+  { "Intel X25-E SSD",
+    "SSDSA2SH(032|064)G1.* INTEL",
+    "", "",
+    "-v 225,raw48,Host_Writes_Count"
   },
   { "Transcend Solid-State Drive",
     "TS(8|16|32|64|128)GSSD25-(M|S)",
@@ -99,8 +144,7 @@ static const drive_settings builtin_knowndrives[] = {
     "",
     "IBM Deskstar 60GXP drives may need upgraded SMART firmware.\n"
     "Please see http://www.geocities.com/dtla_update/index.html#rel and\n"
-    "http://www-3.ibm.com/pc/support/site.wss/document.do?lndocid=MIGR-42215 or\n"
-    "http://www-1.ibm.com/support/docview.wss?uid=psg1MIGR-42215",
+    "http://www.ibm.com/pc/support/site.wss/MIGR-42215.html",
     ""
   },
   { "IBM Deskstar 40GV & 75GXP series (A5AA/A6AA firmware)",
@@ -113,8 +157,7 @@ static const drive_settings builtin_knowndrives[] = {
     "",
     "IBM Deskstar 40GV and 75GXP drives may need upgraded SMART firmware.\n"
     "Please see http://www.geocities.com/dtla_update/ and\n"
-    "http://www-3.ibm.com/pc/support/site.wss/document.do?lndocid=MIGR-42215 or\n"
-    "http://www-1.ibm.com/support/docview.wss?uid=psg1MIGR-42215",
+    "http://www.ibm.com/pc/support/site.wss/MIGR-42215.html",
     ""
   },
   { "", // ExcelStor J240, J340, J360, J680, and J880
@@ -218,7 +261,8 @@ static const drive_settings builtin_knowndrives[] = {
   },
   { "Fujitsu MHY2 BH series",
     "FUJITSU MHY2(04|06|08|10|12|16|20|25)0BH.*",
-    "", "", ""
+    "", "",
+    "-v 240,raw48,Transfer_Error_Rate"
   },
   { "Fujitsu MHW2 BH series",
     "FUJITSU MHW2(04|06|08|10|12|16)0BH.*",
@@ -759,6 +803,10 @@ static const drive_settings builtin_knowndrives[] = {
     "(Hitachi |HITACHI )?HTS5425(80|12|16|20|25)K9(A3|SA)00",
     "", "", ""
   },
+  { "Hitachi Travelstar 5K320 series",
+    "(Hitachi |HITACHI )?HT(S|E)5432(80|12|16|25|32)L9(A300|SA01)",
+    "", "", ""
+  },
   { "Hitachi Travelstar 7K60",
     "(Hitachi )?HTS726060M9AT00",
     "", "", ""
@@ -841,6 +889,10 @@ static const drive_settings builtin_knowndrives[] = {
   },
   { "Hitachi Deskstar 7K1000.B",
     "(Hitachi )?HDT7210((16|25)SLA380|(32|50|64|75|10)SLA360)",
+    "", "", ""
+  },
+  { "Hitachi Deskstar 7K2000",
+    "Hitachi HDS722020ALA330",
     "", "", ""
   },
   { "Hitachi Ultrastar 7K1000",
@@ -929,6 +981,14 @@ static const drive_settings builtin_knowndrives[] = {
   },
   { "Seagate Momentus 7200.3 series",
     "ST9((80|120|160)411|(250|320)421)ASG?",
+    "", "", ""
+  },
+  { "Seagate Momentus 7200.4 series",
+    "ST9(160412|250410|320423|500420)ASG?",
+    "", "", ""
+  },
+  { "Seagate Momentus 7200 FDE.2 series",
+    "ST9((160413|25041[12]|320426|50042[12])AS|(16041[89]|2504[16]4|32042[67]|500426)ASG)",
     "", "", ""
   },
   { "Seagate Medalist 1010, 1721, 2120, 3230 and 4340",  // ATA2, with -t permissive
@@ -1023,7 +1083,7 @@ static const drive_settings builtin_knowndrives[] = {
   },
   { "Seagate Barracuda 7200.11 family", // fixed firmware
     "ST3(160813|320[68]13|640[36]23|1000333|1500341)AS?",
-    "SD1B", // http://seagate.custkb.com/seagate/crm/selfservice/search.jsp?DocId=207957
+    "SD[12]B", // http://seagate.custkb.com/seagate/crm/selfservice/search.jsp?DocId=207957
     "", ""
   },
   { "Seagate Barracuda 7200.11 family", // buggy firmware
@@ -1221,6 +1281,10 @@ static const drive_settings builtin_knowndrives[] = {
     "WDC WD((360|740|800)GD|(360|740|1500)ADF[DS])-.*",
     "", "", ""
   },
+  { "Western Digital Raptor X",
+    "WDC WD1500AHFD-.*",
+    "", "", ""
+  },
   { "Western Digital VelociRaptor family",
     "WDC WD((1500|3000)B|3000G)LFS-.*",
     "", "", ""
@@ -1243,6 +1307,14 @@ static const drive_settings builtin_knowndrives[] = {
   },
   { "Western Digital Scorpio Black Serial ATA family",
     "WDC WD(8|12|16|25|32)00B[EJ]KT-.*",
+    "", "", ""
+  },
+  { "Western Digital My Passport Essential hard drive (USB interface)",
+    "WDC WD3200BMVU-.*",
+    "", "", ""
+  },
+  { "Western Digital My Passport hard drive (USB interface)",
+    "WDC WD3200BMVV-.*",
     "", "", ""
   },
   { "Quantum Bigfoot series",
@@ -1434,7 +1506,8 @@ const drive_settings * lookup_drive(const char * model, const char * firmware)
 }
 
 // Parse '-v' and '-F' options in preset string, return false on error.
-static bool parse_presets(const char * presets, unsigned char * opts, unsigned char & fix_firmwarebug)
+static bool parse_presets(const char * presets, ata_vendor_attr_defs & defs,
+                          unsigned char & fix_firmwarebug)
 {
   for (int i = 0; ; ) {
     i += strspn(presets+i, " \t");
@@ -1444,14 +1517,9 @@ static bool parse_presets(const char * presets, unsigned char * opts, unsigned c
     if (!(sscanf(presets+i, "-%c %40[^ ]%n", &opt, arg, &len) >= 2 && len > 0))
       return false;
     if (opt == 'v') {
-      // Parse "-v N,option"
-      unsigned char newopts[MAX_ATTRIBUTE_NUM] = {0, };
-      if (parse_attribute_def(arg, newopts))
+      // Parse "-v N,format[,name]"
+      if (!parse_attribute_def(arg, defs, PRIOR_DATABASE))
         return false;
-      // Set only if not set by user
-      for (int j = 0; j < MAX_ATTRIBUTE_NUM; j++)
-        if (newopts[j] && !opts[j])
-          opts[j] = newopts[j];
     }
     else if (opt == 'F') {
       unsigned char fix;
@@ -1508,19 +1576,16 @@ static int showonepreset(const drive_settings * dbentry)
   unsigned char fix_firmwarebug = 0;
   bool first_preset = true;
   if (*dbentry->presets) {
-    unsigned char opts[MAX_ATTRIBUTE_NUM] = {0,};
-    if (!parse_presets(dbentry->presets, opts, fix_firmwarebug)) {
+    ata_vendor_attr_defs defs;
+    if (!parse_presets(dbentry->presets, defs, fix_firmwarebug)) {
       pout("Syntax error in preset option string \"%s\"\n", dbentry->presets);
       errcnt++;
     }
     for (int i = 0; i < MAX_ATTRIBUTE_NUM; i++) {
-      char out[256];
-      if (opts[i]) {
-        ataPrintSmartAttribName(out, i, opts);
+      if (defs[i].priority != PRIOR_DEFAULT) {
         // Use leading zeros instead of spaces so that everything lines up.
-        out[0] = (out[0] == ' ') ? '0' : out[0];
-        out[1] = (out[1] == ' ') ? '0' : out[1];
-        pout("%-*s %s\n", TABLEPRINTWIDTH, first_preset ? "ATTRIBUTE OPTIONS:" : "", out);
+        pout("%-*s %03d %s\n", TABLEPRINTWIDTH, first_preset ? "ATTRIBUTE OPTIONS:" : "",
+             i, ata_get_smart_attr_name(i, defs).c_str());
         first_preset = false;
       }
     }
@@ -1648,7 +1713,7 @@ void show_presets(const ata_identify_device * drive, bool fix_swapped_id)
 // (if any) for the given drive in knowndrives[].  Values that have
 // already been set in opts will not be changed.  Returns false if drive
 // not recognized.
-bool apply_presets(const ata_identify_device *drive, unsigned char * opts,
+bool apply_presets(const ata_identify_device *drive, ata_vendor_attr_defs & defs,
                    unsigned char & fix_firmwarebug, bool fix_swapped_id)
 {
   // get the drive's model/firmware strings
@@ -1663,7 +1728,7 @@ bool apply_presets(const ata_identify_device *drive, unsigned char * opts,
 
   if (*dbentry->presets) {
     // Apply presets
-    if (!parse_presets(dbentry->presets, opts, fix_firmwarebug))
+    if (!parse_presets(dbentry->presets, defs, fix_firmwarebug))
       pout("Syntax error in preset option string \"%s\"\n", dbentry->presets);
   }
   return true;
@@ -1883,8 +1948,8 @@ static bool parse_drive_database(parse_ptr src, drive_database & db, const char 
             break;
           case 4:
             if (!token.value.empty()) {
-              unsigned char opts[MAX_ATTRIBUTE_NUM] = {0, }; unsigned char fix = 0;
-              if (!parse_presets(token.value.c_str(), opts, fix)) {
+              ata_vendor_attr_defs defs; unsigned char fix = 0;
+              if (!parse_presets(token.value.c_str(), defs, fix)) {
                 pout("%s(%d): Syntax error in preset option string\n", path, token.line);
                 ok = false;
               }

@@ -18,7 +18,7 @@
  .\" IS AUTOMATICALLY INCLUDED IN THE FILE smartd.conf.5
 --- a/smartd.cpp
 +++ b/smartd.cpp
-@@ -1015,7 +1015,7 @@ static void MailWarning(const dev_config
+@@ -1021,7 +1021,7 @@ static void MailWarning(const dev_config
               "  NIS domain: %s\n\n"
               "The following warning/error was logged by the smartd daemon:\n\n"
               "%s\n\n"

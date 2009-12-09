@@ -61,7 +61,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 2923 2009-09-24 20:10:38Z chrfranke $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 2988 2009-11-29 16:21:07Z samm2 $";
 
 /* for passing global control variables */
 extern smartmonctrl *con;
@@ -1307,40 +1307,11 @@ ata_device * smart_interface::autodetect_sat_device(scsi_device * scsidev,
   if (!scsidev->is_open())
     return 0;
 
-  ata_device * atadev = 0;
-  try {
-    // SAT ?
-    if (inqdata && inqsize >= 36 && !memcmp(inqdata + 8, "ATA     ", 8)) { // TODO: Linux-specific?
-      atadev = new sat_device(this, scsidev, "");
-      if (has_sat_pass_through(atadev))
-        return atadev; // Detected SAT
-      atadev->release(scsidev);
-      delete atadev;
-    }
-
-/* The new usbcypress_device(this, scsidev, "", 0x24) sends vendor specific comand to non-cypress devices.
- * It's dangerous as other device may interpret such command as own valid vendor specific command.
- * I commented it out untill problem resolved
- */
-#if 0
-    // USB ?
-    {
-      atadev = new usbcypress_device(this, scsidev, "", 0x24);
-      if (has_usbcypress_pass_through(atadev,
-            (inqdata && inqsize >= 36 ? (const char*)inqdata  + 8 : 0),
-            (inqdata && inqsize >= 36 ? (const char*)inqdata + 16 : 0) ))
-        return atadev; // Detected USB
-      atadev->release(scsidev);
-      delete atadev;
-    }
-#endif
-  }
-  catch (...) {
-    if (atadev) {
-      atadev->release(scsidev);
-      delete atadev;
-    }
-    throw;
+  // SAT ?
+  if (inqdata && inqsize >= 36 && !memcmp(inqdata + 8, "ATA     ", 8)) { // TODO: Linux-specific?
+    ata_device_auto_ptr atadev( new sat_device(this, scsidev, "") , scsidev);
+    if (has_sat_pass_through(atadev.get()))
+      return atadev.release(); // Detected SAT
   }
 
   return 0;
@@ -1374,14 +1345,20 @@ const usb_id_entry usb_ids[] = {
   { 0x04fc, 0x0c15, 0xf615, d_sunplus }, // SunPlus SPDIF215
   { 0x04fc, 0x0c25, 0x0103, d_sunplus }, // SunPlus SPDIF225 (USB+SATA->SATA)
   // Iomega
+  { 0x059b, 0x0272,     -1, d_cypress }, // Iomega LPHD080-0
   { 0x059b, 0x0275, 0x0001, d_unsup   }, // Iomega MDHD500-U
   // LaCie
   { 0x059f, 0x0651,     -1, d_unsup   }, // LaCie hard disk (FA Porsche design)
   { 0x059f, 0x1018,     -1, d_sat     }, // LaCie hard disk (Neil Poulton design)
   // In-System Design
   { 0x05ab, 0x0060, 0x1101, d_cypress }, // In-System/Cypress ISD-300A1
+  // Genesys Logic
+  { 0x05e3, 0x0702,     -1, d_unsup   }, // Genesys Logic GL881E
+  { 0x05e3, 0x0718, 0x0041, d_sat     }, // Genesys Logic ? (TODO: requires '-T permissive')
   // Prolific
   { 0x067b, 0x3507, 0x0001, d_unsup   }, // Prolific PL3507
+  // Freecom
+  { 0x07ab, 0xfc8e, 0x010f, d_sunplus }, // Freecom Hard Drive XS
   // Toshiba
   { 0x0930, 0x0b09,     -1, d_sunplus }, // Toshiba PX1396E-3T01 (similar to Dura Micro 501)
   // Seagate
@@ -1396,8 +1373,10 @@ const usb_id_entry usb_ids[] = {
   { 0x0d49, 0x7410, 0x0122, d_sat     }, // Maxtor Basics Desktop
   { 0x0d49, 0x7450, 0x0122, d_sat     }, // Maxtor Basics Portable
   // Western Digital
+  { 0x1058, 0x0702, 0x0104, d_sat     }, // WD My Passport Portable  
   { 0x1058, 0x0704, 0x0175, d_sat     }, // WD My Passport Essential
   { 0x1058, 0x0705, 0x0175, d_sat     }, // WD My Passport Elite
+  { 0x1058, 0x070a, 0x1028, d_sat     }, // WD My Passport 070A
   { 0x1058, 0x0906, 0x0012, d_sat     }, // WD My Book ES
   { 0x1058, 0x1001, 0x0104, d_sat     }, // WD Elements Desktop
   { 0x1058, 0x1003, 0x0175, d_sat     }, // WD Elements Desktop WDE1UBK...
@@ -1405,6 +1384,7 @@ const usb_id_entry usb_ids[] = {
   { 0x1058, 0x1100, 0x0165, d_sat     }, // WD My Book Essential
   { 0x1058, 0x1102, 0x1028, d_sat     }, // WD My Book
   // Initio
+  { 0x13fd, 0x0540,     -1, d_unsup   }, // Initio 316000
   { 0x13fd, 0x1240, 0x0104, d_sat     }, // Initio ? (USB->SATA)
   { 0x13fd, 0x1340, 0x0208, d_sat     }, // Initio ? (USB+SATA->SATA)
   // JMicron

@@ -39,8 +39,8 @@ minor exceptions
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
 @@ -716,6 +724,10 @@ these disks.  Areca firmware version 1.4
- smartmontools must be used; Please see the \fBsmartctl\fP man page for
- further details.
+ smartmontools must be used; Please see the \fBsmartctl\fP(8) man page
+ for further details.
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
@@ -78,7 +78,7 @@ minor exceptions
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -118,10 +118,11 @@ Section below!
+@@ -117,10 +117,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
@@ -94,7 +94,7 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -183,6 +184,13 @@ Section below!
+@@ -182,6 +183,13 @@ Section below!
  .B \ \ /dev/twa0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
@@ -108,9 +108,9 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -288,6 +296,9 @@ these disks.  Areca firmware version 1.4
- smartmontools must be used; Please see the \fBsmartctl\fP man page for
- further details.
+@@ -287,6 +295,9 @@ these disks.  Areca firmware version 1.4
+ smartmontools must be used; Please see the \fBsmartctl\fP(8) man page
+ for further details.
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
@@ -118,7 +118,7 @@ minor exceptions
  .TP
  .B \-d TYPE
  Specifies the type of the device.  This Directive may be used multiple
-@@ -821,9 +832,9 @@ is set to the argument of \-M exec, if p
+@@ -818,9 +829,9 @@ is set to the argument of \-M exec, if p
  .IP \fBSMARTD_DEVICE\fP 4
  is set to the device path (examples: /dev/hda, /dev/sdb).
  .IP \fBSMARTD_DEVICETYPE\fP 4

@@ -44,7 +44,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 2860 2009-07-23 20:27:28Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 2983 2009-11-14 21:41:41Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 // for passing global control variables
@@ -773,87 +773,97 @@ static void PrintSmartConveyanceSelfTestPollingTime(const ata_smart_values * dat
     pout("recommended polling time: \t        Not Supported.\n");
 }
 
+// Check SMART attribute table for Threshold failure
+// onlyfailed=0: are or were any age or prefailure attributes <= threshold
+// onlyfailed=1: are any prefailure attributes <= threshold now
+static int find_failed_attr(const ata_smart_values * data,
+                            const ata_smart_thresholds_pvt * thresholds,
+                            const ata_vendor_attr_defs & defs, int onlyfailed)
+{
+  for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
+    const ata_smart_attribute & attr = data->vendor_attributes[i];
+
+    ata_attr_state state = ata_get_attr_state(attr,
+                             thresholds->thres_entries[i], defs);
+
+    if (!onlyfailed) {
+      if (state >= ATTRSTATE_FAILED_PAST)
+        return attr.id;
+    }
+    else {
+      if (state == ATTRSTATE_FAILED_NOW && ATTRIBUTE_FLAGS_PREFAILURE(attr.flags))
+        return attr.id;
+    }
+  }
+  return 0;
+}
+
 // onlyfailed=0 : print all attribute values
 // onlyfailed=1:  just ones that are currently failed and have prefailure bit set
 // onlyfailed=2:  ones that are failed, or have failed with or without prefailure bit set
 static void PrintSmartAttribWithThres(const ata_smart_values * data,
                                       const ata_smart_thresholds_pvt * thresholds,
-                                      const unsigned char * attributedefs,
+                                      const ata_vendor_attr_defs & defs,
                                       int onlyfailed)
 {
-  int needheader=1;
-  char rawstring[64];
-    
+  bool needheader = true;
+
   // step through all vendor attributes
   for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++) {
-    const char *status;
-    const ata_smart_attribute * disk = data->vendor_attributes+i;
-    const ata_smart_threshold_entry * thre = thresholds->thres_entries+i;
-    
-    // consider only valid attributes (allowing some screw-ups in the
-    // thresholds page data to slip by)
-    if (disk->id){
-      const char *type, *update;
-      char attributename[64];
+    const ata_smart_attribute & attr = data->vendor_attributes[i];
+    const ata_smart_threshold_entry & thre = thresholds->thres_entries[i];
 
-      // Don't report a failed attribute if its threshold is 0.
-      // ATA-3 (X3T13/2008D Revision 7b) declares 0x00 as the "always passing"
-      // threshold (Later ATA versions declare all thresholds as "obsolete").
-      // In practice, threshold value 0 is often used for usage attributes or
-      // appears if the thresholds cannot be read.
-      bool failednow  = (thre->threshold > 0 && disk->current <= thre->threshold);
-      bool failedever = (thre->threshold > 0 && disk->worst   <= thre->threshold);
+    // Check attribute and threshold
+    ata_attr_state state = ata_get_attr_state(attr, thre, defs);
+    if (state == ATTRSTATE_NON_EXISTING)
+      continue;
 
-      // These break out of the loop if we are only printing certain entries...
-      if (onlyfailed==1 && (!ATTRIBUTE_FLAGS_PREFAILURE(disk->flags) || !failednow))
-        continue;
-      
-      if (onlyfailed==2 && !failedever)
-        continue;
-      
-      // print header only if needed
-      if (needheader){
-        if (!onlyfailed){
-          pout("SMART Attributes Data Structure revision number: %d\n",(int)data->revnumber);
-          pout("Vendor Specific SMART Attributes with Thresholds:\n");
-        }
-        pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
-        needheader=0;
+    // These break out of the loop if we are only printing certain entries...
+    if (onlyfailed == 1 && !(ATTRIBUTE_FLAGS_PREFAILURE(attr.flags) && state == ATTRSTATE_FAILED_NOW))
+      continue;
+
+    if (onlyfailed == 2 && state < ATTRSTATE_FAILED_PAST)
+      continue;
+
+    // print header only if needed
+    if (needheader) {
+      if (!onlyfailed) {
+        pout("SMART Attributes Data Structure revision number: %d\n",(int)data->revnumber);
+        pout("Vendor Specific SMART Attributes with Thresholds:\n");
       }
-      
-      // is this Attribute currently failed, or has it ever failed?
-      if (failednow)
-        status="FAILING_NOW";
-      else if (failedever)
-        status="In_the_past";
-      else
-        status="    -";
+      pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
+      needheader = false;
+    }
 
-      // Print name of attribute
-      ataPrintSmartAttribName(attributename, disk->id, attributedefs);
-      pout("%-28s",attributename);
+    // Format value, worst, threshold
+    std::string valstr, threstr;
+    if (state > ATTRSTATE_NO_NORMVAL)
+      valstr = strprintf("%.3d   %.3d", attr.current, attr.worst);
+    else
+      valstr = "---   ---";
+    if (state > ATTRSTATE_NO_THRESHOLD)
+      threstr = strprintf("%.3d", thre.threshold);
+    else
+      threstr = "---";
 
-      // printing line for each valid attribute
-      type=ATTRIBUTE_FLAGS_PREFAILURE(disk->flags)?"Pre-fail":"Old_age";
-      update=ATTRIBUTE_FLAGS_ONLINE(disk->flags)?"Always":"Offline";
+    // Print line for each valid attribute
+    std::string attrname = ata_get_smart_attr_name(attr.id, defs);
+    pout("%3d %-24s0x%04x   %-9s   %-3s    %-10s%-9s%-12s%s\n",
+         attr.id, attrname.c_str(), attr.flags,
+         valstr.c_str(), threstr.c_str(),
+         (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)? "Pre-fail" : "Old_age"),
+         (ATTRIBUTE_FLAGS_ONLINE(attr.flags)? "Always" : "Offline"),
+         (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
+          state == ATTRSTATE_FAILED_PAST ? "In_the_past" :
+                                           "    -"        ),
+         ata_format_attr_raw_value(attr, defs).c_str());
 
-      pout("0x%04x   %.3d   %.3d   %.3d    %-10s%-9s%-12s", 
-             (int)disk->flags, (int)disk->current, (int)disk->worst,
-             (int)thre->threshold, type, update, status);
-
-      // print raw value of attribute
-      ataPrintSmartAttribRawValue(rawstring, disk, attributedefs);
-      pout("%s\n", rawstring);
-      
-      // Print a warning if there is inconsistency here and
-      // threshold info is not empty.
-      if (disk->id != thre->id && (thre->id || thre->threshold)) {
-        char atdat[64],atthr[64];
-        ataPrintSmartAttribName(atdat, disk->id, attributedefs);
-        ataPrintSmartAttribName(atthr, thre->id, attributedefs);
-        pout("%-28s<== Data Page      |  WARNING: PREVIOUS ATTRIBUTE HAS TWO\n",atdat);
-        pout("%-28s<== Threshold Page |  INCONSISTENT IDENTITIES IN THE DATA\n",atthr);
-      }
+    // Print a warning if there is inconsistency here
+    if (state == ATTRSTATE_BAD_THRESHOLD) {
+      pout("%3d %-24s<== Data Page      |  WARNING: PREVIOUS ATTRIBUTE HAS TWO\n",
+           attr.id, attrname.c_str());
+      pout("%3d %-24s<== Threshold Page |  INCONSISTENT IDENTITIES IN THE DATA\n",
+           thre.id, ata_get_smart_attr_name(thre.id, defs).c_str());
     }
   }
   if (!needheader) pout("\n");
@@ -1757,11 +1767,10 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   }
 
   // Use preset vendor attribute options unless user has requested otherwise.
-  unsigned char attributedefs[256];
-  memcpy(attributedefs, options.attributedefs, sizeof(attributedefs));
+  ata_vendor_attr_defs attribute_defs = options.attribute_defs;
   unsigned char fix_firmwarebug = options.fix_firmwarebug;
   if (!options.ignore_presets)
-    apply_presets(&drive, attributedefs, fix_firmwarebug, options.fix_swapped_id);
+    apply_presets(&drive, attribute_defs, fix_firmwarebug, options.fix_swapped_id);
 
   // Print most drive identity information if requested
   bool known = false;
@@ -1958,13 +1967,13 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     case 0:
       // The case where the disk health is OK
       pout("SMART overall-health self-assessment test result: PASSED\n");
-      if (ataCheckSmart(&smartval, &smartthres,0)){
+      if (find_failed_attr(&smartval, &smartthres, options.attribute_defs, 0)){
         if (options.smart_vendor_attrib)
           pout("See vendor-specific Attribute list for marginal Attributes.\n\n");
         else {
           PRINT_ON(con);
           pout("Please note the following marginal Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attributedefs, 2);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
         } 
         returnval|=FAILAGE;
       }
@@ -1978,14 +1987,14 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       pout("SMART overall-health self-assessment test result: FAILED!\n"
            "Drive failure expected in less than 24 hours. SAVE ALL DATA.\n");
       PRINT_OFF(con);
-      if (ataCheckSmart(&smartval, &smartthres,1)){
+      if (find_failed_attr(&smartval, &smartthres, options.attribute_defs, 1)){
         returnval|=FAILATTR;
         if (options.smart_vendor_attrib)
           pout("See vendor-specific Attribute list for failed Attributes.\n\n");
         else {
           PRINT_ON(con);
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attributedefs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
         }
       }
       else
@@ -1997,7 +2006,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     case -1:
     default:
       // The case where something went wrong with HDIO_DRIVE_TASK ioctl()
-      if (ataCheckSmart(&smartval, &smartthres,1)){
+      if (find_failed_attr(&smartval, &smartthres, options.attribute_defs, 1)){
         PRINT_ON(con);
         pout("SMART overall-health self-assessment test result: FAILED!\n"
              "Drive failure expected in less than 24 hours. SAVE ALL DATA.\n");
@@ -2009,18 +2018,18 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         else {
           PRINT_ON(con);
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attributedefs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
         }
       }
       else {
         pout("SMART overall-health self-assessment test result: PASSED\n");
-        if (ataCheckSmart(&smartval, &smartthres,0)){
+        if (find_failed_attr(&smartval, &smartthres, options.attribute_defs, 0)){
           if (options.smart_vendor_attrib)
             pout("See vendor-specific Attribute list for marginal Attributes.\n\n");
           else {
             PRINT_ON(con);
             pout("Please note the following marginal Attributes:\n");
-            PrintSmartAttribWithThres(&smartval, &smartthres, attributedefs, 2);
+            PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
           } 
           returnval|=FAILAGE;
         }
@@ -2041,7 +2050,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // Print vendor-specific attributes
   if (options.smart_vendor_attrib) {
     PRINT_ON(con);
-    PrintSmartAttribWithThres(&smartval, &smartthres, attributedefs,
+    PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs,
                               (con->printing_switchable ? 2 : 0));
     PRINT_OFF(con);
   }
@@ -2051,10 +2060,12 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   ata_smart_log_directory smartlogdir_buf, gplogdir_buf;
   const ata_smart_log_directory * smartlogdir = 0, * gplogdir = 0;
 
-  if (   options.gp_logdir || options.smart_logdir
-      || options.sataphy || options.smart_ext_error_log
+  if (   options.gp_logdir
+      || options.smart_logdir
+      || options.smart_ext_error_log
       || options.smart_ext_selftest_log
-      || !options.log_requests.empty()                 ) {
+      || options.sataphy
+      || !options.log_requests.empty() ) {
     PRINT_ON(con);
     if (isGeneralPurposeLoggingCapable(&drive))
       pout("General Purpose Logging (GPL) feature set supported\n");
@@ -2063,7 +2074,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     bool need_smart_logdir = options.smart_logdir;
     bool need_gp_logdir    = (   options.gp_logdir
                               || options.smart_ext_error_log
-                              || options.smart_ext_selftest_log);
+                              || options.smart_ext_selftest_log
+                              || options.sataphy               );
     unsigned i;
     for (i = 0; i < options.log_requests.size(); i++) {
       if (options.log_requests[i].gpl)
@@ -2323,12 +2335,19 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
 
   // Print SATA Phy Event Counters
   if (options.sataphy) {
-    unsigned char log_11[512] = {0, };
-    unsigned char features = (options.sataphy_reset ? 0x01 : 0x00);
-    if (!ataReadLogExt(device, 0x11, features, 0, log_11, 1))
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-    else
-      PrintSataPhyEventCounters(log_11, options.sataphy_reset);
+    unsigned nsectors = GetNumLogSectors(gplogdir, 0x11, true);
+    if (!nsectors)
+      pout("SATA Phy Event Counters (GP Log 0x11) not supported\n");
+    else if (nsectors != 1)
+      pout("SATA Phy Event Counters with %u sectors not supported\n", nsectors);
+    else {
+      unsigned char log_11[512] = {0, };
+      unsigned char features = (options.sataphy_reset ? 0x01 : 0x00);
+      if (!ataReadLogExt(device, 0x11, features, 0, log_11, 1))
+        failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+      else
+        PrintSataPhyEventCounters(log_11, options.sataphy_reset);
+    }
   }
 
   // START OF THE TESTING SECTION OF THE CODE.  IF NO TESTING, RETURN

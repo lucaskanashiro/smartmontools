@@ -1,3 +1,12 @@
+smartmontools (5.38+svn2993-1) unstable; urgency=low
+
+  * [bed9426] Imported Upstream version 5.38+svn2993
+  * [4a5d1d1] Fixed status action in init script (LP: #491324)
+  * [9dd2a1d] Add selinux for avr32 in build-depends
+  * [26ec4bc] Refreshed patches
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Wed, 09 Dec 2009 17:45:19 +0100
+
 smartmontools (5.38+svn2956-1) unstable; urgency=low
 
   * [283f281] Updated my email address and removed DM-Upload-Allowed
