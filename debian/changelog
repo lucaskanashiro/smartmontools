@@ -1,3 +1,11 @@
+smartmontools (5.39-1) unstable; urgency=low
+
+  * [e9e8c2b] Imported Upstream version 5.39
+  * [b00706e] Adeed libusb2-dev for kfreebsd in Build-Depends.
+    (Closes: #560241)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Mon, 14 Dec 2009 12:24:35 +0100
+
 smartmontools (5.38+svn2993-1) unstable; urgency=low
 
   * [bed9426] Imported Upstream version 5.38+svn2993
