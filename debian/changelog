@@ -1,3 +1,10 @@
+smartmontools (5.39-2) unstable; urgency=low
+
+  * [f7f4c51] Fixed crash on kfreebsd. (Closes: #561113) - thanks to
+    Petr Salinger and Axel Beckert
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sat, 26 Dec 2009 11:11:58 +0100
+
 smartmontools (5.39-1) unstable; urgency=low
 
   * [e9e8c2b] Imported Upstream version 5.39
