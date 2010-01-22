@@ -6,3 +6,5 @@
 62_lowcap.patch
 63_removable.patch
 64_realloc_kfreebsd.patch
+65_r3032.patch
+66_r3042.patch

@@ -1,3 +1,10 @@
+smartmontools (5.39-3) unstable; urgency=low
+
+  * [3d32778] Fixed quietmode option (Closes: #545784)
+  * [e66f4fd] Allow smartd 'DEVICESCAN -d sat' (Closes: #546566)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Fri, 22 Jan 2010 20:02:53 +0100
+
 smartmontools (5.39-2) unstable; urgency=low
 
   * [f7f4c51] Fixed crash on kfreebsd. (Closes: #561113) - thanks to
