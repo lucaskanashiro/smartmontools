@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 2878 2009-08-26 20:03:06Z chrfranke $
+# $Id: Makefile.am 3059 2010-02-03 21:42:09Z chrfranke $
 #
 
 @SET_MAKE@
@@ -35,6 +35,7 @@ smartd_SOURCES =  smartd.cpp      \
                   dev_interface.cpp   \
                   dev_interface.h     \
                   dev_tunnelled.h     \
+                  drivedb.h           \
                   extern.h        \
                   int64.h         \
                   knowndrives.cpp \
@@ -45,7 +46,7 @@ smartd_SOURCES =  smartd.cpp      \
                   utility.cpp     \
                   utility.h
 
-smartd_LDADD = @os_deps@ @os_libs@
+smartd_LDADD = @os_deps@ @os_libs@ @CAPNG_LDADD@
 smartd_DEPENDENCIES = @os_deps@
 
 EXTRA_smartd_SOURCES = os_darwin.cpp    \
@@ -104,6 +105,7 @@ smartctl_SOURCES= smartctl.cpp    \
                   dev_interface.cpp   \
                   dev_interface.h     \
                   dev_tunnelled.h     \
+                  drivedb.h           \
                   extern.h        \
                   int64.h         \
                   knowndrives.cpp \
@@ -242,8 +244,7 @@ EXTRA_DIST = smartd.initd.in                       \
              os_win32/installer.nsi                \
              $(docs_DATA)
 
-CLEANFILES = drivedb.h          \
-             smartd.conf.5      \
+CLEANFILES = smartd.conf.5      \
              smartd.conf.4      \
              smartd.8           \
              smartd.1m          \
@@ -300,11 +301,6 @@ svnversion.h: CHANGELOG Makefile
 	| sed 's,^,#define SMARTMONTOOLS_SVN_,' >> $@
 endif
 
-
-# Drive Database
-drivedb.h: knowndrives.cpp Makefile
-	echo '/* drivedb.h.  Generated from knowndrives.cpp by Makefile.  */' > $@
-	sed '1,/^\/\/ BEGIN drivedb.h/d;/^\/\/ END drivedb.h/,$$d;s/^  //' $(srcdir)/knowndrives.cpp >> $@
 
 if ENABLE_DRIVEDB
 drivedb_DATA = drivedb.h
@@ -409,6 +405,12 @@ install-initdDATA : $(initd_DATA_install)
 
 uninstall-initdDATA: $(initd_DATA_uninstall)
 
+if ENABLE_CAPABILITIES
+MAN_CAPABILITIES = cat
+else
+MAN_CAPABILITIES = sed '/BEGIN ENABLE_CAPABILITIES/,/END ENABLE_CAPABILITIES/d'
+endif
+
 if ENABLE_DRIVEDB
 MAN_DRIVEDB = sed "s|/usr/local/share/smartmontools/drivedb\\.h|$(drivedbdir)/drivedb.h|g"
 else
@@ -427,36 +429,29 @@ else
 MAN_ATTRIBUTELOG = sed '/BEGIN ENABLE_ATTRIBUTELOG/,/END ENABLE_ATTRIBUTELOG/d'
 endif
 
+MAN_FILTER = \
+    sed "s|CURRENT_CVS_VERSION|$(releaseversion)|g; \
+         s|CURRENT_CVS_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
+         s|CURRENT_CVS_TIME|`sed -n 's,^.*TIME[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
+         s|/usr/local/share/man/|$(mandir)/|g; \
+         s|/usr/local/sbin/|$(sbindir)/|g; \
+         s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g; \
+         s|/usr/local/share/doc/smartmontools-5.1/|$(docsdir)/|g;  \
+         s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g; \
+         s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" | \
+    $(MAN_CAPABILITIES) | \
+    $(MAN_DRIVEDB) | \
+    $(MAN_SAVESTATES) | \
+    $(MAN_ATTRIBUTELOG)
+
 if OS_FREEBSD
 .for file in $(man_MANS)
 ${file}: $(srcdir)/${file}.in Makefile svnversion.h
-	sed "s|CURRENT_CVS_VERSION|$(releaseversion)|g; \
-	     s|CURRENT_CVS_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
-	     s|CURRENT_CVS_TIME|`sed -n 's,^.*TIME[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
-	     s|/usr/local/share/man/|$(mandir)/|g; \
-	     s|/usr/local/sbin/|$(sbindir)/|g; \
-	     s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g; \
-	     s|/usr/local/share/doc/smartmontools-5.1/|$(docsdir)/|g;  \
-	     s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g; \
-	     s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" ${.ALLSRC:M*.in} | \
-	$(MAN_DRIVEDB) | \
-	$(MAN_SAVESTATES) | \
-	$(MAN_ATTRIBUTELOG) > $@
+	cat ${.ALLSRC:M*.in} | $(MAN_FILTER) > $@
 .endfor
 else
 smart%: $(srcdir)/smart%.in Makefile svnversion.h
-	sed "s|CURRENT_CVS_VERSION|$(releaseversion)|g" $< | \
-	sed "s|CURRENT_CVS_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g" | \
-	sed "s|CURRENT_CVS_TIME|`sed -n 's,^.*TIME[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g" | \
-	sed "s|/usr/local/share/man/|$(mandir)/|g" | \
-	sed "s|/usr/local/sbin/|$(sbindir)/|g" | \
-	sed "s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g" | \
-	sed "s|/usr/local/share/doc/smartmontools-5.1/|$(docsdir)/|g" | \
-	sed "s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g" | \
-	sed "s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" | \
-	$(MAN_DRIVEDB) | \
-	$(MAN_SAVESTATES) | \
-	$(MAN_ATTRIBUTELOG) > $@
+	cat $< | $(MAN_FILTER) > $@
 endif
 
 # Commands to convert man pages into .html and .txt
@@ -500,6 +495,14 @@ endif
 %.8.txt: %.8
 	$(MAN2TXT) $< > $@
 
+
+# Check drive database syntax
+check:
+	@if ./smartctl -B $(srcdir)/drivedb.h -P showall >/dev/null; then \
+	  echo "$(srcdir)/drivedb.h: OK"; \
+	else \
+	  echo "$(srcdir)/drivedb.h: Syntax check failed"; exit 1; \
+	fi
 
 
 if OS_WIN32_MINGW

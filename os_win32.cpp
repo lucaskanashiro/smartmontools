@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2004-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2004-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ extern smartmonctrl * con; // con->permissive,reportataioctl
 #include <assert.h>
 #else
 #undef assert
-#define assert(x) /**/
+#define assert(x) /* */
 #endif
 
 #define WIN32_LEAN_AND_MEAN
@@ -40,17 +40,28 @@ extern smartmonctrl * con; // con->permissive,reportataioctl
 #include <stddef.h> // offsetof()
 #include <io.h> // access()
 
+#ifdef __CYGWIN__
+#include <cygwin/version.h> // CYGWIN_VERSION_DLL_MAJOR
+#endif
+
 // Macro to check constants at compile time using a dummy typedef
 #define ASSERT_CONST(c, n) \
   typedef char assert_const_##c[((c) == (n)) ? 1 : -1]
 #define ASSERT_SIZEOF(t, n) \
   typedef char assert_sizeof_##t[(sizeof(t) == (n)) ? 1 : -1]
 
+const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 3049 2010-01-27 19:47:09Z chrfranke $";
 
-// Needed by '-V' option (CVS versioning) of smartd/smartctl
-const char *os_XXXX_c_cvsid="$Id: os_win32.cpp 2973 2009-10-26 22:38:19Z chrfranke $"
-ATACMDS_H_CVSID CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
-
+// Disable Win9x/ME specific code if no longer supported by compiler.
+#ifndef WIN9X_SUPPORT
+  #if defined(CYGWIN_VERSION_DLL_MAJOR) && (CYGWIN_VERSION_DLL_MAJOR >= 1007)
+    // Win9x/ME support was dropped in Cygwin 1.7
+  #elif defined(_MSC_VER) && (_MSC_VER >= 1500)
+    // Win9x/ME support was dropped in MSVC9 (cl.exe 15.0)
+  #else
+    #define WIN9X_SUPPORT 1
+  #endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -59,6 +70,16 @@ namespace os_win32 { // no need to publish anything, name provided for Doxygen
 #ifdef _MSC_VER
 #pragma warning(disable:4250)
 #endif
+
+// Running on Win9x/ME ?
+#if WIN9X_SUPPORT
+// Set true in win9x_smart_interface ctor.
+static bool win9x = false;
+#else
+// Never true (const allows compiler to remove dead code).
+const  bool win9x = false;
+#endif
+
 
 class win_smart_device
 : virtual public /*implements*/ smart_device
@@ -112,6 +133,7 @@ private:
   std::string m_options;
   bool m_usr_options; // options set by user?
   bool m_admin; // open with admin access?
+  bool m_id_is_cached; // ata_identify_is_cached() return value.
   int m_drive, m_port;
   int m_smartver_state;
 };
@@ -137,6 +159,8 @@ private:
 
 /////////////////////////////////////////////////////////////////////////////
 
+#if WIN9X_SUPPORT
+
 class win_aspi_device
 : public /*implements*/ scsi_device
 {
@@ -156,6 +180,7 @@ private:
   unsigned char m_id;
 };
 
+#endif // WIN9X_SUPPORT
 
 //////////////////////////////////////////////////////////////////////
 
@@ -208,10 +233,16 @@ protected:
   virtual bool scsi_scan(smart_device_list & devlist) = 0;
 };
 
+#if WIN9X_SUPPORT
+
 // Win9x/ME reduced functionality
 class win9x_smart_interface
 : public /*extends*/ win_smart_interface
 {
+public:
+  win9x_smart_interface()
+    { win9x = true; }
+
 protected:
   virtual scsi_device * get_scsi_device(const char * name, const char * type);
 
@@ -219,6 +250,8 @@ protected:
 
   virtual bool scsi_scan(smart_device_list & devlist);
 };
+
+#endif // WIN9X_SUPPORT
 
 // WinNT,2000,XP,...
 class winnt_smart_interface
@@ -236,12 +269,6 @@ protected:
 
 
 //////////////////////////////////////////////////////////////////////
-
-// Running on Win9x/ME ?
-static inline bool is_win9x()
-{
-  return !!(GetVersion() & 0x80000000);
-}
 
 // Running on 64-bit Windows as 32-bit app ?
 static bool is_wow64()
@@ -369,16 +396,24 @@ ata_device * win_smart_interface::get_ata_device(const char * name, const char *
   return new win_ata_device(this, name, type);
 }
 
+#ifdef WIN9X_SUPPORT
+
 scsi_device * win9x_smart_interface::get_scsi_device(const char * name, const char * type)
 {
   return new win_aspi_device(this, name, type);
 }
 
+#endif
+
 scsi_device * winnt_smart_interface::get_scsi_device(const char * name, const char * type)
 {
   const char * testname = skipdev(name);
   if (!strncmp(testname, "scsi", 4))
+#if WIN9X_SUPPORT
     return new win_aspi_device(this, name, type);
+#else
+    return (set_err(EINVAL, "ASPI interface not supported"), (scsi_device *)0);
+#endif
   return new win_scsi_device(this, name, type);
 }
 
@@ -416,8 +451,10 @@ smart_device * win_smart_interface::autodetect_smart_device(const char * name)
   const char * testname = skipdev(name);
   if (!strncmp(testname, "hd", 2))
     return new win_ata_device(this, name, "");
+#if WIN9X_SUPPORT
   if (!strncmp(testname, "scsi", 4))
     return new win_aspi_device(this, name, "");
+#endif
   if (!strncmp(testname, "tw_cli", 6))
     return new win_tw_cli_device(this, name, "");
   return 0;
@@ -778,7 +815,7 @@ static int smart_ioctl(HANDLE hdevice, int drive, IDEREGS * regs, char * data, u
   if (datasize)
     memcpy(data, outpar->bBuffer, 512);
   else if (regs->bFeaturesReg == ATA_SMART_STATUS) {
-    if (nonempty(const_cast<unsigned char *>(outpar->bBuffer), sizeof(IDEREGS)))
+    if (nonempty(outpar->bBuffer, sizeof(IDEREGS)))
       *regs = *(const IDEREGS *)(outpar->bBuffer);
     else {  // Workaround for driver not returning regs
       if (con->reportataioctl)
@@ -1599,12 +1636,13 @@ bool win_tw_cli_device::open()
     id->words047_079[60-47] = (unsigned short)(nblocks    ); // secs_16
     id->words047_079[61-47] = (unsigned short)(nblocks>>16); // secs_32
   }
-  id->major_rev_num = 0x1<<3; // ATA-3
   id->command_set_1 = 0x0001; id->command_set_2 = 0x4000; // SMART supported, words 82,83 valid
   id->cfs_enable_1  = 0x0001; id->csf_default   = 0x4000; // SMART enabled, words 85,87 valid
 
   // Parse smart data hex dump
   const char * s = findstr(buffer, "Drive Smart Data:");
+  if (!*s)
+    s = findstr(buffer, "Drive SMART Data:"); // tw_cli from 9.5.x
   if (!*s) {
     s = findstr(buffer, "S.M.A.R.T. (Controller"); // from 3DM browser window
     if (*s) {
@@ -1671,20 +1709,6 @@ int win_tw_cli_device::ata_command_interface(smart_command_set command, int /*se
       if (!m_smart_valid)
         break;
       memcpy(data, &m_smart_buf, 512);
-      return 0;
-    case READ_THRESHOLDS:
-      if (!m_smart_valid)
-        break;
-      // Fake zero thresholds
-      {
-        const ata_smart_values   * sv = &m_smart_buf;
-        ata_smart_thresholds_pvt * tr = (ata_smart_thresholds_pvt *)data;
-        memset(tr, 0, 512);
-        // TODO: Indicate missing thresholds in ataprint.cpp:PrintSmartAttribWithThres()
-        // (ATA_SMART_READ_THRESHOLDS is marked obsolete since ATA-5)
-        for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++)
-          tr->chksum -= tr->thres_entries[i].id = sv->vendor_attributes[i].id;
-      }
       return 0;
     case ENABLE:
     case STATUS:
@@ -1947,7 +1971,6 @@ static int get_identify_from_device_property(HANDLE hdevice, ata_identify_device
     copy_swapped(id->model, data.raw+data.desc.ProductIdOffset, sizeof(id->model));
   if (data.desc.ProductRevisionOffset)
     copy_swapped(id->fw_rev, data.raw+data.desc.ProductRevisionOffset, sizeof(id->fw_rev));
-  id->major_rev_num = 0x1<<3; // ATA-3
   id->command_set_1 = 0x0001; id->command_set_2 = 0x4000; // SMART supported, words 82,83 valid
   id->cfs_enable_1  = 0x0001; id->csf_default   = 0x4000; // SMART enabled, words 85,87 valid
   return 0;
@@ -2148,6 +2171,7 @@ static int get_device_power_state(HANDLE hdevice)
 
 /////////////////////////////////////////////////////////////////////////////
 
+#if WIN9X_SUPPORT
 // Print SMARTVSD error message, return errno
 
 static int smartvsd_error()
@@ -2195,6 +2219,7 @@ static int smartvsd_error()
   }
 }
 
+#endif // WIN9X_SUPPORT
 
 // Get default ATA device options
 
@@ -2239,6 +2264,7 @@ win_ata_device::win_ata_device(smart_interface * intf, const char * dev_name, co
 : smart_device(intf, dev_name, "ata", req_type),
   m_usr_options(false),
   m_admin(false),
+  m_id_is_cached(false),
   m_drive(0),
   m_port(-1),
   m_smartver_state(0)
@@ -2287,7 +2313,6 @@ bool win_ata_device::open()
 bool win_ata_device::open(int phydrive, int logdrive, const char * options, int port)
 {
   // path depends on Windows Version
-  bool win9x = is_win9x(); // TODO: Member variable
   char devpath[30];
   if (win9x && 0 <= phydrive && phydrive <= 7)
     // Use patched "smartvse.vxd" for drives 4-7, see INSTALL file for details
@@ -2317,9 +2342,12 @@ bool win_ata_device::open(int phydrive, int logdrive, const char * options, int 
   }
   if (h == INVALID_HANDLE_VALUE) {
     long err = GetLastError();
-    pout("Cannot open device %s, Error=%ld\n", devpath, err);
+#if WIN9X_SUPPORT
+    if (win9x && phydrive <= 3 && err == ERROR_FILE_NOT_FOUND)
+      smartvsd_error();
+#endif
     if (err == ERROR_FILE_NOT_FOUND)
-      set_err((win9x && phydrive <= 3 ? smartvsd_error() : ENOENT), "%s: not found", devpath);
+      set_err(ENOENT, "%s: not found", devpath);
     else if (err == ERROR_ACCESS_DENIED)
       set_err(EACCES, "%s: access denied", devpath);
     else
@@ -2327,6 +2355,15 @@ bool win_ata_device::open(int phydrive, int logdrive, const char * options, int 
     return false;
   }
   set_fh(h);
+
+  // Warn once if admin rights are missing
+  if (!m_admin) {
+    static bool noadmin_warning = false;
+    if (!noadmin_warning) {
+      pout("Warning: Limited functionality due to missing admin rights\n");
+      noadmin_warning = true;
+    }
+  }
 
   if (con->reportataioctl > 1)
     pout("%s: successfully opened%s\n", devpath, (!m_admin ? " (without admin rights)" :""));
@@ -2413,6 +2450,8 @@ bool win_ata_device::open(int phydrive, int logdrive, const char * options, int 
 }
 
 
+#if WIN9X_SUPPORT
+
 // Scan for ATA drives on Win9x/ME
 
 bool win9x_smart_interface::ata_scan(smart_device_list & devlist)
@@ -2444,6 +2483,8 @@ bool win9x_smart_interface::ata_scan(smart_device_list & devlist)
   }
   return true;
 }
+
+#endif // WIN9X_SUPPORT
 
 
 // Scan for ATA drives
@@ -2529,7 +2570,7 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 
         case ATA_SMART_IMMEDIATE_OFFLINE:
           // SMART_SEND_DRIVE_COMMAND supports ABORT_SELF_TEST only on Win9x/ME
-          valid_options = (m_usr_options || in.in_regs.lba_low != 127/*ABORT*/ || is_win9x() ?
+          valid_options = (m_usr_options || in.in_regs.lba_low != 127/*ABORT*/ || win9x ?
                            "saicm3" : "aicm3");
           break;
 
@@ -2538,7 +2579,7 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
           // Try SCSI_MINIPORT also to skip buggy class driver
           // SMART functions do not support multi sector I/O.
           if (in.size == 512)
-            valid_options = (m_usr_options || is_win9x() ? "saicm3" : "aicm3");
+            valid_options = (m_usr_options || win9x ? "saicm3" : "aicm3");
           else
             valid_options = "a";
           break;
@@ -2640,6 +2681,7 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
   // Try all valid ioctls in the order specified in m_options
   bool powered_up = false;
   bool out_regs_set = false;
+  bool id_is_cached = false;
   const char * options = m_options.c_str();
 
   for (int i = 0; ; i++) {
@@ -2687,9 +2729,11 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
         }
         rc = smart_ioctl(get_fh(), m_drive, &regs, data, datasize, m_port);
         out_regs_set = (in.in_regs.features == ATA_SMART_STATUS);
+        id_is_cached = (m_port < 0 && !win9x); // Not cached by 3ware or Win9x/ME driver
         break;
       case 'm':
         rc = ata_via_scsi_miniport_smart_ioctl(get_fh(), &regs, data, datasize);
+        id_is_cached = (m_port < 0 && !win9x);
         break;
       case 'a':
         rc = ata_pass_through_ioctl(get_fh(), &regs,
@@ -2707,6 +2751,7 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
       case 'f':
         if (in.in_regs.command == ATA_IDENTIFY_DEVICE) {
             rc = get_identify_from_device_property(get_fh(), (ata_identify_device *)data);
+            id_is_cached = true;
         }
         else if (in.in_regs.command == ATA_SMART_CMD) switch (in.in_regs.features) {
           case ATA_SMART_READ_VALUES:
@@ -2714,31 +2759,19 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
             if (rc > 0)
               rc = 0;
             break;
-          case ATA_SMART_READ_THRESHOLDS:
-            {
-              ata_smart_values sv;
-              rc = storage_predict_failure_ioctl(get_fh(), (char *)&sv);
-              if (rc < 0)
-                break;
-              rc = 0;
-              // Fake zero thresholds
-              ata_smart_thresholds_pvt * tr = (ata_smart_thresholds_pvt *)data;
-              memset(tr, 0, 512);
-              for (int i = 0; i < NUMBER_ATA_SMART_ATTRIBUTES; i++)
-                tr->chksum -= tr->thres_entries[i].id = sv.vendor_attributes[i].id;
-            }
-            break;
           case ATA_SMART_ENABLE:
             rc = 0;
             break;
           case ATA_SMART_STATUS:
             rc = storage_predict_failure_ioctl(get_fh());
-            if (rc >= 0) {
-              if (rc > 0) {
-                regs.bCylHighReg = 0x2c; regs.bCylLowReg = 0xf4;
-                rc = 0;
-              }
-              out_regs_set = true;
+            if (rc == 0) {
+              // Good SMART status
+              out.out_regs.lba_high = 0xc2; out.out_regs.lba_mid = 0x4f;
+            }
+            else if (rc > 0) {
+              // Bad SMART status
+              out.out_regs.lba_high = 0x2c; out.out_regs.lba_mid = 0xf4;
+              rc = 0;
             }
             break;
           default:
@@ -2801,21 +2834,27 @@ bool win_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
       hi.lba_high     = prev_regs.bCylHighReg;
     }
   }
+
+  if (   in.in_regs.command == ATA_IDENTIFY_DEVICE
+      || in.in_regs.command == ATA_IDENTIFY_PACKET_DEVICE)
+    // Update ata_identify_is_cached() result according to ioctl used.
+    m_id_is_cached = id_is_cached;
+
   return true;
 }
 
 // Return true if OS caches the ATA identify sector
 bool win_ata_device::ata_identify_is_cached() const
 {
-  // Not RAID and WinNT4/2000/XP => true, RAID or Win9x/ME => false
-  // TODO: Set according to ioctl used.
-  return (m_port < 0 && !is_win9x());
+  return m_id_is_cached;
 }
 
 
 /////////////////////////////////////////////////////////////////////////////
-// ASPI Interface (for SCSI devices)
+// ASPI Interface (for SCSI devices on 9x/ME)
 /////////////////////////////////////////////////////////////////////////////
+
+#if WIN9X_SUPPORT
 
 #pragma pack(1)
 
@@ -3346,6 +3385,7 @@ bool win_aspi_device::scsi_pass_through(scsi_cmnd_io * iop)
   return true;
 }
 
+#endif // WIN9X_SUPPORT
 
 /////////////////////////////////////////////////////////////////////////////
 // SPT Interface (for SCSI devices and ATA devices behind SATLs)
@@ -3565,7 +3605,7 @@ bool win_scsi_device::scsi_pass_through(struct scsi_cmnd_io * iop)
       sb.spt.DataTransferLength = iop->dxfer_len;
       sb.spt.DataBuffer = iop->dxferp;
       // IOCTL_SCSI_PASS_THROUGH_DIRECT does not support single byte
-      // transfers (needed for SMART STATUS check of JMicron USB briges)
+      // transfers (needed for SMART STATUS check of JMicron USB bridges)
       if (sb.spt.DataTransferLength == 1)
         direct = false;
       break;
@@ -3643,9 +3683,13 @@ bool win_scsi_device::scsi_pass_through(struct scsi_cmnd_io * iop)
 void smart_interface::init()
 {
   // Select interface for Windows flavor
-  if (os_win32::is_win9x()) {
+  if (GetVersion() & 0x80000000) {
+#if WIN9X_SUPPORT
     static os_win32::win9x_smart_interface the_win9x_interface;
     smart_interface::set(&the_win9x_interface);
+#else
+    throw std::runtime_error("Win9x/ME not supported");
+#endif
   }
   else {
     static os_win32::winnt_smart_interface the_winnt_interface;

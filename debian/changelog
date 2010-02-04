@@ -1,3 +1,11 @@
+smartmontools (5.39.1+svn3060-1) unstable; urgency=low
+
+  * [a23d511] Imported Upstream version 5.39.1+svn3060
+    - A regression caused by capabilities was fixed. (Closes: #564876)
+  * [89c9890] Removed patches merged in upstream
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Thu, 04 Feb 2010 08:16:37 +0100
+
 smartmontools (5.39-3) unstable; urgency=low
 
   * [3d32778] Fixed quietmode option (Closes: #545784)

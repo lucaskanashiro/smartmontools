@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2006-9 Douglas Gilbert <dougg@torque.net>
- * Copyright (C) 2009   Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2006-10 Douglas Gilbert <dougg@torque.net>
+ * Copyright (C) 2009-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,7 +61,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 2988 2009-11-29 16:21:07Z samm2 $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3048 2010-01-23 17:54:42Z chrfranke $";
 
 /* for passing global control variables */
 extern smartmonctrl *con;
@@ -1341,6 +1341,8 @@ const usb_id_entry usb_ids[] = {
 //{ 0x04b4, 0x6831,     -1, d_cypress }, // Cypress CY7C68310 (ISD-300LP)
   // Myson Century
   { 0x04cf, 0x8818, 0xb007, d_unsup   }, // Myson Century CS8818
+  // Samsung
+  { 0x04e8, 0x5f06,     -1, d_sat     }, // Samsung Story Station
   // Sunplus
   { 0x04fc, 0x0c15, 0xf615, d_sunplus }, // SunPlus SPDIF215
   { 0x04fc, 0x0c25, 0x0103, d_sunplus }, // SunPlus SPDIF225 (USB+SATA->SATA)
@@ -1360,10 +1362,14 @@ const usb_id_entry usb_ids[] = {
   // Freecom
   { 0x07ab, 0xfc8e, 0x010f, d_sunplus }, // Freecom Hard Drive XS
   // Toshiba
+  { 0x0930, 0x0b03,     -1, d_sunplus }, // Toshiba PX1270E-1G16
   { 0x0930, 0x0b09,     -1, d_sunplus }, // Toshiba PX1396E-3T01 (similar to Dura Micro 501)
   // Seagate
   { 0x0bc2, 0x2000,     -1, d_sat     }, // Seagate FreeAgent Go
   { 0x0bc2, 0x2100,     -1, d_sat     }, // Seagate FreeAgent Go
+  { 0x0bc2, 0x2101,     -1, d_sat     }, // Seagate FreeAgent Go
+  { 0x0bc2, 0x2300,     -1, d_sat     }, // Seagate Expansion Portable
+  { 0x0bc2, 0x3000,     -1, d_sat     }, // Seagate FreeAgent Desktop
   { 0x0bc2, 0x3001,     -1, d_sat     }, // Seagate FreeAgent Desk
   // Dura Micro
   { 0x0c0b, 0xb159, 0x0103, d_sunplus }, // Dura Micro 509
@@ -1373,7 +1379,8 @@ const usb_id_entry usb_ids[] = {
   { 0x0d49, 0x7410, 0x0122, d_sat     }, // Maxtor Basics Desktop
   { 0x0d49, 0x7450, 0x0122, d_sat     }, // Maxtor Basics Portable
   // Western Digital
-  { 0x1058, 0x0702, 0x0104, d_sat     }, // WD My Passport Portable  
+  { 0x1058, 0x0701, 0x0240, d_cypress }, // WD My Passport (IDE)
+  { 0x1058, 0x0702, 0x0102, d_sat     }, // WD My Passport Portable
   { 0x1058, 0x0704, 0x0175, d_sat     }, // WD My Passport Essential
   { 0x1058, 0x0705, 0x0175, d_sat     }, // WD My Passport Elite
   { 0x1058, 0x070a, 0x1028, d_sat     }, // WD My Passport 070A

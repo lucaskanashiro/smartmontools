@@ -1,6 +1,6 @@
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -470,15 +470,6 @@ and stop it by using the command:
+@@ -478,15 +478,6 @@ and stop it by using the command:
  .B /usr/local/etc/rc.d/init.d/smartd stop
  
  .fi
@@ -18,7 +18,7 @@
  .\" IS AUTOMATICALLY INCLUDED IN THE FILE smartd.conf.5
 --- a/smartd.cpp
 +++ b/smartd.cpp
-@@ -1021,7 +1021,7 @@ static void MailWarning(const dev_config
+@@ -1038,7 +1038,7 @@ static void MailWarning(const dev_config
               "  NIS domain: %s\n\n"
               "The following warning/error was logged by the smartd daemon:\n\n"
               "%s\n\n"

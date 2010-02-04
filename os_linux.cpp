@@ -3,12 +3,12 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2003-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2003-8 Doug Gilbert <dougg@torque.net>
- * Copyright (C) 2008   Hank Wu <hank@areca.com.tw>
- * Copyright (C) 2008   Oliver Bock <brevilo@users.sourceforge.net>
- * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008   Jordan Hargrave <jordan_hargrave@dell.com>
+ * Copyright (C) 2003-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2003-10 Doug Gilbert <dougg@torque.net>
+ * Copyright (C) 2008    Hank Wu <hank@areca.com.tw>
+ * Copyright (C) 2008    Oliver Bock <brevilo@users.sourceforge.net>
+ * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008    Jordan Hargrave <jordan_hargrave@dell.com>
  *
  *  Parts of this file are derived from code that was
  *
@@ -90,7 +90,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 2993 2009-12-04 17:29:50Z chrfranke $" \
+const char *os_XXXX_c_cvsid="$Id: os_linux.cpp 3052 2010-01-28 19:51:24Z chrfranke $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_LINUX_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 /* for passing global control variables */
@@ -831,17 +831,24 @@ class linux_scsi_device
   public /*extends*/ linux_smart_device
 {
 public:
-  linux_scsi_device(smart_interface * intf, const char * dev_name, const char * req_type);
+  linux_scsi_device(smart_interface * intf, const char * dev_name,
+                    const char * req_type, bool scanning = false);
 
   virtual smart_device * autodetect_open();
 
   virtual bool scsi_pass_through(scsi_cmnd_io * iop);
+
+private:
+  bool m_scanning; ///< true if created within scan_smart_devices
 };
 
 linux_scsi_device::linux_scsi_device(smart_interface * intf,
-  const char * dev_name, const char * req_type)
+  const char * dev_name, const char * req_type, bool scanning /*= false*/)
 : smart_device(intf, dev_name, "scsi", req_type),
-  linux_smart_device(O_RDWR | O_NONBLOCK, O_RDONLY | O_NONBLOCK)
+  // If opened with O_RDWR, a SATA disk in standby mode
+  // may spin-up after device close().
+  linux_smart_device(O_RDONLY | O_NONBLOCK),
+  m_scanning(scanning)
 {
 }
 
@@ -1622,7 +1629,7 @@ bool linux_escalade_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out 
 
   // look for nonexistent devices/ports
   if (   in.in_regs.command == ATA_IDENTIFY_DEVICE
-      && !nonempty((unsigned char *)in.buffer, in.size)) {
+      && !nonempty(in.buffer, in.size)) {
     return set_err(ENODEV, "No drive on port %d", m_disknum);
   }
 
@@ -2646,8 +2653,13 @@ smart_device * linux_scsi_device::autodetect_open()
     return this;
 
   // No Autodetection if device type was specified by user
-  if (*get_req_type())
-    return this;
+  bool sat_only = false;
+  if (*get_req_type()) {
+    // Detect SAT if device object was created by scan_smart_devices().
+    if (!(m_scanning && !strcmp(get_req_type(), "sat")))
+      return this;
+    sat_only = true;
+  }
 
   // The code below is based on smartd.cpp:SCSIFilterKnown()
 
@@ -2668,36 +2680,43 @@ smart_device * linux_scsi_device::autodetect_open()
 
   int avail_len = req_buff[4] + 5;
   int len = (avail_len < req_len ? avail_len : req_len);
-  if (len < 36)
+  if (len < 36) {
+    if (sat_only) {
+      close();
+      set_err(EIO, "INQUIRY too short for SAT");
+    }
     return this;
+  }
 
   // Use INQUIRY to detect type
+  if (!sat_only) {
 
-  // 3ware ?
-  if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4)) {
-    close();
-    set_err(EINVAL, "AMCC/3ware controller, please try adding '-d 3ware,N',\n"
-                    "you may need to replace %s with /dev/twaN or /dev/tweN", get_dev_name());
-    return this;
-  }
+    // 3ware ?
+    if (!memcmp(req_buff + 8, "3ware", 5) || !memcmp(req_buff + 8, "AMCC", 4)) {
+      close();
+      set_err(EINVAL, "AMCC/3ware controller, please try adding '-d 3ware,N',\n"
+                      "you may need to replace %s with /dev/twaN or /dev/tweN", get_dev_name());
+      return this;
+    }
 
-  // DELL?
-  if (!memcmp(req_buff + 8, "DELL    PERC", 12) || !memcmp(req_buff + 8, "MegaRAID", 8)) {
-    close();
-    set_err(EINVAL, "DELL or MegaRaid controller, please try adding '-d megaraid,N'");
-    return this;
-  }
+    // DELL?
+    if (!memcmp(req_buff + 8, "DELL    PERC", 12) || !memcmp(req_buff + 8, "MegaRAID", 8)) {
+      close();
+      set_err(EINVAL, "DELL or MegaRaid controller, please try adding '-d megaraid,N'");
+      return this;
+    }
 
-  // Marvell ?
-  if (len >= 42 && !memcmp(req_buff + 36, "MVSATA", 6)) {
-    //pout("Device %s: using '-d marvell' for ATA disk with Marvell driver\n", get_dev_name());
-    close();
-    smart_device_auto_ptr newdev(
-      new linux_marvell_device(smi(), get_dev_name(), get_req_type())
-    );
-    newdev->open(); // TODO: Can possibly pass open fd
-    delete this;
-    return newdev.release();
+    // Marvell ?
+    if (len >= 42 && !memcmp(req_buff + 36, "MVSATA", 6)) {
+      //pout("Device %s: using '-d marvell' for ATA disk with Marvell driver\n", get_dev_name());
+      close();
+      smart_device_auto_ptr newdev(
+        new linux_marvell_device(smi(), get_dev_name(), get_req_type())
+      );
+      newdev->open(); // TODO: Can possibly pass open fd
+      delete this;
+      return newdev.release();
+    }
   }
 
   // SAT or USB ?
@@ -2709,6 +2728,11 @@ smart_device * linux_scsi_device::autodetect_open()
   }
 
   // Nothing special found
+
+  if (sat_only) {
+    close();
+    set_err(EIO, "Not a SAT device");
+  }
   return this;
 }
 
@@ -2891,7 +2915,7 @@ bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
       if (autodetect)
         dev = autodetect_smart_device(name);
       else if (is_scsi)
-        dev = new linux_scsi_device(this, name, req_type);
+        dev = new linux_scsi_device(this, name, req_type, true /*scanning*/);
       else
         dev = new linux_ata_device(this, name, req_type);
       if (dev) // autodetect_smart_device() may return nullptr.
@@ -2917,7 +2941,8 @@ bool linux_smart_interface::scan_smart_devices(smart_device_list & devlist,
     type = "";
 
   bool scan_ata  = (!*type || !strcmp(type, "ata" ));
-  bool scan_scsi = (!*type || !strcmp(type, "scsi"));
+  // "sat" detection will be later handled in linux_scsi_device::autodetect_open()
+  bool scan_scsi = (!*type || !strcmp(type, "scsi") || !strcmp(type, "sat"));
   if (!(scan_ata || scan_scsi))
     return true;
 

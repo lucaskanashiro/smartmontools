@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -44,7 +44,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 2983 2009-11-14 21:41:41Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3037 2010-01-16 20:07:13Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 // for passing global control variables
@@ -490,26 +490,29 @@ static bool PrintDriveInfo(const ata_identify_device * drive, bool fix_swapped_i
   const char *description; unsigned short minorrev;
   int version = ataVersionInfo(&description, drive, &minorrev);
 
-  // unrecognized minor revision code
-  char unknown[64];
-  if (!description){
-    if (!minorrev)
-      sprintf(unknown, "Exact ATA specification draft version not indicated");
-    else
-      sprintf(unknown,"Not recognized. Minor revision code: 0x%02hx", minorrev);
-    description=unknown;
-  }
-  
-  
   // SMART Support was first added into the ATA/ATAPI-3 Standard with
   // Revision 3 of the document, July 25, 1995.  Look at the "Document
   // Status" revision commands at the beginning of
-  // http://www.t13.org/project/d2008r6.pdf to see this.  So it's not
-  // enough to check if we are ATA-3.  Version=-3 indicates ATA-3
-  // BEFORE Revision 3.
-  pout("ATA Version is:   %d\n",(int)abs(version));
-  pout("ATA Standard is:  %s\n",description);
-  
+  // http://www.t13.org/Documents/UploadedDocuments/project/d2008r7b-ATA-3.pdf
+  // to see this.  So it's not enough to check if we are ATA-3.
+  // Version=-3 indicates ATA-3 BEFORE Revision 3.
+  // Version=0 indicates that no info is found. This may happen if
+  // the OS provides only part of the IDENTIFY data.
+
+  std::string majorstr, minorstr;
+  if (version) {
+    majorstr = strprintf("%d", abs(version));
+    if (description)
+      minorstr = description;
+    else if (!minorrev)
+      minorstr = "Exact ATA specification draft version not indicated";
+    else
+      minorstr = strprintf("Not recognized. Minor revision code: 0x%04x", minorrev);
+  }
+
+  pout("ATA Version is:   %s\n", infofound(majorstr.c_str()));
+  pout("ATA Standard is:  %s\n", infofound(minorstr.c_str()));
+
   // print current time and date and timezone
   char timedatetz[DATEANDEPOCHLEN]; dateandtimezone(timedatetz);
   pout("Local Time is:    %s\n", timedatetz);
@@ -518,7 +521,7 @@ static bool PrintDriveInfo(const ata_identify_device * drive, bool fix_swapped_i
   if (dbentry && *dbentry->warningmsg)
     pout("\n==> WARNING: %s\n\n", dbentry->warningmsg);
 
-  if (version>=3)
+  if (!version || version >= 3)
     return !!dbentry;
   
   pout("SMART is only available in ATA Version 3 Revision 3 or greater.\n");
@@ -836,11 +839,15 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
     }
 
     // Format value, worst, threshold
-    std::string valstr, threstr;
+    std::string valstr, worstr, threstr;
     if (state > ATTRSTATE_NO_NORMVAL)
-      valstr = strprintf("%.3d   %.3d", attr.current, attr.worst);
+      valstr = strprintf("%.3d", attr.current);
     else
-      valstr = "---   ---";
+      valstr = "---";
+    if (!(defs[attr.id].flags & ATTRFLAG_NO_WORSTVAL))
+      worstr = strprintf("%.3d", attr.worst);
+    else
+      worstr = "---";
     if (state > ATTRSTATE_NO_THRESHOLD)
       threstr = strprintf("%.3d", thre.threshold);
     else
@@ -848,9 +855,9 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
 
     // Print line for each valid attribute
     std::string attrname = ata_get_smart_attr_name(attr.id, defs);
-    pout("%3d %-24s0x%04x   %-9s   %-3s    %-10s%-9s%-12s%s\n",
+    pout("%3d %-24s0x%04x   %-3s   %-3s   %-3s    %-10s%-9s%-12s%s\n",
          attr.id, attrname.c_str(), attr.flags,
-         valstr.c_str(), threstr.c_str(),
+         valstr.c_str(), worstr.c_str(), threstr.c_str(),
          (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)? "Pre-fail" : "Old_age"),
          (ATTRIBUTE_FLAGS_ONLINE(attr.flags)? "Always" : "Offline"),
          (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
@@ -1012,10 +1019,16 @@ static void PrintLogPages(const char * type, const unsigned char * data,
   for (unsigned i = 0; i < num_pages * 512; i += 16) {
     const unsigned char * p = data+i;
     pout("%07x: %02x %02x %02x %02x %02x %02x %02x %02x "
-               "%02x %02x %02x %02x %02x %02x %02x %02x\n",
+               "%02x %02x %02x %02x %02x %02x %02x %02x ",
          (page * 512) + i,
          p[ 0], p[ 1], p[ 2], p[ 3], p[ 4], p[ 5], p[ 6], p[ 7],
          p[ 8], p[ 9], p[10], p[11], p[12], p[13], p[14], p[15]);
+#define P(n) (isprint((int)(p[n]))?(int)(p[n]):'.')
+    pout("|%c%c%c%c%c%c%c%c"
+          "%c%c%c%c%c%c%c%c|\n",
+         P( 0), P( 1), P( 2), P( 3), P( 4), P( 5), P( 6), P( 7),
+         P( 8), P( 9), P(10), P(11), P(12), P(13), P(14), P(15));
+#undef P
     if ((i & 0x1ff) == 0x1f0)
       pout("\n");
   }
@@ -1159,7 +1172,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
     const ata_smart_errorlog_error_struct * summary = &(elog->error_struct);
 
     // Spec says: unused error log structures shall be zero filled
-    if (nonempty((unsigned char*)elog,sizeof(*elog))){
+    if (nonempty(elog, sizeof(*elog))){
       // Table 57 of T13/1532D Volume 1 Revision 3
       const char *msgstate = get_error_log_state_desc(summary->state);
       int days = (int)summary->timestamp/24;
@@ -1195,7 +1208,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
         const ata_smart_errorlog_command_struct * thiscommand = elog->commands+j;
 
         // Spec says: unused data command structures shall be zero filled
-        if (nonempty((unsigned char*)thiscommand,sizeof(*thiscommand))) {
+        if (nonempty(thiscommand, sizeof(*thiscommand))) {
 	  char timestring[32];
 	  
 	  // Convert integer milliseconds to a text-format string
@@ -1763,7 +1776,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // If requested, show which presets would be used for this drive and exit.
   if (options.show_presets) {
     show_presets(&drive, options.fix_swapped_id);
-    EXIT(0);
+    return 0;
   }
 
   // Use preset vendor attribute options unless user has requested otherwise.
@@ -2066,7 +2079,6 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       || options.smart_ext_selftest_log
       || options.sataphy
       || !options.log_requests.empty() ) {
-    PRINT_ON(con);
     if (isGeneralPurposeLoggingCapable(&drive))
       pout("General Purpose Logging (GPL) feature set supported\n");
 
@@ -2087,31 +2099,26 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     // Read SMART Log directory
     if (need_smart_logdir) {
       if (ataReadLogDirectory(device, &smartlogdir_buf, false)){
-        PRINT_OFF(con);
         pout("Read SMART Log Directory failed.\n\n");
         failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
       }
       else
         smartlogdir = &smartlogdir_buf;
     }
-    PRINT_ON(con);
 
     // Read GP Log directory
     if (need_gp_logdir) {
       if (ataReadLogDirectory(device, &gplogdir_buf, true)){
-        PRINT_OFF(con);
         pout("Read GP Log Directory failed.\n\n");
         failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
       }
       else
         gplogdir = &gplogdir_buf;
     }
-    PRINT_ON(con);
 
     // Print log directories
     if ((options.gp_logdir && gplogdir) || (options.smart_logdir && smartlogdir))
       PrintLogDirectories(gplogdir, smartlogdir);
-    PRINT_OFF(con);
 
     // Print log pages
     for (i = 0; i < options.log_requests.size(); i++) {

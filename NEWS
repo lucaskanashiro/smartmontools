@@ -1,9 +1,28 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 2995 2009-12-09 21:01:43Z chrfranke $
+$Id: NEWS 3057 2010-02-03 20:56:41Z chrfranke $
 
 The most up-to-date version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/NEWS?view=markup
+
+Date <Not released yet, please try current SVN>
+Summary: smartmontools release 5.40
+-----------------------------------------------------------
+- Option '-v' allows to specify byte order of attribute raw value
+- configure: New default value for '--with-docdir'.
+- Drive database is in a separate source file 'drivedb.h'
+  which can be downloaded from SVN.
+- smartd libcap-ng support, option '-C, --capabilities'.
+
+Date 2010-01-28
+Summary: smartmontools release 5.39.1
+-----------------------------------------------------------
+- Fix crash on kFreeBSD.
+- Fix regression in smartctl option '-q, --quietmode'.
+- Fix regression in smartd directive '-l selftest'.
+- Linux: Allow smartd 'DEVICESCAN -d sat'.
+- Linux: Fix spin-up of SATA drive if '-n standby' is used.
+- Windows: Fix parsing of 3ware 'tw_cli' output.
 
 Date 2009-12-09
 Summary: smartmontools release 5.39 (UNSTABLE/EXPERIMENTAL)

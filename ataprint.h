@@ -26,7 +26,7 @@
 #ifndef ATAPRINT_H_
 #define ATAPRINT_H_
 
-#define ATAPRINT_H_CVSID "$Id: ataprint.h 2975 2009-10-29 22:52:38Z chrfranke $\n"
+#define ATAPRINT_H_CVSID "$Id: ataprint.h 3020 2009-12-31 01:11:51Z dlukes $\n"
 
 #include <vector>
 
