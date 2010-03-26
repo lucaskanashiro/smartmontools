@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3059 2010-02-03 21:42:09Z chrfranke $
+# $Id: Makefile.am 3074 2010-03-05 23:00:30Z chrfranke $
 #
 
 @SET_MAKE@
@@ -24,6 +24,11 @@ endif
 
 sbin_PROGRAMS = smartd 	\
 		smartctl
+
+if ENABLE_DRIVEDB
+sbin_SCRIPTS = update-smart-drivedb
+endif
+
 
 smartd_SOURCES =  smartd.cpp      \
                   atacmdnames.cpp \
@@ -238,6 +243,7 @@ EXTRA_DIST = smartd.initd.in                       \
              smartd.conf.5.in                      \
              smartd.conf                           \
              autogen.sh                            \
+             update-smart-drivedb.in               \
              os_darwin/SMART.in                    \
              os_darwin/StartupParameters.plist     \
              os_darwin/English_Localizable.strings \
@@ -258,6 +264,7 @@ CLEANFILES = smartd.conf.5      \
              smartd.conf.5.txt  \
              smartd.initd       \
              svnversion.h       \
+             update-smart-drivedb \
              SMART
 
 if SMARTD_SUFFIX
@@ -326,6 +333,11 @@ smartd.conf.5.in: smartd.8.in
 	echo '.\" ENDINCLUDE'   >> $(srcdir)/smartd.conf.5.in
 	cat $(top_builddir)/tmp.tail >> $(srcdir)/smartd.conf.5.in
 	rm -f $(top_builddir)/tmp.head $(top_builddir)/tmp.tail $(top_builddir)/tmp.directives
+
+update-smart-drivedb: update-smart-drivedb.in config.status
+	$(SHELL) ./config.status --file=$@
+	chmod +x $@
+
 
 if INSTALL_INITSCRIPT
 if OS_DARWIN
@@ -444,15 +456,15 @@ MAN_FILTER = \
     $(MAN_SAVESTATES) | \
     $(MAN_ATTRIBUTELOG)
 
-if OS_FREEBSD
-.for file in $(man_MANS)
-${file}: $(srcdir)/${file}.in Makefile svnversion.h
-	cat ${.ALLSRC:M*.in} | $(MAN_FILTER) > $@
-.endfor
-else
-smart%: $(srcdir)/smart%.in Makefile svnversion.h
-	cat $< | $(MAN_FILTER) > $@
-endif
+# Implicit rule 'smart%: smart%.in ...' does not work with BSD make
+smartctl.8: smartctl.8.in Makefile svnversion.h
+	cat $(srcdir)/smartctl.8.in | $(MAN_FILTER) > $@
+
+smartd.8: smartd.8.in Makefile svnversion.h
+	cat $(srcdir)/smartd.8.in | $(MAN_FILTER) > $@
+
+smartd.conf.5: smartd.conf.5.in Makefile svnversion.h
+	cat $(srcdir)/smartd.conf.5.in | $(MAN_FILTER) > $@
 
 # Commands to convert man pages into .html and .txt
 # TODO: configure
@@ -508,9 +520,15 @@ check:
 if OS_WIN32_MINGW
 # Definitions for Windows distribution
 
-distdir_win32 = $(PACKAGE)-$(VERSION).win32
-distzip_win32 = $(PACKAGE)-$(VERSION).win32.zip
-distinst_win32= $(PACKAGE)-$(VERSION).win32-setup.exe
+if OS_WIN64
+win_bits = 64
+else
+win_bits = 32
+endif
+
+distdir_win32  = $(PACKAGE)-$(VERSION).win$(win_bits)
+distzip_win32  = $(PACKAGE)-$(VERSION).win$(win_bits).zip
+distinst_win32 = $(PACKAGE)-$(VERSION).win$(win_bits)-setup.exe
 
 exedir_win32 = $(distdir_win32)/bin
 docdir_win32 = $(distdir_win32)/doc
@@ -538,9 +556,10 @@ CLEANFILES += $(FILES_WIN32) $(exedir_win32)/syslogevt.exe \
               smartctl-nc.exe smartctl-nc.exe.tmp \
               distdir.mkdir syslogevt.check
 
-# Textfile converter from cygutils
-UNIX2DOS = unix2dos -D
-DOS2UNIX = dos2unix -U
+# Textfile converter from package cygutils or tofrodos
+# Note: Only use without options to be compatible with both packages
+UNIX2DOS = unix2dos
+DOS2UNIX = dos2unix
 
 # Build Windows distribution
 
@@ -558,11 +577,12 @@ $(distzip_win32): distdir.mkdir $(FILES_WIN32) syslogevt.check
 	cd $(distdir_win32) && zip -9Dr ../$(distzip_win32) .
 
 # Build NSIS installer, try to locate makensis in default location first
+# Note: Only option character '-' is also compatible with Linux version of makensis
 $(distinst_win32): $(srcdir)/os_win32/installer.nsi distdir.mkdir $(FILES_WIN32) syslogevt.check
 	@makensis="$(MAKENSIS)"; if [ -z "$$makensis" ]; then \
-	  if [ ! -z "$$PROGRAMFILES" ] && "$$PROGRAMFILES/NSIS/makensis" /VERSION >/dev/null 2>&1; then \
+	  if [ ! -z "$$PROGRAMFILES" ] && "$$PROGRAMFILES/NSIS/makensis" -VERSION >/dev/null 2>&1; then \
 	    makensis="$$PROGRAMFILES/NSIS/makensis"; \
-	  elif makensis /VERSION >/dev/null 2>&1; then \
+	  elif makensis -VERSION >/dev/null 2>&1; then \
 	    makensis=makensis; \
 	  else \
 	    echo 'makensis: command not found. Please download and install NSIS' 1>&2; \
@@ -572,8 +592,8 @@ $(distinst_win32): $(srcdir)/os_win32/installer.nsi distdir.mkdir $(FILES_WIN32)
 	date=`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`; \
 	rev=`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`; \
 	verstr="$(PACKAGE_VERSION) $$date $$rev "$(BUILD_INFO); \
-	echo "$$makensis /V2 /NOCD /DINPDIR=$(distdir_win32) /DOUTFILE=$(distinst_win32) /DVERSTR='$$verstr' $(srcdir)/os_win32/installer.nsi"; \
-	"$$makensis" /V2 /NOCD /DINPDIR="$(distdir_win32)" /DOUTFILE="$(distinst_win32)" /DVERSTR="$$verstr" "$(srcdir)/os_win32/installer.nsi"
+	echo "$$makensis -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$(distinst_win32) -DVERSTR='$$verstr' $(srcdir)/os_win32/installer.nsi"; \
+	"$$makensis" -V2 -NOCD -DINPDIR="$(distdir_win32)" -DOUTFILE="$(distinst_win32)" -DVERSTR="$$verstr" "$(srcdir)/os_win32/installer.nsi"
 
 cleandist-win32:
 	rm -rf $(distdir_win32) distdir.mkdir syslogevt.check
@@ -591,7 +611,7 @@ syslogevt.check:
 
 $(exedir_win32)/%.exe: %.exe
 	cp -p $< $@
-	strip -s $@
+	if test -n '$(STRIP)'; then $(STRIP) -s $@; else strip -s $@; fi
 	touch -r $< $@
 
 $(docdir_win32)/%.html: %.html

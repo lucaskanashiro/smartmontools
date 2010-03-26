@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Giuseppe Iuculano <iuculano@debian.org>
 Uploaders: Florian Maier <contact@marsmenschen.com>
 Build-Depends: debhelper (>= 7), quilt (>= 0.40), libcam-dev [kfreebsd-i386 kfreebsd-amd64], automake, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libusb2-dev [kfreebsd-i386 kfreebsd-amd64]
-Standards-Version: 3.8.3
+Standards-Version: 3.8.4
 Vcs-Git: git://git.debian.org/collab-maint/smartmontools.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/smartmontools.git
 Homepage: http://smartmontools.sourceforge.net/
@@ -14,7 +14,7 @@ Architecture: any
 Conflicts: smartsuite, ucsc-smartsuite
 Depends: ${misc:Depends}, ${shlibs:Depends}, debianutils (>= 2.2), lsb-base (>= 3.2-14)
 Recommends: mailx | mailutils
-Suggests: gsmartcontrol, smart-notifier, powersaved
+Suggests: gsmartcontrol, smart-notifier
 Description: control and monitor storage systems using S.M.A.R.T.
  The smartmontools package contains two utility programs (smartctl and smartd)
  to control and monitor storage systems using the Self-Monitoring, Analysis and

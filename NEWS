@@ -1,6 +1,6 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 3057 2010-02-03 20:56:41Z chrfranke $
+$Id: NEWS 3076 2010-03-12 22:23:08Z chrfranke $
 
 The most up-to-date version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/NEWS?view=markup
@@ -8,11 +8,19 @@ http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontool
 Date <Not released yet, please try current SVN>
 Summary: smartmontools release 5.40
 -----------------------------------------------------------
+- Other config entries may precede smartd DEVICESCAN.
 - Option '-v' allows to specify byte order of attribute raw value
 - configure: New default value for '--with-docdir'.
 - Drive database is in a separate source file 'drivedb.h'
   which can be downloaded from SVN.
+- New script 'update-smart-drivedb'.
 - smartd libcap-ng support, option '-C, --capabilities'.
+- smartctl option '-l scterc[,...]' to get/set the
+  SCT Error Recovery Control time limit.
+- Linux: Add '/dev/sd[a-c][a-z]' to smartd DEVICESCAN.
+- Windows: Support for 64-bit executables.
+- Windows: Support for cross compilation on Linux.
+- Fix SCT temperature table commands on big endian CPUs.
 
 Date 2010-01-28
 Summary: smartmontools release 5.39.1

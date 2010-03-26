@@ -1,3 +1,13 @@
+smartmontools (5.39.1+svn3077-1) unstable; urgency=low
+
+  * [ffe62ea] Removed powersaved from Suggests (Closes: #570956)
+  * [7f0798e] Imported Upstream version 5.39.1+svn3077 (Closes: #575435)
+  * [b1b3452] Enabled drivedb, savestates, and attributelog
+  * [9f28fd4] Switch to dpkg-source 3.0 (quilt) format
+  * [52be6ce] Updated to Standards-Version 3.8.4, no changes needed
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Fri, 26 Mar 2010 22:01:58 +0100
+
 smartmontools (5.39.1+svn3060-1) unstable; urgency=low
 
   * [a23d511] Imported Upstream version 5.39.1+svn3060

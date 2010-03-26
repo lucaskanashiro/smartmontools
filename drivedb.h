@@ -58,7 +58,7 @@
 /*
 const drive_settings builtin_knowndrives[] = {
  */
-  { "$Id: drivedb.h 3060 2010-02-03 22:16:40Z chrfranke $",
+  { "$Id: drivedb.h 3071 2010-03-04 21:17:09Z manfred99 $",
     "-", "-",
     "This is a dummy entry to hold the SVN-Id of drivedb.h",
     ""
@@ -70,6 +70,28 @@ const drive_settings builtin_knowndrives[] = {
   { "Asus-Phison SSD",
     "ASUS-PHISON SSD",
     "", "", ""
+  },
+  { "SuperTalent UltraDrive GX SSD",
+    "STT_FT[MD](28|32|56|64)GX25H",
+    "", "",
+    " -v 9,raw64"
+    " -v 12,raw64"
+    " -v 184,raw64,Initial_Bad_Block_Count"
+    " -v 195,raw64,Program_Failure_Blk_Ct"
+    " -v 196,raw64,Erase_Failure_Blk_Ct"
+    " -v 197,raw64,Read_Failure_Blk_Ct"
+    " -v 198,raw64,Read_Sectors_Tot_Ct"
+    " -v 199,raw64,Write_Sectors_Tot_Ct"
+    " -v 200,raw64,Read_Commands_Tot_Ct"
+    " -v 201,raw64,Write_Commands_Tot_Ct"
+    " -v 202,raw64,Error_Bits_Flash_Tot_Ct"
+    " -v 203,raw64,Corr_Read_Errors_Tot_Ct"
+    " -v 204,raw64,Bad_Block_Full_Flag"
+    " -v 205,raw64,Max_PE_Count_Spec"
+    " -v 206,raw64,Min_Erase_Count"
+    " -v 207,raw64,Max_Erase_Count"
+    " -v 208,raw64,Average_Erase_Count"
+    " -v 209,raw64,Remaining_Lifetime_Perc"
   },
   { "Patriot Torqx SSD",
     "Patriot[ -]Torqx.*",
@@ -163,7 +185,12 @@ const drive_settings builtin_knowndrives[] = {
     " -v 211,raw64"
   },
   { "Intel X25-E SSD",
-    "SSDSA2SH(032|064)G1.* INTEL",
+    "SSDSA2SH(032|064)G1.* INTEL",  // G1 = first generation
+    "", "",
+    "-v 225,raw48,Host_Writes_Count"
+  },
+  { "Intel X25-M SSD",
+    "INTEL SSDSA2M(080|160)G2.*",  // G2 = second generation
     "", "",
     "-v 225,raw48,Host_Writes_Count"
   },
@@ -181,6 +208,10 @@ const drive_settings builtin_knowndrives[] = {
   },
   { "HP 1TB SATA disk GB1000EAFJL",
     "GB1000EAFJL",
+    "", "", ""
+  },
+  { "HP 500GB SATA disk MM0500EANCR",
+    "MM0500EANCR",
     "", "", ""
   },
   { "IBM Deskstar 60GXP series",  // ER60A46A firmware
@@ -335,6 +366,10 @@ const drive_settings builtin_knowndrives[] = {
     "FUJITSU MHZ2(12|25)0BS.*",
     "", "", ""
   },
+  { "Fujitsu MHZ2 BK series",
+    "FUJITSU MHZ2(08|12|16|25)0BK.*",
+    "", "", ""
+  },
   { "", // Samsung SV4012H (known firmware)
     "SAMSUNG SV4012H",
     "RM100-08",
@@ -405,6 +440,14 @@ const drive_settings builtin_knowndrives[] = {
     "SAMSUNG HD(502H|10[23]S|15[34]U)I",
     "", "", ""
   },
+  { "SAMSUNG SpinPoint F3 series", // tested with HD502HJ/1AJ100E4
+    "SAMSUNG HD(502H|754J|103S)J",
+    "", "", ""
+  },
+  { "SAMSUNG SpinPoint F3 EG series", // tested with HD503HI/1AJ100E4
+    "SAMSUNG HD(253G|(324|503)H|754J|105S)I",
+    "", "", ""
+  },
   { "SAMSUNG SpinPoint S250 series", // tested with HD200HJ/KF100-06
     "SAMSUNG HD(162|200|250)HJ",
     "", "", ""
@@ -471,6 +514,10 @@ const drive_settings builtin_knowndrives[] = {
     "",
     "",
     "-v 9,halfminutes"
+  },
+  { "SAMSUNG SpinPoint M5 series", // tested with HM160HI/HH100-12
+    "SAMSUNG HM((061|080)G|(121|160)H|250J)I",
+    "", "", ""
   },
 /*
   // TODO: Make the entries below more specific.
@@ -1031,7 +1078,7 @@ const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "Seagate Momentus 5400.6 series",
-    "ST9((12|25)0315AS|500325)ASG?",
+    "ST9(80313|160(301|314)|(12|25)0315|250317|(320|500)325|500327|640320)ASG?",
     "", "", ""
   },
   { "Seagate Momentus 5400 PSD series", // Hybrid drives
@@ -1058,8 +1105,8 @@ const drive_settings builtin_knowndrives[] = {
     "ST9((160413|25041[12]|320426|50042[12])AS|(16041[89]|2504[16]4|32042[67]|500426)ASG)",
     "", "", ""
   },
-  { "Seagate Medalist 1010, 1721, 2120, 3230 and 4340",  // ATA2, with -t permissive
-    "ST3(1010|1721|2120|3230|4340)A",
+  { "Seagate Medalist 1010, 1720, 1721, 2120, 3230 and 4340",  // ATA2, with -t permissive
+    "ST3(1010|1720|1721|2120|3230|4340)A",
     "", "", ""
   },
   { "Seagate Medalist 2110, 3221, 4321, 6531, and 8641",
@@ -1333,7 +1380,7 @@ const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "Western Digital Caviar Green family",
-    "WDC WD((50|64|75)00AA(C|V)S|(50|75)00AADS|10EA(C|V)S|(10|15|20)EADS)-.*",
+    "WDC WD((50|64|75)00AA(C|V)S|(50|64|75)00AADS|10EA(C|V)S|(10|15|20)EADS)-.*",
     "", "", ""
   },
   { "Western Digital Caviar Black family",
@@ -1357,7 +1404,7 @@ const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "Western Digital VelociRaptor family",
-    "WDC WD((1500|3000)B|3000G)LFS-.*",
+    "WDC WD(800H|(1500|3000)[BH]|1600H|3000G)LFS-.*",
     "", "", ""
   },
   { "Western Digital Scorpio EIDE family",

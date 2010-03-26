@@ -1,6 +1,6 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 3060 2010-02-03 22:16:40Z chrfranke $
+$Id: CHANGELOG 3077 2010-03-16 20:48:06Z chrfranke $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
@@ -42,6 +42,71 @@ Maintainers / Developers Key (alphabetic order):
 NOTES FOR FUTURE RELEASES: see TODO file.
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+  [CF] USB ID updates:
+       - LaCie Desktop Hard Drive
+       - Prolific PL2507 (unsupported)
+       - Seagate FreeAgent Go FW
+       - WD My Book Essential
+
+  [CF] Linux: Add '/dev/sd[a-c][a-z]' to smartd DEVICESCAN.
+
+  [CF] smartd: Other config entries may precede DEVICESCAN.
+       Very first step towards a more flexible device scanning.
+
+  [CF] Windows: Use '.win64' in names of 64-bit binary packages.
+       Use correct 'strip' program when cross-compiling.
+
+  [CF] Add update script to make targets 'dist' and 'clean',
+       set +x permission, update svn:ignore.
+
+  [CF] Add 'update-smart-drivedb' script (ticket #59).
+       The script updates the drive database from SVN.
+       It is installed if '--enable-drivedb' is configured.
+
+  [MS] drivedb.h updates:
+       - Seagate Medalist 1720
+       - SuperTalent UltraDrive GX SSD
+       - Intel X25-M SSD
+
+  [CF] Makefile.am: Fix unix2dos and makensis parameters to allow
+       to build the Windows installer on Linux also.
+
+  [CF] Makefile.am: Use a separate build rule for each man page to
+       avoid compatibility problems with BSD make.
+
+  [AS] drivedb.h updates:
+       - Fujitsu MHZ2 BK series
+
+  [MS] drivedb.h updates:
+       - SAMSUNG SpinPoint F3 series
+       - SAMSUNG SpinPoint F3 EG series
+       - SAMSUNG SpinPoint M5 series
+       - Western Digital Caviar Green 6400AADS
+       - more Western Digital VelociRaptor variants
+
+  [AS] FreeBSD: disable 48-bit commands in the ata_pass_through interface, 
+       there is no 48-bit support in the IOCATAREQUEST ioctl.
+
+  [CF] smartctl: Add option '-l scterc[,READTIME,WRITETIME]' to get/set
+       the SCT Error Recovery Control time limit (ticket #50).
+
+       Patch was provided by Richard Gregory:
+       http://www.csc.liv.ac.uk/~greg/projects/erc/
+       Modified for new ata_pass_through() interface.
+       Linux HPT fixes ommitted for now.
+
+  [CF] Fix SCT temperature table commands on big endian CPUs.
+
+  [MS] drivedb.h updates:
+       - more Seagate Momentus 5400.6 drives
+       - HP 500GB drive MM0500EANCR
+
+  [CF] Windows: Cleanup I/O-control declarations, rely on include
+       files if possible.
+
+  [CF] Windows: Compile fixes for 64-bit exe (EXPERIMENTAL).
+       Update build info in INSTALL file.
 
   [CF] drivedb.h update:
        - Patriot Torqx SSD (patch provided by Gianpaolo Cugola)

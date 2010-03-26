@@ -54,6 +54,9 @@ configure-stamp: debian/stamp-patched
 				--mandir=/usr/share/man		 \
 				--with-initscriptdir=/etc/init.d \
 				--with-docdir=/usr/share/doc/smartmontools \
+				--enable-drivedb \
+				--enable-savestates \
+				--enable-attributelog \
 				${CONFIGURE_ARGS}
 	touch configure-stamp
 
