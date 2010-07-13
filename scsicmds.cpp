@@ -7,7 +7,7 @@
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * Additional SCSI work:
- * Copyright (C) 2003-8 Douglas Gilbert <dougg@torque.net>
+ * Copyright (C) 2003-10 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@
 #include "dev_interface.h"
 #include "utility.h"
 
-const char *scsicmds_c_cvsid="$Id: scsicmds.cpp,v 1.98 2009/06/24 04:10:10 dpgilbert Exp $"
+const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3096 2010-04-30 14:32:49Z chrfranke $"
 CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 /* for passing global control variables */

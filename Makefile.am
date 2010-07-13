@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3074 2010-03-05 23:00:30Z chrfranke $
+# $Id: Makefile.am 3115 2010-06-02 17:23:05Z chrfranke $
 #
 
 @SET_MAKE@
@@ -20,6 +20,13 @@ AM_CPPFLAGS += -DSMARTMONTOOLS_SAVESTATES='"$(savestates)"'
 endif
 if ENABLE_ATTRIBUTELOG
 AM_CPPFLAGS += -DSMARTMONTOOLS_ATTRIBUTELOG='"$(attributelog)"'
+endif
+
+if NEED_GETOPT_LONG
+AM_CPPFLAGS += -I$(srcdir)/getopt -DHAVE_GETOPT_LONG -D__GNU_LIBRARY__
+endif
+if NEED_REGEX
+AM_CPPFLAGS += -I$(srcdir)/regex
 endif
 
 sbin_PROGRAMS = smartd 	\
@@ -64,6 +71,8 @@ EXTRA_smartd_SOURCES = os_darwin.cpp    \
                        os_netbsd.h      \
                        os_openbsd.cpp   \
                        os_openbsd.h     \
+                       os_qnxnto.cpp    \
+                       os_qnxnto.h      \
                        os_solaris.cpp   \
                        os_solaris.h     \
                        os_solaris_ata.s \
@@ -78,22 +87,13 @@ EXTRA_smartd_SOURCES = os_darwin.cpp    \
 
 if OS_WIN32_MINGW
 
-smartd_SOURCES +=                           \
-                posix/regex.h               \
-                posix/regex.c               \
-                os_win32/daemon_win32.h     \
-                os_win32/daemon_win32.cpp   \
-                os_win32/hostname_win32.h   \
-                os_win32/hostname_win32.cpp \
-                os_win32/syslog.h           \
-                os_win32/syslog_win32.cpp
-
-# Included by regex.c:
-EXTRA_smartd_SOURCES +=                   \
-                posix/regcomp.c           \
-                posix/regexec.c           \
-                posix/regex_internal.c    \
-                posix/regex_internal.h
+smartd_SOURCES += \
+        os_win32/daemon_win32.cpp \
+        os_win32/daemon_win32.h \
+        os_win32/hostname_win32.cpp \
+        os_win32/hostname_win32.h \
+        os_win32/syslog_win32.cpp \
+        os_win32/syslog.h
 
 endif
 
@@ -135,6 +135,8 @@ EXTRA_smartctl_SOURCES = os_linux.cpp \
                        os_netbsd.h    \
                        os_openbsd.cpp \
                        os_openbsd.h   \
+                       os_qnxnto.cpp  \
+                       os_qnxnto.h    \
                        os_solaris.cpp \
                        os_solaris.h   \
                        os_win32.cpp   \
@@ -145,19 +147,42 @@ EXTRA_smartctl_SOURCES = os_linux.cpp \
                        dev_legacy.cpp \
                        megaraid.h
 
-if OS_WIN32_MINGW
+if NEED_GETOPT_LONG
 
-smartctl_SOURCES +=                    \
-                posix/regex.h          \
-                posix/regex.c          \
-                os_win32/syslog.h
+smartctl_SOURCES += \
+        getopt/getopt.c \
+        getopt/getopt.h \
+        getopt/getopt1.c
+
+smartd_SOURCES += \
+        getopt/getopt.c \
+        getopt/getopt.h \
+        getopt/getopt1.c
+
+endif
+
+if NEED_REGEX
+
+smartctl_SOURCES += \
+        regex/regex.c \
+        regex/regex.h \
+        regex/regex_internal.h
+
+smartd_SOURCES += \
+        regex/regex.c \
+        regex/regex.h \
+        regex/regex_internal.h
 
 # Included by regex.c:
-EXTRA_smartctl_SOURCES +=              \
-                posix/regcomp.c        \
-                posix/regexec.c        \
-                posix/regex_internal.c \
-                posix/regex_internal.h
+EXTRA_smartctl_SOURCES += \
+        regex/regcomp.c \
+        regex/regexec.c \
+        regex/regex_internal.c
+
+EXTRA_smartd_SOURCES += \
+        regex/regcomp.c \
+        regex/regexec.c \
+        regex/regex_internal.c
 
 endif
 
@@ -442,13 +467,13 @@ MAN_ATTRIBUTELOG = sed '/BEGIN ENABLE_ATTRIBUTELOG/,/END ENABLE_ATTRIBUTELOG/d'
 endif
 
 MAN_FILTER = \
-    sed "s|CURRENT_CVS_VERSION|$(releaseversion)|g; \
-         s|CURRENT_CVS_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
-         s|CURRENT_CVS_TIME|`sed -n 's,^.*TIME[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
+    sed "s|CURRENT_SVN_VERSION|$(releaseversion)|g; \
+         s|CURRENT_SVN_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
+         s|CURRENT_SVN_REV|`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`|g; \
          s|/usr/local/share/man/|$(mandir)/|g; \
          s|/usr/local/sbin/|$(sbindir)/|g; \
          s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g; \
-         s|/usr/local/share/doc/smartmontools-5.1/|$(docsdir)/|g;  \
+         s|/usr/local/share/doc/smartmontools/|$(docsdir)/|g;  \
          s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g; \
          s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" | \
     $(MAN_CAPABILITIES) | \

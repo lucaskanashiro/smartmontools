@@ -57,6 +57,8 @@ configure-stamp: debian/stamp-patched
 				--enable-drivedb \
 				--enable-savestates \
 				--enable-attributelog \
+				--with-savestates=/var/lib/smartmontools/smartd. \
+				--with-attributelog=/var/lib/smartmontools/attrlog. \
 				${CONFIGURE_ARGS}
 	touch configure-stamp
 

@@ -32,7 +32,7 @@
  *  modelfamily     Informal string about the model family/series of a
  *                  device. Set to "" if no info (apart from device id)
  *                  known.  The entry is ignored if this string starts with
- *                  a dollar sign.
+ *                  a dollar sign.  Must not start with "USB:", see below.
  *  modelregexp     POSIX extended regular expression to match the model of
  *                  a device.  This should never be "".
  *  firmwareregexp  POSIX extended regular expression to match a devices's
@@ -53,12 +53,29 @@
  * The table will be searched from the start to end or until the first match,
  * so the order in the table is important for distinct entries that could match
  * the same drive.
+ *
+ *
+ * Format for USB ID entries:
+ *
+ *  modelfamily     String with format "USB: DEVICE; BRIDGE" where
+ *                  DEVICE is the name of the device and BRIDGE is
+ *                  the name of the USB bridge.  Both may be empty
+ *                  if no info known.
+ *  modelregexp     POSIX extended regular expression to match the USB
+ *                  vendor:product ID in hex notation ("0x1234:0xabcd").
+ *                  This should never be "".
+ *  firmwareregexp  POSIX extended regular expression to match the USB
+ *                  bcdDevice info.  Only compared during search if other
+ *                  entries with same USB vendor:product ID exist.
+ *  warningmsg      Not used yet.
+ *  presets         String with one device type ('-d') option.
+ *
  */
 
 /*
 const drive_settings builtin_knowndrives[] = {
  */
-  { "$Id: drivedb.h 3071 2010-03-04 21:17:09Z manfred99 $",
+  { "$Id: drivedb.h 3124 2010-07-12 19:21:00Z chrfranke $",
     "-", "-",
     "This is a dummy entry to hold the SVN-Id of drivedb.h",
     ""
@@ -74,6 +91,7 @@ const drive_settings builtin_knowndrives[] = {
   { "SuperTalent UltraDrive GX SSD",
     "STT_FT[MD](28|32|56|64)GX25H",
     "", "",
+    " -v 1,raw64"
     " -v 9,raw64"
     " -v 12,raw64"
     " -v 184,raw64,Initial_Bad_Block_Count"
@@ -92,10 +110,15 @@ const drive_settings builtin_knowndrives[] = {
     " -v 207,raw64,Max_Erase_Count"
     " -v 208,raw64,Average_Erase_Count"
     " -v 209,raw64,Remaining_Lifetime_Perc"
+    " -v 210,raw64"
+    " -v 211,raw64"
+    " -v 212,raw64"
+    " -v 213,raw64"
   },
   { "Patriot Torqx SSD",
     "Patriot[ -]Torqx.*",
     "", "",
+    " -v 1,raw64"
     " -v 9,raw64"
     " -v 12,raw64"
     " -v 184,raw64,Initial_Bad_Block_Count"
@@ -114,10 +137,15 @@ const drive_settings builtin_knowndrives[] = {
     " -v 207,raw64,Max_Erase_Count"
     " -v 208,raw64,Average_Erase_Count"
     " -v 209,raw64,Remaining_Lifetime_Perc"
+    " -v 210,raw64"
+    " -v 211,raw64"
+    " -v 212,raw64"
+    " -v 213,raw64"
   },
   { "OCZ Vertex SSD",
     "OCZ[ -]VERTEX.*",
     "", "",
+    " -v 1,raw64"
     " -v 9,raw64"
     " -v 12,raw64"
     " -v 184,raw64,Initial_Bad_Block_Count"
@@ -136,10 +164,15 @@ const drive_settings builtin_knowndrives[] = {
     " -v 207,raw64,Max_Erase_Count"
     " -v 208,raw64,Average_Erase_Count"
     " -v 209,raw64,Remaining_Lifetime_Perc"
+    " -v 210,raw64"
+    " -v 211,raw64"
+    " -v 212,raw64"
+    " -v 213,raw64"
   },
   { "OCZ Agility SSD",
-    "OCZ[ -]AGILITY",
+    "OCZ[ -]AGILITY.*",
     "", "",
+    " -v 1,raw64"
     " -v 9,raw64"
     " -v 12,raw64"
     " -v 184,raw64,Initial_Bad_Block_Count"
@@ -158,6 +191,10 @@ const drive_settings builtin_knowndrives[] = {
     " -v 207,raw64,Max_Erase_Count"
     " -v 208,raw64,Average_Erase_Count"
     " -v 209,raw64,Remaining_Lifetime_Perc"
+    " -v 210,raw64"
+    " -v 211,raw64"
+    " -v 212,raw64"
+    " -v 213,raw64"
   },
   { "Crucial M225 SSD",
     "CRUCIAL_CT(64|128|256)M225",
@@ -183,6 +220,8 @@ const drive_settings builtin_knowndrives[] = {
     " -v 209,raw64,Remaining_Lifetime_Perc"
     " -v 210,raw64"
     " -v 211,raw64"
+    " -v 212,raw64"
+    " -v 213,raw64"
   },
   { "Intel X25-E SSD",
     "SSDSA2SH(032|064)G1.* INTEL",  // G1 = first generation
@@ -190,16 +229,30 @@ const drive_settings builtin_knowndrives[] = {
     "-v 225,raw48,Host_Writes_Count"
   },
   { "Intel X25-M SSD",
-    "INTEL SSDSA2M(080|160)G2.*",  // G2 = second generation
+    "INTEL SSDSA2MH(080|160)G1.*",  // G1 = first generation, 50nm
     "", "",
     "-v 225,raw48,Host_Writes_Count"
   },
-  { "Transcend Solid-State Drive",
+  { "Intel X25-M SSD",
+    "INTEL SSDSA2M(080|160)G2.*",  // G2 = second generation, 34nm
+    "", "",
+    "-v 225,raw48,Host_Writes_Count"
+  },
+  { "Transcend IDE Solid State Drive",
     "TS(8|16|32|64|128)GSSD25-(M|S)",
     "", "", ""
   },
-  { "Transcend Solid-State Drive V series",
+  { "Transcend SATA Solid State Drive",
     "TS(8|16|32|64|128|192)GSSD25S-(M|S)",
+    "", "",
+    "-v 229,hex64,Halt_System_ID "
+    "-v 232,hex64,Firmware_Version_information "
+    "-v 233,hex64,ECC_Fail_Record "
+    "-v 234,raw24/raw24,Erase_Count_Avg/Max "
+    "-v 235,raw24/raw24,Block_Count_Good/System"
+  },
+  { "Transcend Ultra Series Solid State Drive (SATA II)",
+    "TS(60|120)GSSD25D-M",
     "", "", ""
   },
   { "Marvell SSD SD88SA024BA0 (SUN branded)",
@@ -240,8 +293,8 @@ const drive_settings builtin_knowndrives[] = {
     "http://www.ibm.com/pc/support/site.wss/MIGR-42215.html",
     ""
   },
-  { "", // ExcelStor J240, J340, J360, J680, and J880
-    "ExcelStor Technology J(24|34|36|68|88)0",
+  { "", // ExcelStor J240, J340, J360, J680, J880 and J8160
+    "ExcelStor Technology J(24|34|36|68|88|816)0",
     "", "", ""
   },
   { "", // Fujitsu M1623TAU
@@ -518,6 +571,12 @@ const drive_settings builtin_knowndrives[] = {
   { "SAMSUNG SpinPoint M5 series", // tested with HM160HI/HH100-12
     "SAMSUNG HM((061|080)G|(121|160)H|250J)I",
     "", "", ""
+  },
+  { "SAMSUNG SpinPoint M series", // tested with MP0402H/UC100-11
+    "SAMSUNG MP0(302|402|603|804)H",
+    "",
+    "",
+    "-v 9,halfminutes"
   },
 /*
   // TODO: Make the entries below more specific.
@@ -881,15 +940,15 @@ const drive_settings builtin_knowndrives[] = {
     "(Hitachi )?(HTS4212(60|80|10|12)H9AT00|HTS421260G9AT00)",
     "", "", ""
   },
-  { "Hitachi Travelstar 5K80 family",
+  { "Hitachi Travelstar 5K80",
     "(Hitachi )?HTS5480[8642]0M9AT00",
     "", "", ""
   },
-  { "Hitachi Travelstar 5K100 series",
+  { "Hitachi Travelstar 5K100",
     "(Hitachi )?HTS5410[1864]0G9(AT|SA)00",
     "", "", ""
   },
-  { "Hitachi Travelstar E5K100 series",
+  { "Hitachi Travelstar E5K100",
     "(Hitachi )?HTE541040G9(AT|SA)00",
     "", "", ""
   },
@@ -897,20 +956,24 @@ const drive_settings builtin_knowndrives[] = {
     "(Hitachi )?HTS5412(60|80|10|12)H9(AT|SA)00",
     "", "", ""
   },
-  { "Hitachi Travelstar 5K160 series",
+  { "Hitachi Travelstar 5K160",
     "(Hitachi |HITACHI )?HTS5416([468]0|1[26])J9(AT|SA)00",
     "", "", ""
   },
-  { "Hitachi Travelstar E5K160 series",
+  { "Hitachi Travelstar E5K160",
     "(Hitachi )?HTE5416(12|16|60|80)J9(AT|SA)00",
     "", "", ""
   },
-  { "Hitachi Travelstar 5K250 series",
+  { "Hitachi Travelstar 5K250",
     "(Hitachi |HITACHI )?HTS5425(80|12|16|20|25)K9(A3|SA)00",
     "", "", ""
   },
-  { "Hitachi Travelstar 5K320 series",
+  { "Hitachi Travelstar 5K320",
     "(Hitachi |HITACHI )?HT(S|E)5432(80|12|16|25|32)L9(A3(00)?|SA01)",
+    "", "", ""
+  },
+  { "Hitachi Travelstar 5K500.B",
+    "(Hitachi )?HT[ES]5450(12|16|25|32|40|50)B9A30[01]",
     "", "", ""
   },
   { "Hitachi Travelstar 7K60",
@@ -961,7 +1024,7 @@ const drive_settings builtin_knowndrives[] = {
     "(IBM-)?IC35L(030|060|090|120|180)AVV207-[01]",
     "", "", ""
   },
-  { "Hitachi Deskstar 7K80 series",
+  { "Hitachi Deskstar 7K80",
     "(Hitachi )?HDS7280([48]0PLAT20|(40)?PLA320|80PLA380).*",
     "", "", ""
   },
@@ -969,7 +1032,7 @@ const drive_settings builtin_knowndrives[] = {
     "(Hitachi )?HDS7216(80|16)PLA[3T]80.*",
     "", "", ""
   },
-  { "Hitachi Deskstar 7K250 series",
+  { "Hitachi Deskstar 7K250",
     "(Hitachi )?HDS7225((40|80|12|16)VLAT20|(12|16|25)VLAT80|(80|12|16|25)VLSA80)",
     "", "", ""
   },
@@ -977,19 +1040,19 @@ const drive_settings builtin_knowndrives[] = {
     "HITACHI HDS7225SBSUN250G.*",
     "", "", ""
   },
-  { "Hitachi Deskstar T7K250 series",
+  { "Hitachi Deskstar T7K250",
     "(Hitachi )?HDT7225((25|20|16)DLA(T80|380))",
     "", "", ""
   },
-  { "Hitachi Deskstar 7K400 series",
+  { "Hitachi Deskstar 7K400",
     "(Hitachi )?HDS724040KL(AT|SA)80",
     "", "", ""
   },
-  { "Hitachi Deskstar 7K500 series",
+  { "Hitachi Deskstar 7K500",
     "(Hitachi )?HDS725050KLA(360|T80)",
     "", "", ""
   },
-  { "Hitachi Deskstar P7K500 series",
+  { "Hitachi Deskstar P7K500",
     "(Hitachi )?HDP7250(16|25|32|40|50)GLA(36|38|T8)0",
     "", "", ""
   },
@@ -1005,12 +1068,20 @@ const drive_settings builtin_knowndrives[] = {
     "(Hitachi )?HDT7210((16|25)SLA380|(32|50|64|75|10)SLA360)",
     "", "", ""
   },
+  { "Hitachi Deskstar 7K1000.C",
+    "(Hitachi )?HDS7210((16|25)CLA382|(32|50)CLA362|(64|75|10)CLA332)",
+    "", "", ""
+  },
   { "Hitachi Deskstar 7K2000",
     "Hitachi HDS722020ALA330",
     "", "", ""
   },
   { "Hitachi Ultrastar 7K1000",
     "(Hitachi )?HUA7210(50|75|10)KLA330",
+    "", "", ""
+  },
+  { "Hitachi Ultrastar A7K2000",
+    "(Hitachi )?HUA7220((50|10)C|20A)LA33[01]",
     "", "", ""
   },
   { "Toshiba 2.5\" HDD series (10-20 GB)",
@@ -1383,6 +1454,10 @@ const drive_settings builtin_knowndrives[] = {
     "WDC WD((50|64|75)00AA(C|V)S|(50|64|75)00AADS|10EA(C|V)S|(10|15|20)EADS)-.*",
     "", "", ""
   },
+  { "Western Digital Caviar Green (Adv. Format) family",
+    "WDC WD((64|80)00A|(10|15|20)E)ARS-.*",
+    "", "", ""
+  },
   { "Western Digital Caviar Black family",
     "WDC WD((500|640|750)1AA|1001FA)LS-.*",
     "", "", ""
@@ -1392,11 +1467,11 @@ const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "Western Digital AV-GP family",
-    "WDC WD((16|25|32|50|64|75)00AVVS|(50|75)00AVCS|10EVVS|(10|20)EVCS|WD(10|15|20)EVDS)-.*",
+    "WDC WD((16|25|32|50|64|75)00AVVS|(50|75)00AVCS|10EVVS|(10|20)EVCS|(10|15|20)EVDS)-.*",
     "", "", ""
   },
   { "Western Digital Raptor family",
-    "WDC WD((360|740|800)GD|(360|740|1500)ADF[DS])-.*",
+    "WDC WD((360|740|800)GD|(360|740|800|1500)ADF[DS])-.*",
     "", "", ""
   },
   { "Western Digital Raptor X",
@@ -1432,7 +1507,7 @@ const drive_settings builtin_knowndrives[] = {
     "", "", ""
   },
   { "Western Digital My Passport Essential SE hard drive (USB interface)",
-    "WDC WD7500KMVV-.*",
+    "WDC WD(7500K|10T)MVV-.*",
     "", "", ""
   },
   { "Western Digital My Passport hard drive (USB interface)",
@@ -1486,6 +1561,400 @@ const drive_settings builtin_knowndrives[] = {
   { "Quantum Fireball Plus KA series",
     "QUANTUM FIREBALLP KA(9|10).1",
     "", "", ""
+  },
+
+  ////////////////////////////////////////////////////
+  // USB ID entries
+  ////////////////////////////////////////////////////
+
+  // ALi
+  { "USB: ; ALi M5621", // USB->PATA
+    "0x0402:0x5621",
+    "",
+    "",
+    "" // unsupported
+  },
+  // Cypress
+  { "USB: ; Cypress CY7C68300A (AT2)",
+    "0x04b4:0x6830",
+    "0x0001",
+    "",
+    "" // unsupported
+  },
+  { "USB: ; Cypress CY7C68300B/C (AT2LP)",
+    "0x04b4:0x6830",
+    "0x0240",
+    "",
+    "-d usbcypress"
+  },
+  // Myson Century
+  { "USB: ; Myson Century CS8818",
+    "0x04cf:0x8818",
+    "0xb007",
+    "",
+    "" // unsupported
+  },
+  // Samsung
+  { "USB: Samsung Story Station; ",
+    "0x04e8:0x5f06",
+    "",
+    "",
+    "-d sat"
+  },
+  // Sunplus
+  { "USB: ; SunPlus SPDIF215",
+    "0x04fc:0x0c15",
+    "0xf615",
+    "",
+    "-d usbsunplus"
+  },
+  { "USB: ; SunPlus SPDIF225", // USB+SATA->SATA
+    "0x04fc:0x0c25",
+    "0x0103",
+    "",
+    "-d usbsunplus"
+  },
+  // Iomega
+  { "USB: Iomega LPHD080-0; ",
+    "0x059b:0x0272",
+    "",
+    "",
+    "-d usbcypress"
+  },
+  { "USB: Iomega MDHD500-U; ",
+    "0x059b:0x0275",
+    "0x0001",
+    "",
+    "" // unsupported
+  },
+  { "USB: Iomega LDHD-UP; Sunplus",
+    "0x059b:0x0370",
+    "",
+    "",
+    "-d usbsunplus"
+  },
+  // LaCie
+  { "USB: LaCie hard disk (FA Porsche design);",
+    "0x059f:0x0651",
+    "",
+    "",
+    "" // unsupported
+  },
+  { "USB: LaCie hard disk; JMicron",
+    "0x059f:0x0951",
+    "",
+    "",
+    "-d usbjmicron"
+  },
+  { "USB: LaCie hard disk (Neil Poulton design);",
+    "0x059f:0x1018",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: LaCie Desktop Hard Drive; JMicron",
+    "0x059f:0x1019",
+    "",
+    "",
+    "-d usbjmicron"
+  },
+  { "USB: LaCie Rugged Hard Drive; JMicron",
+    "0x059f:0x101d",
+    "0x0001",
+    "",
+    "-d usbjmicron,x"
+  },
+  // In-System Design
+  { "USB: ; In-System/Cypress ISD-300A1",
+    "0x05ab:0x0060",
+    "0x1101",
+    "",
+    "-d usbcypress"
+  },
+  // Genesys Logic
+  { "USB: ; Genesys Logic GL881E",
+    "0x05e3:0x0702",
+    "",
+    "",
+    "" // unsupported
+  },
+  { "USB: ; Genesys Logic", // TODO: requires '-T permissive'
+    "0x05e3:0x0718",
+    "0x0041",
+    "",
+    "-d sat"
+  },
+  // Prolific
+  { "USB: ; Prolific PL2507", // USB->PATA
+    "0x067b:0x2507",
+    "",
+    "",
+    "" // unsupported
+  },
+  { "USB: ; Prolific PL3507", // USB+IEE1394->PATA
+    "0x067b:0x3507",
+    "0x0001",
+    "",
+    "" // unsupported
+  },
+  // Freecom
+  { "USB: Freecom Hard Drive XS; Sunplus",
+    "0x07ab:0xfc8e",
+    "0x010f",
+    "",
+    "-d usbsunplus"
+  },
+  // Toshiba
+  { "USB: Toshiba PX1270E-1G16; Sunplus",
+    "0x0930:0x0b03",
+    "",
+    "",
+    "-d usbsunplus"
+  },
+  { "USB: Toshiba PX1396E-3T01; Sunplus", // similar to Dura Micro 501
+    "0x0930:0x0b09",
+    "",
+    "",
+    "-d usbsunplus"
+  },
+  // Seagate
+  { "USB: Seagate FreeAgent Go; ",
+    "0x0bc2:0x2(000|100|101)",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: Seagate FreeAgent Go FW; ",
+    "0x0bc2:0x2200",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: Seagate Expansion Portable; ",
+    "0x0bc2:0x2300",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: Seagate FreeAgent Desktop; ",
+    "0x0bc2:0x3000",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: Seagate FreeAgent Desk; ",
+    "0x0bc2:0x3001",
+    "",
+    "",
+    "-d sat"
+  },
+  // Dura Micro
+  { "USB: Dura Micro 509; Sunplus",
+    "0x0c0b:0xb159",
+    "0x0103",
+    "",
+    "-d usbsunplus"
+  },
+  // Maxtor
+  { "USB: Maxtor OneTouch; ",
+    "0x0d49:0x7300",
+    "0x0121",
+    "",
+    "-d sat"
+  },
+  { "USB: Maxtor OneTouch 4; ",
+    "0x0d49:0x7310",
+    "0x0125",
+    "",
+    "-d sat"
+  },
+  { "USB: Maxtor OneTouch 4 Mini; ",
+    "0x0d49:0x7350",
+    "0x0125",
+    "",
+    "-d sat"
+  },
+  { "USB: Maxtor Basics Desktop; ",
+    "0x0d49:0x7410",
+    "0x0122",
+    "",
+    "-d sat"
+  },
+  { "USB: Maxtor Basics Portable; ",
+    "0x0d49:0x7450",
+    "0x0122",
+    "",
+    "-d sat"
+  },
+  // Western Digital
+  { "USB: WD My Passport (IDE); Cypress",
+    "0x1058:0x0701",
+    "0x0240",
+    "",
+    "-d usbcypress"
+  },
+  { "USB: WD My Passport Portable; ",
+    "0x1058:0x0702",
+    "0x0102",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Passport Essential; ",
+    "0x1058:0x0704",
+    "0x0175",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Passport Elite; ",
+    "0x1058:0x0705",
+    "0x0175",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Passport 070A; ",
+    "0x1058:0x070a",
+    "0x1028",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Book ES; ",
+    "0x1058:0x0906",
+    "0x0012",
+    "",
+    "-d sat"
+  },
+  { "USB: WD Elements Desktop; ",
+    "0x1058:0x1001",
+    "0x0104",
+    "",
+    "-d sat"
+  },
+  { "USB: WD Elements Desktop WDE1UBK...; ",
+    "0x1058:0x1003",
+    "0x0175",
+    "",
+    "-d sat"
+  },
+  { "USB: WD Elements; ",
+    "0x1058:0x1010",
+    "0x0105",
+    "",
+    "-d sat"
+  },
+  { "USB: WD Elements Desktop; ", // 2TB
+    "0x1058:0x1021",
+    "0x2002",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Book Essential; ",
+    "0x1058:0x1100",
+    "0x0165",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Book; ",
+    "0x1058:0x1102",
+    "0x1028",
+    "",
+    "-d sat"
+  },
+  { "USB: WD My Book Essential; ",
+    "0x1058:0x1110",
+    "0x1030",
+    "",
+    "-d sat"
+  },
+  // A-DATA
+  { "USB: A-DATA SH93; Cypress",
+    "0x125f:0xa93a",
+    "0x0150",
+    "",
+    "-d usbcypress"
+  },
+  // Initio
+  { "USB: ; Initio 316000",
+    "0x13fd:0x0540",
+    "",
+    "",
+    "" // unsupported
+  },
+  { "USB: ; Initio", // USB->SATA
+    "0x13fd:0x1240",
+    "0x0104",
+    "",
+    "-d sat"
+  },
+  { "USB: ; Initio", // USB+SATA->SATA
+    "0x13fd:0x1340",
+    "0x0208",
+    "",
+    "-d sat"
+  },
+  // JMicron
+  { "USB: ; JMicron JM20329", // USB->SATA
+    "0x152d:0x2329",
+    "0x0100",
+    "",
+    "-d usbjmicron"
+  },
+  { "USB: ; JMicron JM20336", // USB+SATA->SATA, USB->2xSATA
+    "0x152d:0x2336",
+    "0x0100",
+    "",
+    "-d usbjmicron,x"
+  },
+  { "USB: ; JMicron JM20337/8", // USB->SATA+PATA, USB+SATA->PATA
+    "0x152d:0x2338",
+    "0x0100",
+    "",
+    "-d usbjmicron"
+  },
+  { "USB: ; JMicron JM20339", // USB->SATA
+    "0x152d:0x2339",
+    "0x0100",
+    "",
+    "-d usbjmicron,x"
+  },
+  { "USB: ; JMicron", // USB->SATA
+    "0x152d:0x2352",
+    "0x0100",
+    "",
+    "-d usbjmicron,x"
+  },
+  // Verbatim
+  { "USB: Verbatim FW/USB160; Oxford OXUF934SSA-LQAG", // USB+IEE1394->SATA
+    "0x18a5:0x0215",
+    "0x0001",
+    "",
+    "-d sat"
+  },
+  { "USB: Verbatim External Hard Drive 47519; Sunplus", // USB->SATA
+    "0x18a5:0x0216",
+    "",
+    "",
+    "-d usbsunplus"
+  },
+  // SunplusIT
+  { "USB: ; SunplusIT",
+    "0x1bcf:0x0c31",
+    "",
+    "",
+    "-d usbsunplus"
+  },
+  // Hitachi/SimpleTech
+  { "USB: Hitachi/SimpleTech; JMicron", // 1TB
+    "0x4971:0xce17",
+    "",
+    "",
+    "-d usbjmicron,x"
+  },
+  // OnSpec
+  { "USB: ; OnSpec", // USB->PATA
+    "0x55aa:0x2b00",
+    "0x0100",
+    "",
+    "" // unsupported
   },
 /*
 }; // builtin_knowndrives[]

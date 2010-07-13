@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 #ifndef UTILITY_H_
 #define UTILITY_H_
 
-#define UTILITY_H_CVSID "$Id: utility.h 3020 2009-12-31 01:11:51Z dlukes $"
+#define UTILITY_H_CVSID "$Id: utility.h 3093 2010-04-30 09:57:36Z chrfranke $"
 
 #include <time.h>
 #include <sys/types.h> // for regex.h (according to POSIX)
@@ -144,8 +144,19 @@ inline T * CheckFree(T * address, int whatline, const char* file)
 // appropriate.]
 void PrintOut(int priority, const char *fmt, ...) __attribute__ ((format(printf, 2, 3)));
 
-// run time, determine byte ordering
-int isbigendian();
+// Compile time check of byte ordering
+// (inline const function allows compiler to remove dead code)
+inline bool isbigendian()
+{
+#ifdef WORDS_BIGENDIAN
+  return true;
+#else
+  return false;
+#endif
+}
+
+// Runtime check of byte ordering, throws if different from isbigendian().
+void check_endianness();
 
 // This value follows the peripheral device type value as defined in
 // SCSI Primary Commands, ANSI INCITS 301:1997.  It is also used in
@@ -315,6 +326,13 @@ private:
 // macros to control printing
 #define PRINT_ON(control)  {if (control->printing_switchable) control->dont_print=false;}
 #define PRINT_OFF(control) {if (control->printing_switchable) control->dont_print=true;}
+
+#ifdef _WIN32
+// Get exe directory
+//(implemented in os_win32.cpp)
+std::string get_exe_dir();
+#endif
+
 
 #ifdef OLD_INTERFACE
 // possible values for controller_type in extern.h

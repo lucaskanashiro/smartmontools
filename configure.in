@@ -1,5 +1,5 @@
 #
-# $Id: configure.in 3074 2010-03-05 23:00:30Z chrfranke $
+# $Id: configure.in 3116 2010-06-03 11:03:29Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
@@ -7,7 +7,7 @@ AC_INIT(smartmontools, 5.40, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
 smartmontools_configure_date=`date -u +'%Y-%m-%d %T %Z'`
-smartmontools_cvs_tag=`echo '$Id: configure.in 3074 2010-03-05 23:00:30Z chrfranke $'`
+smartmontools_cvs_tag=`echo '$Id: configure.in 3116 2010-06-03 11:03:29Z chrfranke $'`
 smartmontools_release_date=2009-12-09
 smartmontools_release_time="21:00:32 UTC"
 
@@ -51,7 +51,7 @@ case "${host}" in
 		  CPPFLAGS="$CPPFLAGS -mno-cygwin"
 		  LDFLAGS="$LDFLAGS -mno-cygwin"
 		fi
-		CPPFLAGS="$CPPFLAGS -idirafter ${srcdir}/posix -idirafter ${srcdir}/os_win32"
+		CPPFLAGS="$CPPFLAGS -I$srcdir/os_win32"
 		;;
 	*-*-freebsd*)
 		CPPFLAGS="$CPPFLAGS -I/usr/src/sys"
@@ -107,12 +107,10 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_TYPES([int64_t, uint64_t])
 
 dnl Checks for library functions.
-AC_CHECK_FUNCS([getopt_long], , [
-  AC_MSG_NOTICE([smartmontools does no longer support platforms without getopt_long().])
-  AC_MSG_NOTICE([Please inform ${PACKAGE_BUGREPORT},])
-  AC_MSG_NOTICE([including details about your build environment.])
-  AC_MSG_ERROR([function getopt_long() not found])
-])
+AC_CHECK_FUNCS([getopt_long], [need_getopt_long=no], [need_getopt_long=yes])
+AM_CONDITIONAL(NEED_GETOPT_LONG, [test "$need_getopt_long" = "yes"])
+AC_CHECK_FUNCS([regcomp], [need_regex=no], [need_regex=yes])
+AM_CONDITIONAL(NEED_REGEX, [test "$need_regex" = "yes"])
 
 AC_CHECK_FUNCS([getdomainname])
 AC_CHECK_FUNCS([gethostname])
@@ -121,6 +119,9 @@ AC_CHECK_FUNCS([gethostbyname])
 AC_CHECK_FUNCS([sigset])
 AC_CHECK_FUNCS([strtoull])
 AC_CHECK_FUNCS([uname])
+
+# Check byte ordering (defines WORDS_BIGENDIAN)
+AC_C_BIGENDIAN
 
 # Check whether snprintf appends null char and returns expected length on overflow
 AH_TEMPLATE(HAVE_WORKING_SNPRINTF, [Define to 1 if the `snprintf' function is sane])
@@ -409,15 +410,60 @@ AC_SUBST(CXXFLAGS)
 AC_OUTPUT(Makefile examplescripts/Makefile)
 AC_PROG_MAKE_SET
 
-# Print note that the docdir default value has changed
-# TODO: Remove this after next release
-if test "$docdir_is_default" = "yes"; then
-  old_def_docdir='${prefix}/share/doc/${PACKAGE}-${VERSION}'
-  old_def_docdir_eval="`eval eval eval echo $old_def_docdir`"
-  docdir_eval="`eval eval eval echo $docdir`"
-  AC_MSG_NOTICE([********** PLEASE NOTE **********])
-  AC_MSG_NOTICE(['docdir' default has changed])
-  AC_MSG_NOTICE([from: $old_def_docdir_eval])
-  AC_MSG_NOTICE([to:   $docdir_eval])
-  AC_MSG_NOTICE([*********************************])
-fi
+echo "-----------------------------------------------------------------------------" >&AS_MESSAGE_FD
+echo "${PACKAGE}-${VERSION} configuration:" >&AS_MESSAGE_FD
+echo "host operating system:  $host" >&AS_MESSAGE_FD
+echo "C++ compiler:           $CXX" >&AS_MESSAGE_FD
+echo "preprocessor flags:     $CPPFLAGS" >&AS_MESSAGE_FD
+echo "C++ compiler flags:     $CXXFLAGS" >&AS_MESSAGE_FD
+echo "linker flags:           $LDFLAGS" >&AS_MESSAGE_FD
+
+case "$host_os" in
+  mingw*)
+    if test -n "$drivedbdir"; then
+      echo "drive database file:    EXEDIR/drivedb.h" >&AS_MESSAGE_FD
+    else
+      echo "drive database file:    [[disabled]]" >&AS_MESSAGE_FD
+    fi
+    if test -n "$savestates"; then
+      echo "smartd save files:      `eval eval eval echo $savestates`MODEL-SERIAL.TYPE.state" >&AS_MESSAGE_FD
+    fi
+    if test -n "$attributelog"; then
+      echo "smartd attribute logs:  `eval eval eval echo $attributelog`MODEL-SERIAL.TYPE.csv" >&AS_MESSAGE_FD
+    fi
+    ;;
+
+  *)
+    echo "binary install path:    `eval eval eval echo $sbindir`" >&AS_MESSAGE_FD
+    echo "man page install path:  `eval eval eval echo $mandir`" >&AS_MESSAGE_FD
+    echo "doc file install path:  `eval eval eval echo $docdir`" >&AS_MESSAGE_FD
+    if test "$docdir_is_default" = "yes"; then
+      echo "(NOTE: old default was: `eval eval eval echo ${prefix}/share/doc/${PACKAGE}-${VERSION}`)" >&AS_MESSAGE_FD
+    fi
+    if test -n "$drivedbdir"; then
+      echo "drive database file:    `eval eval eval echo $drivedbdir`/drivedb.h" >&AS_MESSAGE_FD
+      echo "database update script: `eval eval eval echo $sbindir`/update-smart-drivedb" >&AS_MESSAGE_FD
+    else
+      echo "drive database file:    [[disabled]]" >&AS_MESSAGE_FD
+      echo "database update script: [[disabled]]" >&AS_MESSAGE_FD
+    fi
+    echo "local drive database:   `eval eval eval echo $sysconfdir`/smart_drivedb.h" >&AS_MESSAGE_FD
+    echo "smartd config file:     `eval eval eval echo $sysconfdir`/smartd.conf${smartd_suffix}" >&AS_MESSAGE_FD
+    echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
+    if test -n "$savestates"; then
+      echo "smartd save files:      `eval eval eval echo $savestates`MODEL-SERIAL.TYPE.state" >&AS_MESSAGE_FD
+    else
+      echo "smartd save files:      [[disabled]]" >&AS_MESSAGE_FD
+    fi
+    if test -n "$attributelog"; then
+      echo "smartd attribute logs:  `eval eval eval echo $attributelog`MODEL-SERIAL.TYPE.csv" >&AS_MESSAGE_FD
+    else
+      echo "smartd attribute logs:  [[disabled]]" >&AS_MESSAGE_FD
+    fi
+    echo "libcap-ng support:      $use_libcap_ng" >&AS_MESSAGE_FD
+    case "$host_os" in
+      linux*) echo "SELinux support:        ${with_selinux-no}" >&AS_MESSAGE_FD ;;
+    esac
+    ;;
+esac
+echo "-----------------------------------------------------------------------------" >&AS_MESSAGE_FD

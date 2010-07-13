@@ -1,3 +1,15 @@
+smartmontools (5.39.1+svn3124-1) unstable; urgency=low
+
+  * [1e46e09] Set state and attribute file directory to
+    /var/lib/smartmontools/ (Closes: #582158)
+  * [e20147c] Don't warn about being disabled unless verbose (Closes: #583386)
+  * [3390c07] Fixed example path in man pages (Closes: #588134)
+  * [e9583e0] Imported Upstream version 5.39.1+svn3124
+  * [789e123] Refreshed patches
+  * [cbecf14] Bump to Standards-Version 3.9.0, no changes needed
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Tue, 13 Jul 2010 13:16:54 +0200
+
 smartmontools (5.39.1+svn3077-1) unstable; urgency=low
 
   * [ffe62ea] Removed powersaved from Suggests (Closes: #570956)

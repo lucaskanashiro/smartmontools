@@ -25,6 +25,7 @@ PIDFILE=/var/run/smartd.pid
 
 RET=0
 
+[ -r /etc/default/rcS ] && . /etc/default/rcS
 [ -r /etc/default/smartmontools ] && . /etc/default/smartmontools
 
 smartd_opts="--pidfile $PIDFILE $smartd_opts"
@@ -43,7 +44,7 @@ enable_smart() {
 
 check_start_smartd_option() {
   if [ ! "$start_smartd" = "yes" ]; then
-    log_warning_msg "Not starting S.M.A.R.T. daemon smartd, disabled via /etc/default/smartmontools"
+    [ "$VERBOSE" = "yes" ] && log_warning_msg "Not starting S.M.A.R.T. daemon smartd, disabled via /etc/default/smartmontools"
     return 1
   else
     return 0

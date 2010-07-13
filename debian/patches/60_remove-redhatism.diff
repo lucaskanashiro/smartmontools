@@ -1,21 +1,3 @@
---- a/smartd.8.in
-+++ b/smartd.8.in
-@@ -478,15 +478,6 @@ and stop it by using the command:
- .B /usr/local/etc/rc.d/init.d/smartd stop
- 
- .fi
--If you want \fBsmartd\fP to start running whenever your machine is
--booted, this can be enabled by using the command:
--.nf
--.B /sbin/chkconfig --add smartd
--.fi
--and disabled using the command:
--.nf
--.B /sbin/chkconfig --del smartd
--.fi
- 
- .\" DO NOT MODIFY THIS OR THE FOLLOWING TWO LINES. THIS MATERIAL
- .\" IS AUTOMATICALLY INCLUDED IN THE FILE smartd.conf.5
 --- a/smartd.cpp
 +++ b/smartd.cpp
 @@ -1038,7 +1038,7 @@ static void MailWarning(const dev_config

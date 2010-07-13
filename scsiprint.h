@@ -7,7 +7,7 @@
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * Additional SCSI work:
- * Copyright (C) 2003-9 Douglas Gilbert <dougg@torque.net>
+ * Copyright (C) 2003-10 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #ifndef SCSI_PRINT_H_
 #define SCSI_PRINT_H_
 
-#define SCSIPRINT_H_CVSID "$Id: scsiprint.h,v 1.24 2009/06/21 02:39:32 dpgilbert Exp $\n"
+#define SCSIPRINT_H_CVSID "$Id: scsiprint.h 3096 2010-04-30 14:32:49Z chrfranke $\n"
 
 // Options for scsiPrintMain
 // TODO: Move remaining options from con->* to here.
