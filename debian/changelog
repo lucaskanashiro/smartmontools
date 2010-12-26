@@ -1,3 +1,11 @@
+smartmontools (5.39.1+svn3124-2) unstable; urgency=low
+
+  [ Florian Weimer ]
+  * [88b6d44] 3w-sas support (from upstream changeset r3128) (Closes:
+    #604016)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 26 Dec 2010 12:26:16 +0100
+
 smartmontools (5.39.1+svn3124-1) unstable; urgency=low
 
   * [1e46e09] Set state and attribute file directory to
