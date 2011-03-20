@@ -32,12 +32,11 @@
 #ifndef SCSICMDS_H_
 #define SCSICMDS_H_
 
-#define SCSICMDS_H_CVSID "$Id: scsicmds.h 3095 2010-04-30 12:33:27Z dpgilbert $\n"
+#define SCSICMDS_H_CVSID "$Id: scsicmds.h 3258 2011-02-14 22:31:01Z manfred99 $\n"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 /* #define SCSI_DEBUG 1 */ /* Comment out to disable command debugging */
 
@@ -78,6 +77,18 @@
 #endif
 #ifndef READ_DEFECT_10
 #define READ_DEFECT_10  0x37
+#endif
+#ifndef START_STOP_UNIT
+#define START_STOP_UNIT  0x1b
+#endif
+#ifndef REPORT_LUNS
+#define REPORT_LUNS  0xa0
+#endif
+#ifndef READ_CAPACITY_10
+#define READ_CAPACITY_10  0x25
+#endif
+#ifndef READ_CAPACITY_16
+#define READ_CAPACITY_16  0x9e	/* service action 0x10 */
 #endif
 
 #ifndef SAT_ATA_PASSTHROUGH_12
@@ -283,6 +294,9 @@ Documentation, see http://www.storage.ibm.com/techsup/hddtech/prodspecs.htm */
 #define LOGPAGEHDRSIZE  4
 
 class scsi_device;
+
+// Print SCSI debug messages?
+extern unsigned char scsi_debugmode;
 
 void scsi_do_sense_disect(const struct scsi_cmnd_io * in,
                           struct scsi_sense_disect * out);

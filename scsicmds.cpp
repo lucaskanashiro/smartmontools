@@ -40,20 +40,20 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #include "config.h"
 #include "int64.h"
-#include "extern.h"
 #include "scsicmds.h"
 #include "atacmds.h" // FIXME: for smart_command_set only
 #include "dev_interface.h"
 #include "utility.h"
 
-const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3096 2010-04-30 14:32:49Z chrfranke $"
-CONFIG_H_CVSID EXTERN_H_CVSID INT64_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
+const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3258 2011-02-14 22:31:01Z manfred99 $"
+  SCSICMDS_H_CVSID;
 
-/* for passing global control variables */
-extern smartmonctrl *con;
+// Print SCSI debug messages?
+unsigned char scsi_debugmode = 0;
 
 /* output binary in hex and optionally ascii */
 void dStrHex(const char* str, int len, int no_ascii)
@@ -120,23 +120,33 @@ static struct scsi_opcode_name opcode_name_arr[] = {
     {INQUIRY, "inquiry"},                       /* 0x12 */
     {MODE_SELECT, "mode select(6)"},            /* 0x15 */
     {MODE_SENSE, "mode sense(6)"},              /* 0x1a */
+    {START_STOP_UNIT, "start stop unit"},       /* 0x1b */
     {RECEIVE_DIAGNOSTIC, "receive diagnostic"}, /* 0x1c */
     {SEND_DIAGNOSTIC, "send diagnostic"},       /* 0x1d */
+    {READ_CAPACITY_10, "read capacity(10)"},    /* 0x25 */
     {READ_DEFECT_10, "read defect list(10)"},   /* 0x37 */
     {LOG_SELECT, "log select"},                 /* 0x4c */
     {LOG_SENSE, "log sense"},                   /* 0x4d */
     {MODE_SELECT_10, "mode select(10)"},        /* 0x55 */
     {MODE_SENSE_10, "mode sense(10)"},          /* 0x5a */
     {SAT_ATA_PASSTHROUGH_16, "ata pass-through(16)"}, /* 0x85 */
+    {READ_CAPACITY_16, "read capacity(16)"},    /* 0x9e,0x10 */
+    {REPORT_LUNS, "report luns"},               /* 0xa0 */
     {SAT_ATA_PASSTHROUGH_12, "ata pass-through(12)"}, /* 0xa1 */
 };
 
+static const char * vendor_specific = "<vendor specific>";
+
+/* Need to expand to take service action into account. For commands
+ * of interest the service action is in the 2nd command byte */
 const char * scsi_get_opcode_name(UINT8 opcode)
 {
     int k;
     int len = sizeof(opcode_name_arr) / sizeof(opcode_name_arr[0]);
     struct scsi_opcode_name * onp;
 
+    if (opcode >= 0xc0)
+	return vendor_specific;
     for (k = 0; k < len; ++k) {
         onp = &opcode_name_arr[k];
         if (opcode == onp->opcode)
@@ -296,7 +306,7 @@ int scsiLogSense(scsi_device * device, int pagenum, int subpagenum, UINT8 *pBuf,
         if ((res = scsiSimpleSenseFilter(&sinfo)))
             return res;
         /* sanity check on response */
-        if ((SUPPORTED_LPAGES != pagenum) && (pBuf[0] != pagenum))
+        if ((SUPPORTED_LPAGES != pagenum) && ((pBuf[0] & 0x3f) != pagenum))
             return SIMPLE_ERR_BAD_RESP;
         if (0 == ((pBuf[2] << 8) + pBuf[3]))
             return SIMPLE_ERR_BAD_RESP;
@@ -332,7 +342,7 @@ int scsiLogSense(scsi_device * device, int pagenum, int subpagenum, UINT8 *pBuf,
     if (0 != status)
         return status;
     /* sanity check on response */
-    if ((SUPPORTED_LPAGES != pagenum) && (pBuf[0] != pagenum))
+    if ((SUPPORTED_LPAGES != pagenum) && ((pBuf[0] & 0x3f) != pagenum))
         return SIMPLE_ERR_BAD_RESP;
     if (0 == ((pBuf[2] << 8) + pBuf[3]))
         return SIMPLE_ERR_BAD_RESP;
@@ -859,7 +869,7 @@ int scsiModePageOffset(const UINT8 * resp, int len, int modese_len)
                  "resp_len=%d bd_len=%d\n", offset, resp_len, bd_len);
             offset = -1;
         } else if ((offset + 2) > resp_len) {
-             if ((resp_len > 2) || con->reportscsiioctl)
+             if ((resp_len > 2) || scsi_debugmode)
                 pout("scsiModePageOffset: response length too short, "
                      "resp_len=%d offset=%d bd_len=%d\n", resp_len,
                      offset, bd_len);
@@ -996,7 +1006,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
     sp = (rout[offset] & 0x80) ? 1 : 0; /* PS bit becomes 'SELECT's SP bit */
     if (enabled) {
         rout[offset + 2] = SCSI_IEC_MP_BYTE2_ENABLED;
-        if (con->reportscsiioctl > 2)
+        if (scsi_debugmode > 2)
             rout[offset + 2] |= SCSI_IEC_MP_BYTE2_TEST_MASK;
         rout[offset + 3] = SCSI_IEC_MP_MRIE;
         rout[offset + 4] = (SCSI_IEC_MP_INTERVAL_T >> 24) & 0xff;
@@ -1018,7 +1028,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
             }
         }
         if (0 == memcmp(&rout[offset + 2], &iecp->raw_chg[offset + 2], 10)) {
-            if (con->reportscsiioctl > 0)
+            if (scsi_debugmode > 0)
                 pout("scsiSetExceptionControlAndWarning: already enabled\n");
             return 0;
         }
@@ -1026,7 +1036,7 @@ int scsiSetExceptionControlAndWarning(scsi_device * device, int enabled,
         eCEnabled = (rout[offset + 2] & DEXCPT_ENABLE) ? 0 : 1;
         wEnabled = (rout[offset + 2] & EWASC_ENABLE) ? 1 : 0;
         if ((! eCEnabled) && (! wEnabled)) {
-            if (con->reportscsiioctl > 0)
+            if (scsi_debugmode > 0)
                 pout("scsiSetExceptionControlAndWarning: already disabled\n");
             return 0;   /* nothing to do, leave other setting alone */
         }

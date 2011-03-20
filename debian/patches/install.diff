@@ -1,0 +1,24 @@
+Do not install CHANGELOG COPYING INSTALL initd files
+
+This patch should not be sent upstream
+
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -264,9 +264,6 @@ endif
+ 
+ docsdir=$(docdir)
+ docs_DATA = AUTHORS     \
+-            CHANGELOG   \
+-            COPYING     \
+-            INSTALL     \
+             NEWS        \
+             README      \
+             TODO        \
+@@ -464,7 +461,6 @@ initd_DATA_uninstall = uninstall-initdDA
+ 
+ install-initdDATA-generic: $(initd_DATA)
+ 	$(mkinstalldirs) $(DESTDIR)$(initddir)
+-	$(INSTALL_SCRIPT) $(top_builddir)/smartd.initd $(DESTDIR)$(initddir)/smartd$(smartd_suffix)
+ 
+ 
+ uninstall-initdDATA-generic:

@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,7 +50,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 3090 2010-04-28 11:03:11Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 3285 2011-03-04 22:08:49Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -72,13 +72,6 @@ const char * packet_types[] = {
         "Optical card reader/writer"
 };
 
-// Whenever exit() status is EXIT_BADCODE, please print this message
-const char *reportbug="Please report this bug to the Smartmontools developers at " PACKAGE_BUGREPORT ".\n";
-
-
-// command-line argument: are we running in debug mode?.
-unsigned char debugmode = 0;
-
 // BUILD_INFO can be provided by package maintainers
 #ifndef BUILD_INFO
 #define BUILD_INFO "(local build)"
@@ -88,9 +81,14 @@ unsigned char debugmode = 0;
 std::string format_version_info(const char * prog_name, bool full /*= false*/)
 {
   std::string info = strprintf(
-    "%s "PACKAGE_VERSION" "SMARTMONTOOLS_SVN_DATE" r"SMARTMONTOOLS_SVN_REV
+    "%s "PACKAGE_VERSION" "
+#ifdef SMARTMONTOOLS_SVN_REV
+      SMARTMONTOOLS_SVN_DATE" r"SMARTMONTOOLS_SVN_REV
+#else
+      "(build date "__DATE__")" // checkout without expansion of Id keywords
+#endif
       " [%s] "BUILD_INFO"\n"
-    "Copyright (C) 2002-10 by Bruce Allen, http://smartmontools.sourceforge.net\n",
+    "Copyright (C) 2002-11 by Bruce Allen, http://smartmontools.sourceforge.net\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -108,8 +106,12 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
   info += strprintf(
     "smartmontools release "PACKAGE_VERSION
       " dated "SMARTMONTOOLS_RELEASE_DATE" at "SMARTMONTOOLS_RELEASE_TIME"\n"
+#ifdef SMARTMONTOOLS_SVN_REV
     "smartmontools SVN rev "SMARTMONTOOLS_SVN_REV
       " dated "SMARTMONTOOLS_SVN_DATE" at "SMARTMONTOOLS_SVN_TIME"\n"
+#else
+    "smartmontools SVN rev is unknown\n"
+#endif
     "smartmontools build host: "SMARTMONTOOLS_BUILD_HOST"\n"
     "smartmontools build configured: "SMARTMONTOOLS_CONFIGURE_DATE "\n"
     "%s compile dated "__DATE__" at "__TIME__"\n"
@@ -390,10 +392,14 @@ regular_expression::regular_expression()
   memset(&m_regex_buf, 0, sizeof(m_regex_buf));
 }
 
-regular_expression::regular_expression(const char * pattern, int flags)
+regular_expression::regular_expression(const char * pattern, int flags,
+                                       bool throw_on_error /*= true*/)
 {
   memset(&m_regex_buf, 0, sizeof(m_regex_buf));
-  compile(pattern, flags);
+  if (!compile(pattern, flags) && throw_on_error)
+    throw std::runtime_error(strprintf(
+      "error in regular expression \"%s\": %s",
+      m_pattern.c_str(), m_errmsg.c_str()));
 }
 
 regular_expression::~regular_expression()
@@ -620,10 +626,6 @@ int split_selective_arg(char *s, uint64_t *start,
 
 #ifdef OLD_INTERFACE
 
-// smartd exit codes
-#define EXIT_NOMEM     8   // out of memory
-#define EXIT_BADCODE   10  // internal error - should NEVER happen
-
 int64_t bytes = 0;
 
 // Helps debugging.  If the second argument is non-negative, then
@@ -642,15 +644,12 @@ void *FreeNonZero1(void *address, int size, int line, const char* file){
 
 // To help with memory checking.  Use when it is known that address is
 // NOT null.
-void *CheckFree1(void *address, int whatline, const char* file){
+void *CheckFree1(void *address, int /*whatline*/, const char* /*file*/){
   if (address){
     free(address);
     return NULL;
   }
-  
-  PrintOut(LOG_CRIT, "Internal error in CheckFree() at line %d of file %s\n%s", 
-           whatline, file, reportbug);
-  EXIT(EXIT_BADCODE);
+  throw std::runtime_error("Internal error in CheckFree()");
 }
 
 // A custom version of calloc() that tracks memory use
@@ -666,16 +665,13 @@ void *Calloc(size_t nmemb, size_t size) {
 // A custom version of strdup() that keeps track of how much memory is
 // being allocated. If mustexist is set, it also throws an error if we
 // try to duplicate a NULL string.
-char *CustomStrDup(const char *ptr, int mustexist, int whatline, const char* file){
+char *CustomStrDup(const char *ptr, int mustexist, int /*whatline*/, const char* /*file*/){
   char *tmp;
 
   // report error if ptr is NULL and mustexist is set
   if (ptr==NULL){
-    if (mustexist) {
-      PrintOut(LOG_CRIT, "Internal error in CustomStrDup() at line %d of file %s\n%s", 
-               whatline, file, reportbug);
-      EXIT(EXIT_BADCODE);
-    }
+    if (mustexist)
+      throw std::runtime_error("Internal error in CustomStrDup()");
     else
       return NULL;
   }
@@ -683,10 +679,8 @@ char *CustomStrDup(const char *ptr, int mustexist, int whatline, const char* fil
   // make a copy of the string...
   tmp=strdup(ptr);
   
-  if (!tmp) {
-    PrintOut(LOG_CRIT, "No memory to duplicate string %s at line %d of file %s\n", ptr, whatline, file);
-    EXIT(EXIT_NOMEM);
-  }
+  if (!tmp)
+    throw std::bad_alloc();
   
   // and track memory usage
   bytes+=1+strlen(ptr);
@@ -711,7 +705,6 @@ bool nonempty(const void * data, int size)
 // string of the form Xd+Yh+Zm+Ts.msec.  The resulting text string is
 // written to the array.
 void MsecToText(unsigned int msec, char *txt){
-  int start=0;
   unsigned int days, hours, min, sec;
 
   days       = msec/86400000U;
@@ -728,7 +721,6 @@ void MsecToText(unsigned int msec, char *txt){
 
   if (days) {
     txt += sprintf(txt, "%2dd+", (int)days);
-    start=1;
   }
 
   sprintf(txt, "%02d:%02d:%02d.%03d", (int)hours, (int)min, (int)sec, (int)msec);  
