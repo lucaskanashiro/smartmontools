@@ -1,6 +1,6 @@
 CHANGELOG for smartmontools
 
-$Id: CHANGELOG 3296 2011-03-16 22:17:51Z chrfranke $
+$Id: CHANGELOG 3365 2011-06-09 18:47:31Z chrfranke $
 
 The most recent version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
@@ -40,6 +40,214 @@ Maintainers / Developers Key (alphabetic order):
 [RZ]  Richard Zybert
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+smartmontools 5.41 2011-06-09
+
+  [MS] drivedb.h: revert attribute 190 to default for Samsung SSD controllers,
+       some 470 series SSDs seem to have some temperature information at
+       this location.
+
+  [MS] drivedb.h update:
+       add attribute details for Samsung controllers, centralize entries
+
+  [MS] drivedb.h update:
+       add attribute details for JMicron JMF61x controllers
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add OCZ DENEVA
+
+  [CF] os_win32.cpp: Ignore vendor ID "ATA" if returned by
+       IOCTL_STORAGE_QUERY_PROPERTY.
+
+  [CF] Add ATA NCQ commands to error register decoding.
+
+  [CF] Re-enable '--with-initscriptdir=auto' as default.
+       Change search for initddir and systemdsystemunitdir such that
+       default ./configure does never overwrite system files.
+
+  [MS] drivedb.h update:
+       disentangle Transcend SSD versions
+
+  [MS] drivedb.h update:
+       add attribute details for Crucial C300
+
+  [MS] smartd.initd.in:
+       fix for debian, cleanup. Based on patch of CF.
+
+  [AS] --with-initscriptdir default changed to "no" from "auto" to avoid 
+       filesystem pollution.
+
+  [MS] drivedb.h cleanup:
+       harmonize family names, add AF information into name
+
+  [MS] drivedb.h update:
+       - OCZ Vertex 3
+       - Seagate Barracuda Green 1TB variant
+
+  [CF] Windows: Avoid '%n' printf format specifier because it is always
+       disabled in recent versions of msvcrt.dll.  This fixes truncation
+       of smartd warning email (ticket #174).
+
+  [MS] smartd.initd.in:
+       cleanup, provide targets "reload" and "report" for all platforms
+
+  [CF] drivedb.h update:
+       - JMicron based SSD (JMicron JMF602?): rename from
+         Kingston SSDNow V Series, move Transcend IDE and SATA
+         entries to here.
+
+  [CF] Support ':BYTEORDER' for all attribute print formats.
+
+  [CF] drivedb.h update:
+       - Kingston SSDNow V Series SSDs (ticket #171)
+
+  [CF] Increase size of drive database option parse buffer
+       to allow long '-v N,FORMAT:BYTEORDER,NAME' options.
+
+  [MS] drivedb.h update:
+       - Western Digital Scorpio Blue Advanced Format variants
+
+  [MS] drivedb.h update:
+       correct typo for Cowon iAudio X5
+
+  [MS] drivedb.h USB updates:
+       - Maxtor OneTouch 200GB (unsupported)
+       - LaCie Little Disk
+
+  [AS] FreeBSD: Added native rc.conf style script to the package. 
+       Modifications to the configure script to use correct template and
+       path.
+
+  [AS] freebsd_os.cpp:
+       Fix memory leak in the ata detection code (added free())
+       Using bzero in cam code to clear structure (fixing varnish varning)
+
+  [MS] drivedb.h update:
+       Kingston SSDNow S100 Series
+
+  [MS] drivedb.h USB update:
+       - Samsung S1 Portable
+       - LaCie rikiki USB 3.0
+       - Seagate FreeAgent GoFlex USB 3.0
+       - Cowon iAudio X5
+       - Oxford OXU921DS chip (unsupported)
+
+  [CF] Windows: Add debug output of SCSI sense data.
+
+  [CF] Add 'smartd.service' file for systemd.
+       Add configure option '--with-systemdsystemunitdir'.
+       Disable initd script if systemd is used.
+
+  [MS] drivedb.h update:
+       - Western Digital AV-25 family
+
+  [MS] drivedb.h update:
+       JMicron based SSDs: Add
+         Kingston SSDNow V, Kingston SSDNow V+100, TOSHIBA THNS128GG4BBAA,
+         APPLE SSD TS*, ADATA S596 Turbo
+
+  [CF] drivedb.h update:
+       - Intel 510 Series SSDs (ticket #170)
+
+  [CF] smartctl: Don't issue SMART DISABLE command to 3ware controllers
+       when the port number was not specified (ticket #165).
+
+  [CF] Use get_errmsg() from device instead of errno or syserror() for
+       printing error messages.
+
+  [MS] drivedb.h updates:
+       - G.Skill FALCON II SSD (Indilinx)
+       - HP 250GB SATA disk VB0250EAVER
+       - SAMSUNG SpinPoint M5 HM160HC
+       - SAMSUNG SpinPoint MT2 HM100UI
+       - SAMSUNG HM100UX
+       - Hitachi Deskstar 5K3000 Series
+       - Seagate Barracuda Green (Adv. Format)
+       - Seagate Barracuda XT 3TB variant
+       - Western Digital RE4 Serial ATA family
+       - Western Digital Caviar Green WD20EACS
+       - Western Digital Caviar Black family, SATA 3.0 variants
+       - QUANTUM FIREBALLlct20 10
+       - QUANTUM FIREBALLP AS60.0
+
+  [CF] drivedb.h update:
+       - SandForce Driven SSDs: Add more OCZ SF-1200 and SF-1500 based drives
+
+       Thanks to Sudhir Verman from OCZ Technology for providing this info.
+
+  [CF] drivedb.h USB updates:
+       - Seagate Expansion External (0x0bc2:0x3300) (Debian bug 621411)
+       - ASMedia USB 3.0 (0x174c:0x55aa) (unsupported)
+
+  [CF] smartctl.8.in: Clarify '-t vendor,N' (ticket #169).
+       Update Intel info (ticket #168).
+
+  [CF] drivedb.h update:
+       - Intel 320 Series SSDs (ticket #168)
+
+  [CF] smartctl: Always print sector size in '-i' output (ticket #166).
+
+  [CF] os_linux.cpp: Shorten version string.
+
+  [CF] smartctl: Add option '-f brief' to select new attribute output
+       format.  This format includes additional attribute flags
+       (ticket #109) and fits in 80 columns (ticket #158).
+       This format is now the default for '-x'.
+
+  [CF] smartd: Log changes of offline data collection status if
+       '-l selftest' is specified.
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Add ADATA S599 64GB,
+         OWC Mercury Extreme Pro
+       - Kingston branded X25-V SSDs (ticket #156)
+       - Transcend SATA Solid State Drive: Truncate attribute name
+
+  [CF] drivedb.h USB updates:
+       - LaCie (0x059f:0x1029) (ticket #153)
+       - WD My Book Office Edition (0x1058:0x1101)
+       - JMicron USB 3.0 (0x152d:0x0539)
+
+  [CF] drivedb.h USB update:
+       - Verbatim Pocket Hard Drive (0x18a5:0x0227) (ticket #159)
+
+  [CF] drivedb.h update:
+       - SAMSUNG SpinPoint N3U-3 (USB, 4KiB LLS) (ticket #159)
+
+  [CF] Add support for ATA Long Logical Sectors (LLS) (ticket #159).
+
+  [DG] [SCSI] smartctl: (re-)use capacity formatting in utility.cpp
+
+  [CF] configure.in: Remove '-Wno-format' for MinGW.
+       Recent MinGW versions support MSVCRT printf format strings.
+
+  [CF] Print ATA disk capacity with SI prefix.
+       Add/move capacity formatting to utility.cpp
+
+  [CF] Add error messages if ATA pass-through does not return required
+       ATA output registers (for SMART RETURN STATUS, GET POWER MODE).
+       This prevents misleading 'SMART Status command failed' messages
+       (see ticket #155).
+
+  [CF] Fix WWN support check for older ATA-7 disks.
+
+  [DG] [SCSI] smartctl: add 'Logical Unit id' from the Device
+       Identification VPD page (0x83)
+
+  [DG] [SCSI] smartctl: add 'User Capacity' (disk size) in human
+       readable form
+
+  [CF] smartctl, smartd: Print World Wide Name (WWN) of ATA device.
+
+  [CF] smartctl: Print more specific error message if IDENTIFY DEVICE
+       failed (ticket #61).  Add check for empty IDENTIFY data.
+
+  [CF] Windows installer: Add help message box.
+
+  [CF] Windows installer: Request admin rights, select 'All Users'
+       section.  This fixes shortcut removal under Vista and later.
+       Add '/SO' option to select components for unattended install.
+       Patch was provided by József Fejes.
 
   [CF] Windows: Add update-smart-drivedb.nsi NSIS script to build
        drivedb.h update tool.

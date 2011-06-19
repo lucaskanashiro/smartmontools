@@ -1,7 +1,7 @@
 Smartmontools installation instructions
 =======================================
 
-$Id: INSTALL 3205 2010-11-15 18:32:55Z chrfranke $
+$Id: INSTALL 3356 2011-06-06 18:37:53Z chrfranke $
 
 Please also see the smartmontools home page:
 http://smartmontools.sourceforge.net/
@@ -465,7 +465,8 @@ Cross-compile on Cygwin with old gcc-mingw 3.x:
   ./configure --build=$(./config.guess) \
               --host=i686-pc-mingw32 \
                CC='gcc-3 -mno-cygwin' \
-              CXX='g++-3 -mno-cygwin'
+              CXX='g++-3 -mno-cygwin' \
+              CXXFLAGS='-g -O2 -Wall -W -Wno-format'
 
 Cross-compile on Debian Linux with gcc-mingw32:
 
@@ -687,7 +688,8 @@ OPTIONS              DEFAULT                                      AFFECTS
                                                                   Contents of smartd executable;
                                                                   Contents of smartd/smartd.conf man pages;
                                                                   Directory for rc.d/init.d/smartd init script
---with-initscriptdir  ${sysconfdir}/init.d/rc.d                   Location of init scripts
+--with-initscriptdir           auto                               Location of init scripts
+--with-systemdsystemunitdir    auto                               Location of systemd service files
 --with-docdir         ${prefix}/share/doc/smartmontools           Location of the documentation
 --with-exampledir     ${docdir}/examplescripts                    Location of example scripts
 --enable-sample       --disable-sample                            Adds the string '.sample' to the names of the smartd.conf file and the smartd RC file
@@ -710,14 +712,50 @@ default for --with-docdir was
 This was changed to make it consistent with the default of the
 new --docdir option added in autoconf 2.60.
 
+The defaults for --with-initscriptdir and --with-systemdsystemunitdir are
+guessed such that the following rules apply:
+- If --prefix=/usr --sysconfdir=/etc is specified, the guessed directories
+  should be the defaults used by the current OS or distribution.
+- If --sysconfdir=/etc is NOT specified, the guessed directories should
+  always be below ${prefix} or below ${sysconfdir}.
+
 Here's an example:
 If you set --prefix=/home/joe and none of the other four
 variables then the different directories that are used would be:
 --sbindir             /home/joe/sbin
+--docdir              /home/joe/share/doc/smartmontools
 --mandir              /home/joe/share/man
 --sysconfdir          /home/joe/etc
---with-initscriptdir  /home/joe/etc/init.d/rc.d
---with-docdir         /home/joe/doc/smartmontools
+--with-exampledir     /home/joe/share/doc/smartmontools/examplescripts
+--with-drivedbdir     /home/joe/share/smartmontools
+--with-initscriptdir         [see below]
+--with-systemdsystemunitdir  [see below]
+
+If systemd is present (and pkg-config reports /lib/systemd/system
+as the systemdsystemunitdir):
+
+--with-initscriptdir         [disabled]
+--with-systemdsystemunitdir  /home/joe/lib/systemd/system
+
+else if /etc/rc.d/init.d exists:
+
+--with-initscriptdir         /home/joe/etc/rc.d/init.d
+--with-systemdsystemunitdir  [disabled]
+
+else if /etc/init.d exists:
+
+--with-initscriptdir         /home/joe/etc/init.d
+--with-systemdsystemunitdir  [disabled]
+
+else if /etc/rc.d exists:
+
+--with-initscriptdir         /home/joe/etc/rc.d
+--with-systemdsystemunitdir  [disabled]
+
+else
+
+--with-initscriptdir         [disabled]
+--with-systemdsystemunitdir  [disabled]
 
 This is useful for test installs in a harmless subdirectory somewhere.
 
@@ -745,7 +783,8 @@ Case 4:
 
 
 Here are the differences with and without --enable-sample, assuming
-no other options specified (see above for details)
+that initscript location is set and no other options specified 
+(see above for details)
 
 Case 1:
 --enable-sample provided

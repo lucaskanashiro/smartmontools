@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-9 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 3288 2011-03-09 18:40:36Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 3316 2011-04-19 19:34:57Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -196,8 +196,9 @@ ASSERT_SIZEOF_STRUCT(ata_smart_attribute, 12);
 // 5: Selfpereserving bit
 #define ATTRIBUTE_FLAGS_SELFPRESERVING(x) (x & 0x20)
 
+// 6-15: Reserved for future use
+#define ATTRIBUTE_FLAGS_OTHER(x) ((x) & 0xffc0)
 
-// Last ten bits are reserved for future use
 
 /* ata_smart_values is format of the read drive Attribute command */
 /* see Table 34 of T13/1321D Rev 1 spec (Device SMART data structure) for *some* info */
@@ -779,6 +780,10 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
 // supports. Returns -1 if Version command is not supported
 int ataVersionInfo(const char ** description, const ata_identify_device * drive, unsigned short * minor);
 
+// Get World Wide Name (WWN) fields.
+// Return NAA field or -1 if WWN is unsupported.
+int ata_get_wwn(const ata_identify_device * id, unsigned & oui, uint64_t & unique_id);
+
 // If SMART supported, this is guaranteed to return 1 if SMART is enabled, else 0.
 int ataDoesSmartWork(ata_device * device);
 
@@ -934,8 +939,17 @@ int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
 int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
                              unsigned char fix_firmwarebug);
 
-// Get number of sectors from IDENTIFY sector.
-uint64_t get_num_sectors(const ata_identify_device * drive);
+// Get capacity and sector sizes from IDENTIFY data
+struct ata_size_info
+{
+  uint64_t sectors;
+  uint64_t capacity;
+  unsigned log_sector_size;
+  unsigned phy_sector_size;
+  unsigned log_sector_offset;
+};
+
+void ata_get_size_info(const ata_identify_device * id, ata_size_info & sizes);
 
 // Convenience function for formatting strings from ata_identify_device.
 void ata_format_id_string(char * out, const unsigned char * in, int n);

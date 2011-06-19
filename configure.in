@@ -1,5 +1,5 @@
 #
-# $Id: configure.in 3296 2011-03-16 22:17:51Z chrfranke $
+# $Id: configure.in 3365 2011-06-09 18:47:31Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
@@ -7,9 +7,9 @@ AC_INIT(smartmontools, 5.41, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
 smartmontools_configure_date=`date -u +'%Y-%m-%d %T %Z'`
-smartmontools_cvs_tag=`echo '$Id: configure.in 3296 2011-03-16 22:17:51Z chrfranke $'`
-smartmontools_release_date=2010-10-16
-smartmontools_release_time="16:34:38 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.in 3365 2011-06-09 18:47:31Z chrfranke $'`
+smartmontools_release_date=2011-06-09
+smartmontools_release_time="18:46:32 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_DATE, "$smartmontools_configure_date", [smartmontools Configure Date])
@@ -29,6 +29,7 @@ dnl Checks for programs.
 AC_PROG_CXX
 AM_PROG_AS
 AC_PROG_INSTALL
+PKG_PROG_PKG_CONFIG
 
 AC_ARG_VAR(WINDMC, [Windows message compiler command])
 AC_ARG_VAR(WINDRES, [Windows resource compiler command])
@@ -164,11 +165,62 @@ AC_SUBST(CPPFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(ASFLAGS)
 
+AC_ARG_WITH(systemdsystemunitdir,
+  [AS_HELP_STRING([--with-systemdsystemunitdir@<:@=DIR|auto|yes|no@:>@], [Location of systemd service files [auto]])],
+  [], [with_systemdsystemunitdir=auto])
+
+systemdsystemunitdir=
+case "$with_systemdsystemunitdir" in
+ auto|yes)
+   test -n "$PKG_CONFIG" && systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd`
+   case "$with_systemdsystemunitdir:$sysconfdir:$systemdsystemunitdir" in
+     yes:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
+     yes:*:*|auto:*:|auto:/etc:*) ;;
+     *) systemdsystemunitdir='${prefix}'$systemdsystemunitdir ;;
+   esac ;;
+ no) ;;
+ *) systemdsystemunitdir="$with_systemdsystemunitdir" ;;
+esac
+AC_SUBST(systemdsystemunitdir)
+AM_CONDITIONAL(INSTALL_SYSTEMDUNIT, [test -n "$systemdsystemunitdir"])
+
 AC_ARG_WITH(initscriptdir,
-  [AC_HELP_STRING([--with-initscriptdir=DIR],[Location of init scripts [SYSCONFDIR/rc.d/init.d]])],
-  [initddir="$withval"],[initddir='${sysconfdir}/rc.d/init.d'])
+  [AC_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
+  [], [with_initscriptdir=auto])
+
+AC_MSG_CHECKING(which init (rc) directory to use)
+initddir=""
+for dir in rc.d/init.d init.d rc.d; do
+  if test -d /etc/$dir; then
+    initddir='${sysconfdir}'/$dir
+    break
+  fi
+done
+AC_MSG_RESULT([${initddir:-not found}])
+
+case "$with_initscriptdir" in
+  auto) test -n "$systemdsystemunitdir" && initddir= ;;
+  yes)
+   if test -z "$initddir"; then
+     AC_MSG_ERROR([Location of init scripts not found])
+   fi ;;
+  no) initddir= ;;
+  *) initddir="$with_initscriptdir" ;;
+esac
+
 AC_SUBST(initddir)
-AM_CONDITIONAL(INSTALL_INITSCRIPT, [test "$with_initscriptdir" != "no"])
+AM_CONDITIONAL(INSTALL_INITSCRIPT, [test -n "$initddir"])
+
+# use different init script templates for different OS
+case "${host}" in
+  *-*-freebsd*)
+    initdfile="smartd.freebsd.initd"
+    ;;
+  *)
+    initdfile="smartd.initd"
+    ;;
+esac
+AC_SUBST(initdfile)
 
 AC_ARG_WITH(docdir,
   [AC_HELP_STRING([--with-docdir=DIR],[Location of documentation [DATADIR/doc/smartmontools]])],
@@ -248,8 +300,7 @@ fi
 
 AC_ARG_WITH(libcap-ng,
   [AC_HELP_STRING([--with-libcap-ng@<:@=auto|yes|no@:>@],[Add Libcap-ng support to smartd [auto]])],
-  [with_libcap_ng="$withval"],
-  [with_libcap_ng=auto])
+  [], [with_libcap_ng=auto])
 
 use_libcap_ng=no
 if test "$with_libcap_ng" != "no"; then
@@ -394,11 +445,6 @@ if test "$GXX" = "yes"; then
   if test -z "`echo "$CXXFLAGS " | grep "\-W " 2> /dev/null`" ; then
       CXXFLAGS="$CXXFLAGS -W"
   fi
-  case "${host}" in
-    *-*-mingw*)
-      # MinGW uses MSVCRT.DLL which uses printf format "%I64d" and not "%lld" for int64_t
-      CXXFLAGS="$CXXFLAGS -Wno-format";;
-  esac
 
 else
  dnl We are NOT using gcc, so enable host-specific compiler flags
@@ -477,7 +523,14 @@ case "$host_os" in
     fi
     echo "local drive database:   `eval eval eval echo $sysconfdir`/smart_drivedb.h" >&AS_MESSAGE_FD
     echo "smartd config file:     `eval eval eval echo $sysconfdir`/smartd.conf${smartd_suffix}" >&AS_MESSAGE_FD
-    echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
+    if test -n "$initddir"; then
+      echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
+    elif test -z "$systemdsystemunitdir"; then
+      echo "smartd initd script:    [[disabled]]" >&AS_MESSAGE_FD
+    fi
+    if test -n "$systemdsystemunitdir"; then
+      echo "smartd systemd file:    `eval eval eval echo $systemdsystemunitdir`/smartd.service" >&AS_MESSAGE_FD
+    fi
     if test -n "$savestates"; then
       echo "smartd save files:      `eval eval eval echo $savestates`MODEL-SERIAL.TYPE.state" >&AS_MESSAGE_FD
     else

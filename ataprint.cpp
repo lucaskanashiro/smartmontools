@@ -30,9 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_LOCALE_H
-#include <locale.h>
-#endif // #ifdef HAVE_LOCALE_H
 
 #include "int64.h"
 #include "atacmdnames.h"
@@ -43,7 +40,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3288 2011-03-09 18:40:36Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3357 2011-06-06 18:56:55Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 
@@ -168,11 +165,12 @@ static const char * construct_st_er_desc(
     print_lba=1;
     print_sector=SC;
     break;
-  case 0x25:  /* READ DMA EXT */
+  case 0x25:  // READ DMA EXT
   case 0x26:  // READ DMA QUEUED EXT
   case 0xC7:  // READ DMA QUEUED
-  case 0xC8:  /* READ DMA */
-  case 0xC9:
+  case 0xC8:  // READ DMA (with retries)
+  case 0xC9:  // READ DMA (without retries, obsolete since ATA-5)
+  case 0x60:  // READ FPDMA QUEUED (NCQ)
     error_flag[7] = icrc;
     error_flag[6] = unc;
     error_flag[5] = mc;
@@ -297,13 +295,14 @@ static const char * construct_st_er_desc(
       break;
     }
     break;
-  case 0xCA:  /* WRITE DMA */
-  case 0xCB:
+  case 0xCA:  // WRITE DMA (with retries)
+  case 0xCB:  // WRITE DMA (without retries, obsolete since ATA-5)
   case 0x35:  // WRITE DMA EXT
   case 0x3D:  // WRITE DMA FUA EXT
   case 0xCC:  // WRITE DMA QUEUED
   case 0x36:  // WRITE DMA QUEUED EXT
   case 0x3E:  // WRITE DMA QUEUED FUA EXT
+  case 0x61:  // WRITE FPDMA QUEUED (NCQ)
     error_flag[7] = icrc;
     error_flag[6] = wp;
     error_flag[5] = mc;
@@ -419,78 +418,8 @@ static inline const char * construct_st_er_desc(char * s,
     (const ata_smart_errorlog_error_struct *)0, &data->error);
 }
 
-
-// This returns the capacity of a disk drive and also prints this into
-// a string, using comma separators to make it easier to read.  If the
-// drive doesn't support LBA addressing or has no user writable
-// sectors (eg, CDROM or DVD) then routine returns zero.
-static uint64_t determine_capacity(const ata_identify_device * drive, char * pstring)
-{
-  // get correct character to use as thousands separator
-  const char *separator = ",";
-#ifdef HAVE_LOCALE_H
-  struct lconv *currentlocale=NULL;
-  setlocale (LC_ALL, "");
-  currentlocale=localeconv();
-  if (*(currentlocale->thousands_sep))
-    separator=(char *)currentlocale->thousands_sep;
-#endif // #ifdef HAVE_LOCALE_H
-
-  // get #sectors and turn into bytes
-  uint64_t capacity = get_num_sectors(drive) * 512;
-  uint64_t retval = capacity;
-
-  // print with locale-specific separators (default is comma)
-  int started=0, k=1000000000;
-  uint64_t power_of_ten = k;
-  power_of_ten *= k;
-  
-  for (k=0; k<7; k++) {
-    uint64_t threedigits = capacity/power_of_ten;
-    capacity -= threedigits*power_of_ten;
-    if (started)
-      // we have already printed some digits
-      pstring += sprintf(pstring, "%s%03"PRIu64, separator, threedigits);
-    else if (threedigits || k==6) {
-      // these are the first digits that we are printing
-      pstring += sprintf(pstring, "%"PRIu64, threedigits);
-      started = 1;
-    }
-    if (k!=6)
-      power_of_ten /= 1000;
-  }
-  
-  return retval;
-}
-
-// Get sector sizes and offset.
-// Return physical sector size if valid else return 0.
-static unsigned determine_sector_sizes(const ata_identify_device * id,
-  unsigned & log_sector_size, unsigned & log_sector_offset)
-{
-  unsigned short word106 = id->words088_255[106-88];
-  if ((word106 & 0xc000) != 0x4000)
-    return 0; // word not valid
-
-  log_sector_size = 512;
-  if (word106 & 0x1000)
-    // logical sector size is specified in 16-bit words
-    log_sector_size = ((id->words088_255[118-88] << 16) | id->words088_255[117-88]) << 1;
-
-  unsigned phy_sector_size = log_sector_size;
-  if (word106 & 0x2000)
-    // physical sector size is multiple of logical sector size
-    phy_sector_size <<= (word106 & 0x0f);
-
-  unsigned short word209 = id->words088_255[209-88];
-  log_sector_offset = 0;
-  if ((word209 & 0xc000) == 0x4000)
-    log_sector_offset = (word209 & 0x3fff) * log_sector_size;
-
-  return phy_sector_size;
-}
-
 static void print_drive_info(const ata_identify_device * drive,
+                             const ata_size_info & sizes,
                              const drive_settings * dbentry)
 {
   // format drive information (with byte swapping as needed)
@@ -504,27 +433,33 @@ static void print_drive_info(const ata_identify_device * drive,
     pout("Model Family:     %s\n", dbentry->modelfamily);
 
   pout("Device Model:     %s\n", infofound(model));
-  if (!dont_print_serial_number)
+  if (!dont_print_serial_number) {
     pout("Serial Number:    %s\n", infofound(serial));
+
+    unsigned oui = 0; uint64_t unique_id = 0;
+    int naa = ata_get_wwn(drive, oui, unique_id);
+    if (naa >= 0)
+      pout("LU WWN Device Id: %x %06x %09"PRIx64"\n", naa, oui, unique_id);
+  }
   pout("Firmware Version: %s\n", infofound(firmware));
 
-  char capacity[64];
-  if (determine_capacity(drive, capacity))
-    pout("User Capacity:    %s bytes\n", capacity);
+  if (sizes.capacity) {
+    // Print capacity
+    char num[64], cap[32];
+    pout("User Capacity:    %s bytes [%s]\n",
+      format_with_thousands_sep(num, sizeof(num), sizes.capacity),
+      format_capacity(cap, sizeof(cap), sizes.capacity));
 
-  // Print sector sizes.
-  // Don't print if drive reports the default values.
-  // Some from 4KiB sector drives report 512 bytes in IDENTIFY word 106
-  // (e.g. Samsung HD204UI).
-  unsigned log_sector_size = 0, log_sector_offset = 0;
-  unsigned phy_sector_size = determine_sector_sizes(drive, log_sector_size,
-    log_sector_offset);
-  if (phy_sector_size && !(phy_sector_size == 512 && log_sector_size == 512)) {
-    pout("Sector Sizes:     %u bytes physical, %u bytes logical",
-         phy_sector_size, log_sector_size);
-    if (log_sector_offset)
-      pout(" (offset %u bytes)", log_sector_offset);
-    pout("\n");
+    // Print sector sizes.
+    if (sizes.phy_sector_size == sizes.log_sector_size)
+      pout("Sector Size:      %u bytes logical/physical\n", sizes.log_sector_size);
+    else {
+      pout("Sector Sizes:     %u bytes logical, %u bytes physical",
+         sizes.log_sector_size, sizes.phy_sector_size);
+      if (sizes.log_sector_offset)
+        pout(" (offset %u bytes)", sizes.log_sector_offset);
+      pout("\n");
+    }
   }
 
   // See if drive is recognized
@@ -851,7 +786,7 @@ static int find_failed_attr(const ata_smart_values * data,
 static void PrintSmartAttribWithThres(const ata_smart_values * data,
                                       const ata_smart_thresholds_pvt * thresholds,
                                       const ata_vendor_attr_defs & defs,
-                                      int onlyfailed)
+                                      int onlyfailed, unsigned char format)
 {
   bool needheader = true;
 
@@ -878,7 +813,10 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
         pout("SMART Attributes Data Structure revision number: %d\n",(int)data->revnumber);
         pout("Vendor Specific SMART Attributes with Thresholds:\n");
       }
-      pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
+      if (format == 0)
+        pout("ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE\n");
+      else
+        pout("ID# ATTRIBUTE_NAME          FLAGS    VALUE WORST THRESH FAIL RAW_VALUE\n");
       needheader = false;
     }
 
@@ -899,17 +837,47 @@ static void PrintSmartAttribWithThres(const ata_smart_values * data,
 
     // Print line for each valid attribute
     std::string attrname = ata_get_smart_attr_name(attr.id, defs);
-    pout("%3d %-24s0x%04x   %-3s   %-3s   %-3s    %-10s%-9s%-12s%s\n",
-         attr.id, attrname.c_str(), attr.flags,
-         valstr.c_str(), worstr.c_str(), threstr.c_str(),
-         (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)? "Pre-fail" : "Old_age"),
-         (ATTRIBUTE_FLAGS_ONLINE(attr.flags)? "Always" : "Offline"),
-         (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
-          state == ATTRSTATE_FAILED_PAST ? "In_the_past" :
-                                           "    -"        ),
-         ata_format_attr_raw_value(attr, defs).c_str());
+    std::string rawstr = ata_format_attr_raw_value(attr, defs);
+
+    if (format == 0)
+      pout("%3d %-24s0x%04x   %-3s   %-3s   %-3s    %-10s%-9s%-12s%s\n",
+           attr.id, attrname.c_str(), attr.flags,
+           valstr.c_str(), worstr.c_str(), threstr.c_str(),
+           (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags) ? "Pre-fail" : "Old_age"),
+           (ATTRIBUTE_FLAGS_ONLINE(attr.flags)     ? "Always"   : "Offline"),
+           (state == ATTRSTATE_FAILED_NOW  ? "FAILING_NOW" :
+            state == ATTRSTATE_FAILED_PAST ? "In_the_past"
+                                           : "    -"        ) ,
+            rawstr.c_str());
+    else
+      pout("%3d %-24s%c%c%c%c%c%c%c  %-3s   %-3s   %-3s    %-5s%s\n",
+           attr.id, attrname.c_str(),
+           (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags)     ? 'P' : '-'),
+           (ATTRIBUTE_FLAGS_ONLINE(attr.flags)         ? 'O' : '-'),
+           (ATTRIBUTE_FLAGS_PERFORMANCE(attr.flags)    ? 'S' : '-'),
+           (ATTRIBUTE_FLAGS_ERRORRATE(attr.flags)      ? 'R' : '-'),
+           (ATTRIBUTE_FLAGS_EVENTCOUNT(attr.flags)     ? 'C' : '-'),
+           (ATTRIBUTE_FLAGS_SELFPRESERVING(attr.flags) ? 'K' : '-'),
+           (ATTRIBUTE_FLAGS_OTHER(attr.flags)          ? '+' : ' '),
+           valstr.c_str(), worstr.c_str(), threstr.c_str(),
+           (state == ATTRSTATE_FAILED_NOW  ? "NOW"  :
+            state == ATTRSTATE_FAILED_PAST ? "Past"
+                                           : "-"     ),
+            rawstr.c_str());
+
   }
-  if (!needheader) pout("\n");
+
+  if (!needheader) {
+    if (!onlyfailed && format == 1)
+      pout("%28s||||||_ K auto-keep\n"
+           "%28s|||||__ C event count\n"
+           "%28s||||___ R error rate\n"
+           "%28s|||____ S speed/performance\n"
+           "%28s||_____ O updated online\n"
+           "%28s|______ P prefailure warning\n",
+           "", "", "", "", "", "");
+    pout("\n");
+  }
 }
 
 // Print SMART related SCT capabilities
@@ -1786,7 +1754,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     int powermode = ataCheckPowerMode(device);
     switch (powermode) {
       case -1:
-        if (errno == ENOSYS) {
+        if (device->get_errno() == ENOSYS) {
           pout("CHECK POWER MODE not implemented, ignoring -n option\n"); break;
         }
         powername = "SLEEP";   powerlimit = 2;
@@ -1881,9 +1849,15 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // Start by getting Drive ID information.  We need this, to know if SMART is supported.
   int returnval = 0;
   ata_identify_device drive; memset(&drive, 0, sizeof(drive));
+  device->clear_err();
   int retid = ata_read_identity(device, &drive, options.fix_swapped_id);
   if (retid < 0) {
-    pout("Smartctl: Device Read Identity Failed (not an ATA/ATAPI device)\n\n");
+    pout("Smartctl: Device Read Identity Failed: %s\n\n",
+         (device->get_errno() ? device->get_errmsg() : "Unknown error"));
+    failuretest(MANDATORY_CMD, returnval|=FAILID);
+  }
+  else if (!nonempty(&drive, sizeof(drive))) {
+    pout("Smartctl: Device Read Identity Failed: empty IDENTIFY data\n\n");
     failuretest(MANDATORY_CMD, returnval|=FAILID);
   }
 
@@ -1901,10 +1875,14 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     dbentry = lookup_drive_apply_presets(&drive, attribute_defs,
       fix_firmwarebug);
 
+  // Get capacity and sector sizes
+  ata_size_info sizes;
+  ata_get_size_info(&drive, sizes);
+
   // Print most drive identity information if requested
   if (options.drive_info) {
     pout("=== START OF INFORMATION SECTION ===\n");
-    print_drive_info(&drive, dbentry);
+    print_drive_info(&drive, sizes, dbentry);
   }
 
   // Check and print SMART support and state
@@ -2110,7 +2088,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         else {
           print_on();
           pout("Please note the following marginal Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2, options.output_format);
         } 
         returnval|=FAILAGE;
       }
@@ -2131,7 +2109,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         else {
           print_on();
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1, options.output_format);
         }
       }
       else
@@ -2164,7 +2142,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
         else {
           print_on();
           pout("Failed Attributes:\n");
-          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1);
+          PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 1, options.output_format);
         }
       }
       else {
@@ -2176,7 +2154,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
           else {
             print_on();
             pout("Please note the following marginal Attributes:\n");
-            PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2);
+            PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs, 2, options.output_format);
           } 
           returnval|=FAILAGE;
         }
@@ -2198,7 +2176,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   if (smart_val_ok && options.smart_vendor_attrib) {
     print_on();
     PrintSmartAttribWithThres(&smartval, &smartthres, attribute_defs,
-                              (printing_is_switchable ? 2 : 0));
+                              (printing_is_switchable ? 2 : 0), options.output_format);
     print_off();
   }
 
@@ -2576,7 +2554,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // Now do the test.  Note ataSmartTest prints its own error/success
   // messages
   if (ataSmartTest(device, options.smart_selftest_type, options.smart_selective_args,
-                   &smartval, get_num_sectors(&drive)                                ))
+                   &smartval, sizes.sectors                                          ))
     failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
   else {  
     // Tell user how long test will take to complete.  This is tricky

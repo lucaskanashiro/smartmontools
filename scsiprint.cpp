@@ -42,7 +42,7 @@
 
 #define GBUF_SIZE 65535
 
-const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 3256 2011-02-08 22:13:41Z chrfranke $"
+const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 3307 2011-03-31 14:54:58Z dpgilbert $"
                                  SCSIPRINT_H_CVSID;
 
 
@@ -1311,15 +1311,13 @@ static const char * transport_proto_arr[] = {
 /* Returns 0 on success, 1 on general error and 2 for early, clean exit */
 static int scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
 {
-    char manufacturer[9];
-    char product[17];
-    char revision[5];
     char timedatetz[DATEANDEPOCHLEN];
     struct scsi_iec_mode_page iec;
-    int err, iec_err, len, req_len, avail_len, val;
+    int err, iec_err, len, req_len, avail_len;
     int is_tape = 0;
     int peri_dt = 0;
-    int returnval=0;
+    int returnval = 0;
+    int transport = -1;
         
     memset(gBuf, 0, 96);
     req_len = 36;
@@ -1350,25 +1348,35 @@ static int scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool 
         print_off();
         return 1;
     }
-    memset(manufacturer, 0, sizeof(manufacturer));
-    strncpy(manufacturer, (char *)&gBuf[8], 8);
- 
-    memset(product, 0, sizeof(product));
-    strncpy(product, (char *)&gBuf[16], 16);
-        
-    memset(revision, 0, sizeof(revision));
-    strncpy(revision, (char *)&gBuf[32], 4);
-    if (all && (0 != strncmp(manufacturer, "ATA", 3)))
-        pout("Device: %s %s Version: %s\n", manufacturer, product, revision);
+    if (all && (0 != strncmp((char *)&gBuf[8], "ATA", 3))) {
+        pout("Vendor:               %.8s\n", (char *)&gBuf[8]);
+	pout("Product:              %.16s\n", (char *)&gBuf[16]);
+	if (gBuf[32] >= ' ')
+	    pout("Revision:             %.4s\n", (char *)&gBuf[32]);
+    }
 
     if (!*device->get_req_type()/*no type requested*/ &&
-               (0 == strncmp(manufacturer, "ATA", 3))) {
+               (0 == strncmp((char *)&gBuf[8], "ATA", 3))) {
         pout("\nProbable ATA device behind a SAT layer\n"
              "Try an additional '-d ata' or '-d sat' argument.\n");
         return 2;
     }
     if (! all)
         return 0;
+
+    unsigned int lb_size;
+    char cap_str[64];
+    char si_str[64];
+    char lb_str[16];
+    uint64_t capacity = scsiGetSize(device, &lb_size);
+
+    if (capacity) {
+        format_with_thousands_sep(cap_str, sizeof(cap_str), capacity);
+        format_capacity(si_str, sizeof(si_str), capacity);
+        pout("User Capacity:        %s bytes [%s]\n", cap_str, si_str);
+        snprintf(lb_str, sizeof(lb_str) - 1, "%u", lb_size);
+        pout("Logical block size:   %s bytes\n", lb_str);
+    }
 
     /* Do this here to try and detect badly conforming devices (some USB
        keys) that will lock up on a InquiryVpd or log sense or ... */
@@ -1383,15 +1391,27 @@ static int scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool 
     } else
         modese_len = iec.modese_len;
 
-    if (!dont_print_serial_number) {
-        if (0 == (err = scsiInquiryVpd(device, 0x80, gBuf, 64))) {
-            /* should use VPD page 0x83 and fall back to this page (0x80)
-             * if 0x83 not supported. NAA requires a lot of decoding code */
+    if (! dont_print_serial_number) {
+	if (0 == (err = scsiInquiryVpd(device, 0x83, gBuf, 200))) {
+	    char s[256];
+
+            len = gBuf[3];
+	    scsi_decode_lu_dev_id(gBuf + 4, len, s, sizeof(s), &transport);
+	    if (strlen(s) > 0)
+                pout("Logical Unit id:      %s\n", s);
+        } else if (scsi_debugmode > 0) {
+            print_on();
+            if (SIMPLE_ERR_BAD_RESP == err)
+                pout("Vital Product Data (VPD) bit ignored in INQUIRY\n");
+            else
+                pout("Vital Product Data (VPD) INQUIRY failed [%d]\n", err);
+            print_off();
+        }
+	if (0 == (err = scsiInquiryVpd(device, 0x80, gBuf, 64))) {
             len = gBuf[3];
             gBuf[4 + len] = '\0';
-            pout("Serial number: %s\n", &gBuf[4]);
-        }
-        else if (scsi_debugmode > 0) {
+            pout("Serial number:        %s\n", &gBuf[4]);
+        } else if (scsi_debugmode > 0) {
             print_on();
             if (SIMPLE_ERR_BAD_RESP == err)
                 pout("Vital Product Data (VPD) bit ignored in INQUIRY\n");
@@ -1404,18 +1424,19 @@ static int scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool 
     // print SCSI peripheral device type
     if (peri_dt < (int)(sizeof(peripheral_dt_arr) / 
                         sizeof(peripheral_dt_arr[0])))
-        pout("Device type: %s\n", peripheral_dt_arr[peri_dt]);
+        pout("Device type:          %s\n", peripheral_dt_arr[peri_dt]);
     else
-        pout("Device type: <%d>\n", peri_dt);
+        pout("Device type:          <%d>\n", peri_dt);
 
     // See if transport protocol is known
-    val = scsiFetchTransportProtocol(device, modese_len);
-    if ((val >= 0) && (val <= 0xf))
-        pout("Transport protocol: %s\n", transport_proto_arr[val]);
+    if (transport < 0)
+        transport = scsiFetchTransportProtocol(device, modese_len);
+    if ((transport >= 0) && (transport <= 0xf))
+        pout("Transport protocol:   %s\n", transport_proto_arr[transport]);
 
     // print current time and date and timezone
     dateandtimezone(timedatetz);
-    pout("Local Time is: %s\n", timedatetz);
+    pout("Local Time is:        %s\n", timedatetz);
 
     if ((SCSI_PT_SEQUENTIAL_ACCESS == *peripheral_type) ||
         (SCSI_PT_MEDIUM_CHANGER == *peripheral_type))

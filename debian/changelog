@@ -1,3 +1,12 @@
+smartmontools (5.41+svn3365-1) unstable; urgency=low
+
+  * [a7e8ffe] Imported Upstream version 5.41+svn3365
+  * [471d14a] Refreshed patches, removed install.diff applied upstream
+  * [fae0ec9] Added a missing include for hurd-i386.
+    Thanks to Pino Toscano (Closes: #619208)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 19 Jun 2011 17:28:10 +0200
+
 smartmontools (5.40+svn3296-1) unstable; urgency=low
 
   * [cfbba5b] Imported Upstream version 5.40+svn3296
