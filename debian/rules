@@ -48,7 +48,7 @@ configure-stamp: debian/stamp-patched
 	CFLAGS="${CFLAGS}" ./configure --prefix=/usr		 \
 				--sysconfdir=/etc		 \
 				--mandir=/usr/share/man		 \
-				--with-initscriptdir=/etc/init.d \
+				--with-initscriptdir=no \
 				--with-docdir=/usr/share/doc/smartmontools \
 				--enable-drivedb \
 				--enable-savestates \

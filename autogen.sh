@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: autogen.sh 3043 2010-01-22 19:24:59Z chrfranke $
+# $Id: autogen.sh 3537 2012-04-28 13:22:41Z chrfranke $
 #
 # Generate ./configure from config.in and Makefile.in from Makefile.am.
 # This also adds files like missing,depcomp,install-sh to the source
@@ -83,7 +83,7 @@ case "$ver" in
     rm -f casetest.tmp
     ;;
 
-  1.9.[1-6]|1.10|1.10.[12]|1.11|1.11.1)
+  1.9.[1-6]|1.10|1.10.[12]|1.11|1.11.[1-3])
     # OK
     ;;
 
@@ -92,9 +92,21 @@ case "$ver" in
     echo "Please report success/failure to the smartmontools-support mailing list."
 esac
 
+# Install pkg-config macros
+# (Don't use 'aclocal -I m4 --install' to keep support for automake < 1.10)
+test -d m4 || mkdir m4 || exit 1
+test -f m4/pkg.m4 || acdir=`${ACLOCAL} --print-ac-dir` &&
+  test -n "$acdir" && test -f "$acdir/pkg.m4" &&
+{
+  echo "$0: installing \`m4/pkg.m4' from \`$acdir/pkg.m4'"
+  cp "$acdir/pkg.m4" m4/pkg.m4
+}
+test -f m4/pkg.m4 ||
+  echo "Warning: cannot install m4/pkg.m4, 'make dist' and systemd detection will not work."
+
 set -e	# stops on error status
 
-${ACLOCAL}
+${ACLOCAL} -I m4
 autoheader
-${AUTOMAKE} --add-missing --copy --foreign
+${AUTOMAKE} --add-missing --copy
 autoconf

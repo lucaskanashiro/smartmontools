@@ -1,3 +1,14 @@
+smartmontools (5.42+svn3539-1) unstable; urgency=low
+
+  * [e165493] Imported Upstream version 5.42+svn3539
+    (Closes: #668391, #608953)
+  * [9fcd449] Refreshed patches
+  * [65c801f] Do not install upstream init (Closes: #631075)
+  * [9a19418] Fixed check for /usr/bin/mail.
+    Thanks to Martin von Gagern (Closes: #649515)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sat, 12 May 2012 13:02:49 +0200
+
 smartmontools (5.41+svn3365-1) unstable; urgency=low
 
   * [a7e8ffe] Imported Upstream version 5.41+svn3365

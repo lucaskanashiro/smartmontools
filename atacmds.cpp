@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2000 Andre Hedrick <andre@linux-ide.org>
  *
@@ -36,7 +36,7 @@
 #include "utility.h"
 #include "dev_ata_cmd_set.h" // for parsed_ata_device
 
-const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3345 2011-05-25 20:50:02Z chrfranke $"
+const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 3528 2012-03-25 17:13:47Z chrfranke $"
                                  ATACMDS_H_CVSID;
 
 // Print ATA debug messages?
@@ -212,10 +212,13 @@ const format_name_entry format_names[] = {
   {"raw16"          , RAWFMT_RAW16},
   {"raw48"          , RAWFMT_RAW48},
   {"hex48"          , RAWFMT_HEX48},
+  {"raw56"          , RAWFMT_RAW56},
+  {"hex56"          , RAWFMT_HEX56},
   {"raw64"          , RAWFMT_RAW64},
   {"hex64"          , RAWFMT_HEX64},
   {"raw16(raw16)"   , RAWFMT_RAW16_OPT_RAW16},
   {"raw16(avg16)"   , RAWFMT_RAW16_OPT_AVG16},
+  {"raw24(raw8)"    , RAWFMT_RAW24_OPT_RAW8},
   {"raw24/raw24"    , RAWFMT_RAW24_DIV_RAW24},
   {"raw24/raw32"    , RAWFMT_RAW24_DIV_RAW32},
   {"sec2hour"       , RAWFMT_SEC2HOUR},
@@ -459,7 +462,7 @@ static void print_regs(const char * prefix, const ata_out_regs & r, const char *
 static void prettyprint(const unsigned char *p, const char *name){
   pout("\n===== [%s] DATA START (BASE-16) =====\n", name);
   for (int i=0; i<512; i+=16, p+=16)
-#define P(n) (isprint((int)(p[n]))?(int)(p[n]):'.')
+#define P(n) (' ' <= p[n] && p[n] <= '~' ? (int)p[n] : '.')
     // print complete line to avoid slow tty output and extra lines in syslog.
     pout("%03d-%03d: %02x %02x %02x %02x %02x %02x %02x %02x "
                     "%02x %02x %02x %02x %02x %02x %02x %02x"
@@ -611,7 +614,18 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
          in.direction==ata_cmd_in::data_out ? " OUT\n":"\n"));
 
     ata_cmd_out out;
+
+    int64_t start_usec = -1;
+    if (ata_debugmode)
+      start_usec = smi()->get_timer_usec();
+
     bool ok = device->ata_pass_through(in, out);
+
+    if (start_usec >= 0) {
+      int64_t duration_usec = smi()->get_timer_usec() - start_usec;
+      if (duration_usec >= 500)
+        pout(" [Duration: %.3fs]\n", duration_usec / 1000000.0);
+    }
 
     if (ata_debugmode && out.out_regs.is_set())
       print_regs(" Output: ", out.out_regs);
@@ -838,6 +852,31 @@ int ataCheckPowerMode(ata_device * device) {
   return (int)result;
 }
 
+// Issue a no-data ATA command with optional sector count register value
+bool ata_nodata_command(ata_device * device, unsigned char command,
+                        int sector_count /* = -1 */)
+{
+  ata_cmd_in in;
+  in.in_regs.command = command;
+  if (sector_count >= 0)
+    in.in_regs.sector_count = sector_count;
+
+  return device->ata_pass_through(in);
+}
+
+// Issue SET FEATURES command with optional sector count register value
+bool ata_set_features(ata_device * device, unsigned char features,
+                      int sector_count /* = -1 */)
+{
+  ata_cmd_in in;
+  in.in_regs.command = ATA_SET_FEATURES;
+  in.in_regs.features = features;
+  if (sector_count >= 0)
+    in.in_regs.sector_count = sector_count;
+
+  return device->ata_pass_through(in);
+}
+
 // Reads current Device Identity info (512 bytes) into buf.  Returns 0
 // if all OK.  Returns -1 if no ATA Device identity can be
 // established.  Returns >0 if Device is ATA Packet Device (not SMART
@@ -1057,6 +1096,7 @@ int ataReadSmartValues(ata_device * device, struct ata_smart_values *data){
     swap2((char *)&(data->revnumber));
     swap2((char *)&(data->total_time_to_complete_off_line));
     swap2((char *)&(data->smart_capability));
+    swapx(&data->extend_test_completion_time_w);
     for (i=0; i<NUMBER_ATA_SMART_ATTRIBUTES; i++){
       struct ata_smart_attribute *x=data->vendor_attributes+i;
       swap2((char *)&(x->flags));
@@ -1637,7 +1677,8 @@ int ataSmartStatus2(ata_device * device){
 // This is the way to execute ALL tests: offline, short self-test,
 // extended self test, with and without captive mode, etc.
 // TODO: Move to ataprint.cpp ?
-int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest_args & selargs,
+int ataSmartTest(ata_device * device, int testtype, bool force,
+                 const ata_selective_selftest_args & selargs,
                  const ata_smart_values * sv, uint64_t num_sectors)
 {
   char cmdmsg[128]; const char *type, *captive;
@@ -1664,7 +1705,20 @@ int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest
     type="Selective self-test";
   else
     type = 0;
-  
+
+  // Check whether another test is already running
+  if (type && (sv->self_test_exec_status >> 4) == 0xf) {
+    if (!force) {
+      pout("Can't start self-test without aborting current test (%d0%% remaining),\n"
+           "%srun 'smartctl -X' to abort test.\n",
+           sv->self_test_exec_status & 0x0f,
+           (!select ? "add '-t force' option to override, or " : ""));
+      return -1;
+    }
+  }
+  else
+    force = false;
+
   // If doing a selective self-test, first use WRITE_LOG to write the
   // selective self-test log.
   ata_selective_selftest_args selargs_io = selargs; // filled with info about actual spans
@@ -1706,7 +1760,7 @@ int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest
   else {
     pout("Drive command \"%s\" successful.\n", cmdmsg);
     if (type)
-      pout("Testing has begun.\n");
+      pout("Testing has begun%s.\n", (force ? " (previous test aborted)" : ""));
   }
   return 0;
 }
@@ -1722,7 +1776,12 @@ int TestTime(const ata_smart_values *data, int testtype)
     return (int) data->short_test_completion_time;
   case EXTEND_SELF_TEST:
   case EXTEND_CAPTIVE_SELF_TEST:
-    return (int) data->extend_test_completion_time;
+    if (data->extend_test_completion_time_b == 0xff
+        && data->extend_test_completion_time_w != 0x0000
+        && data->extend_test_completion_time_w != 0xffff)
+      return data->extend_test_completion_time_w; // ATA-8
+    else
+      return data->extend_test_completion_time_b;
   case CONVEYANCE_SELF_TEST:
   case CONVEYANCE_CAPTIVE_SELF_TEST:
     return (int) data->conveyance_test_completion_time;
@@ -1903,6 +1962,9 @@ static ata_attr_raw_format get_default_raw_format(unsigned char id)
   case 196: // Reallocated event count
     return RAWFMT_RAW16_OPT_RAW16;
 
+  case 9:  // Power on hours
+    return RAWFMT_RAW24_OPT_RAW8;
+
   case 190: // Temperature
   case 194:
     return RAWFMT_TEMPMINMAX;
@@ -1925,6 +1987,8 @@ uint64_t ata_get_attr_raw_value(const ata_smart_attribute & attr,
       case RAWFMT_RAW64:
       case RAWFMT_HEX64:
         byteorder = "543210wv"; break;
+      case RAWFMT_RAW56:
+      case RAWFMT_HEX56:
       case RAWFMT_RAW24_DIV_RAW32:
       case RAWFMT_MSEC24_HOUR32:
         byteorder = "r543210"; break;
@@ -1994,12 +2058,17 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
     break;
 
   case RAWFMT_RAW48:
+  case RAWFMT_RAW56:
   case RAWFMT_RAW64:
     s = strprintf("%"PRIu64, rawvalue);
     break;
 
   case RAWFMT_HEX48:
     s = strprintf("0x%012"PRIx64, rawvalue);
+    break;
+
+  case RAWFMT_HEX56:
+    s = strprintf("0x%014"PRIx64, rawvalue);
     break;
 
   case RAWFMT_HEX64:
@@ -2009,13 +2078,19 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
   case RAWFMT_RAW16_OPT_RAW16:
     s = strprintf("%u", word[0]);
     if (word[1] || word[2])
-      s += strprintf(" (%u, %u)", word[2], word[1]);
+      s += strprintf(" (%u %u)", word[2], word[1]);
     break;
 
   case RAWFMT_RAW16_OPT_AVG16:
     s = strprintf("%u", word[0]);
     if (word[1])
       s += strprintf(" (Average %u)", word[1]);
+    break;
+
+  case RAWFMT_RAW24_OPT_RAW8:
+    s = strprintf("%u", (unsigned)(rawvalue & 0x00ffffffULL));
+    if (raw[3] || raw[4] || raw[5])
+      s += strprintf(" (%d %d %d)", raw[5], raw[4], raw[3]);
     break;
 
   case RAWFMT_RAW24_DIV_RAW24:
@@ -2072,24 +2147,36 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
 
   case RAWFMT_TEMPMINMAX:
     // Temperature
-    s = strprintf("%u", word[0]);
-    if (word[1] || word[2]) {
-      unsigned lo = ~0, hi = ~0;
-      if (!raw[3]) {
-        // 00 HH 00 LL 00 TT (IBM)
-        hi = word[2]; lo = word[1];
+    {
+      // Search for possible min/max values
+      // 00 HH 00 LL 00 TT (Hitachi/IBM)
+      // 00 00 HH LL 00 TT (Maxtor, Samsung)
+      // 00 00 00 HH LL TT (WDC)
+      unsigned char lo = 0, hi = 0;
+      int cnt = 0;
+      for (int i = 1; i < 6; i++) {
+        if (raw[i])
+          switch (cnt++) {
+            case 0:
+              lo = raw[i];
+              break;
+            case 1:
+              if (raw[i] < lo) {
+                hi = lo; lo = raw[i];
+              }
+              else
+                hi = raw[i];
+              break;
+          }
       }
-      else if (!word[2]) {
-        // 00 00 HH LL 00 TT (Maxtor)
-        hi = raw[3]; lo = raw[2];
-      }
-      if (lo > hi) {
-        unsigned t = lo; lo = hi; hi = t;
-      }
-      if (lo <= word[0] && word[0] <= hi)
-        s += strprintf(" (Min/Max %u/%u)", lo, hi);
+
+      unsigned char t = raw[0];
+      if (cnt == 0)
+        s = strprintf("%d", t);
+      else if (cnt == 2 && 0 < lo && lo <= t && t <= hi && hi < 128)
+        s = strprintf("%d (Min/Max %d/%d)", t, lo, hi);
       else
-        s += strprintf(" (%d %d %d %d)", raw[5], raw[4], raw[3], raw[2]);
+        s = strprintf("%d (%d %d %d %d %d)", t, raw[5], raw[4], raw[3], raw[2], raw[1]);
     }
     break;
 
@@ -2301,10 +2388,13 @@ unsigned char ata_return_temperature_value(const ata_smart_values * data, const 
     if (idx < 0)
       continue;
     uint64_t raw = ata_get_attr_raw_value(data->vendor_attributes[idx], defs);
-    unsigned temp = (unsigned short)raw; // ignore possible min/max values in high words
+    unsigned temp;
+    // ignore possible min/max values in high words
     if (format == RAWFMT_TEMP10X) // -v N,temp10x
-      temp = (temp+5) / 10;
-    if (!(0 < temp && temp <= 255))
+      temp = ((unsigned short)raw + 5) / 10;
+    else
+      temp = (unsigned char)raw;
+    if (!(0 < temp && temp < 128))
       continue;
     return temp;
   }

@@ -8,47 +8,17 @@ minor exceptions
 
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -543,10 +543,11 @@ Section below!
- .B # This is an example smartd startup config file
- .B # /usr/local/etc/smartd.conf for monitoring three
- .B # ATA disks, three SCSI disks, six ATA disks
--.B # behind two 3ware controllers, three SATA disks
--.B # directly connected to the HighPoint Rocket-
--.B # RAID controller, two SATA disks connected to
--.B # the HighPoint RocketRAID controller via a pmport
-+.B # behind two 3ware controllers, two disks on a cciss
-+.B # controller, three SATA disks directly connected
-+.B # to the HighPoint Rocket-RAID controller,
-+.B # two SATA disks connected to the HighPoint
-+.B # RocketRAID controller via a pmport
- .B # device, four SATA disks connected to an Areca
- .B # RAID controller, and one SATA disk.
- .B #
-@@ -615,6 +616,13 @@ Section below!
- .B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
- .B #
- .nf
-+.B # Monitor 2 disks connected to the first HP SmartArray controller which
-+.B # uses the cciss driver. Start long tests on Sunday nights and short
-+.B # self-tests every night and send errors to root
-+.B \ \ /dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
-+.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
-+.B #
-+.nf
- .B # Three SATA disks on a HighPoint RocketRAID controller.
- .B # Start short self-tests daily between 1-2, 2-3, and
- .B # 3-4 am.
-@@ -1689,6 +1697,10 @@ configuration file Directives might be:
- If you want more frequent information, use:
- .B -a.
+@@ -161,6 +161,10 @@ below).
+ .SH 
+ OPTIONS
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
 +along with the \'\-d cciss,N\' Directive (see below).
 +
  .TP
- .B ADDITIONAL DETAILS ABOUT DEVICESCAN
- If a non-comment entry in the configuration file is the text
+ .B \-A PREFIX, \-\-attributelog=PREFIX
+ [ATA only] Writes \fBsmartd\fP attribute information (normalized and raw
 --- a/smartd.conf
 +++ b/smartd.conf
 @@ -91,6 +91,12 @@ DEVICESCAN -n standby -m root -M exec /u
@@ -66,7 +36,7 @@ minor exceptions
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -117,10 +117,11 @@ Section below!
+@@ -132,10 +132,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
@@ -82,7 +52,7 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -189,6 +190,13 @@ Section below!
+@@ -206,6 +207,13 @@ Section below!
  .B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
  .B #
  .nf
@@ -96,7 +66,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -1263,6 +1271,9 @@ configuration file Directives might be:
+@@ -1431,6 +1439,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  

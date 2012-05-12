@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 3316 2011-04-19 19:34:57Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 3528 2012-03-25 17:13:47Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -77,10 +77,25 @@ enum {
 };
 
 // ATA Specification Command Register Values (Commands)
+#define ATA_CHECK_POWER_MODE            0xe5
 #define ATA_IDENTIFY_DEVICE             0xec
 #define ATA_IDENTIFY_PACKET_DEVICE      0xa1
+#define ATA_IDLE                        0xe3
 #define ATA_SMART_CMD                   0xb0
-#define ATA_CHECK_POWER_MODE            0xe5
+#define ATA_SECURITY_FREEZE_LOCK        0xf5
+#define ATA_SET_FEATURES                0xef
+#define ATA_STANDBY_IMMEDIATE           0xe0
+
+// SET_FEATURES subcommands
+#define ATA_DISABLE_AAM                 0xc2
+#define ATA_DISABLE_APM                 0x85
+#define ATA_DISABLE_WRITE_CACHE         0x82
+#define ATA_DISABLE_READ_LOOK_AHEAD     0x55
+#define ATA_ENABLE_AAM                  0x42
+#define ATA_ENABLE_APM                  0x05
+#define ATA_ENABLE_WRITE_CACHE          0x02
+#define ATA_ENABLE_READ_LOOK_AHEAD      0xaa
+
 // 48-bit commands
 #define ATA_READ_LOG_EXT                0x2F
 
@@ -200,8 +215,8 @@ ASSERT_SIZEOF_STRUCT(ata_smart_attribute, 12);
 #define ATTRIBUTE_FLAGS_OTHER(x) ((x) & 0xffc0)
 
 
-/* ata_smart_values is format of the read drive Attribute command */
-/* see Table 34 of T13/1321D Rev 1 spec (Device SMART data structure) for *some* info */
+// Format of data returned by SMART READ DATA
+// Table 62 of T13/1699-D (ATA8-ACS) Revision 6a, September 2008
 #pragma pack(1)
 struct ata_smart_values {
   unsigned short int revnumber;
@@ -215,9 +230,10 @@ struct ata_smart_values {
   unsigned char errorlog_capability;
   unsigned char vendor_specific_371;  // Maxtor, IBM: self-test failure checkpoint see below!
   unsigned char short_test_completion_time;
-  unsigned char extend_test_completion_time;
+  unsigned char extend_test_completion_time_b; // If 0xff, use 16-bit value below
   unsigned char conveyance_test_completion_time;
-  unsigned char reserved_375_385[11];
+  unsigned short extend_test_completion_time_w; // e04130r2, added to T13/1699-D Revision 1c, April 2005
+  unsigned char reserved_377_385[9];
   unsigned char vendor_specific_386_510[125]; // Maxtor bytes 508-509 Attribute/Threshold Revision #
   unsigned char chksum;
 } ATTR_PACKED;
@@ -657,10 +673,13 @@ enum ata_attr_raw_format
   RAWFMT_RAW16,
   RAWFMT_RAW48,
   RAWFMT_HEX48,
+  RAWFMT_RAW56,
+  RAWFMT_HEX56,
   RAWFMT_RAW64,
   RAWFMT_HEX64,
   RAWFMT_RAW16_OPT_RAW16,
   RAWFMT_RAW16_OPT_AVG16,
+  RAWFMT_RAW24_OPT_RAW8,
   RAWFMT_RAW24_DIV_RAW24,
   RAWFMT_RAW24_DIV_RAW32,
   RAWFMT_SEC2HOUR,
@@ -718,6 +737,12 @@ extern bool dont_print_serial_number;
 int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id);
 int ataCheckPowerMode(ata_device * device);
 
+// Issue a no-data ATA command with optional sector count register value
+bool ata_nodata_command(ata_device * device, unsigned char command, int sector_count = -1);
+
+// Issue SET FEATURES command with optional sector count register value
+bool ata_set_features(ata_device * device, unsigned char features, int sector_count = -1);
+
 /* Read S.M.A.R.T information from drive */
 int ataReadSmartValues(ata_device * device,struct ata_smart_values *);
 int ataReadSmartThresholds(ata_device * device, struct ata_smart_thresholds_pvt *);
@@ -766,12 +791,10 @@ int ataEnableAutoOffline (ata_device * device);
 int ataDisableAutoOffline (ata_device * device);
 
 /* S.M.A.R.T. test commands */
-int ataSmartOfflineTest (ata_device * device);
-int ataSmartExtendSelfTest (ata_device * device);
-int ataSmartShortSelfTest (ata_device * device);
-int ataSmartShortCapSelfTest (ata_device * device);
-int ataSmartExtendCapSelfTest (ata_device * device);
-int ataSmartSelfTestAbort (ata_device * device);
+int ataSmartTest(ata_device * device, int testtype, bool force,
+                 const ata_selective_selftest_args & args,
+                 const ata_smart_values * sv, uint64_t num_sectors);
+
 int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_args & args,
                                  const ata_smart_values * sv, uint64_t num_sectors,
                                  const ata_selective_selftest_args * prev_spans = 0);
@@ -829,9 +852,6 @@ inline bool isSCTFeatureControlCapable(const ata_identify_device *drive)
 
 inline bool isSCTDataTableCapable(const ata_identify_device *drive)
   { return ((drive->words088_255[206-88] & 0x21) == 0x21); } // 0x20 = SCT Data Table support
-
-int ataSmartTest(ata_device * device, int testtype, const ata_selective_selftest_args & args,
-                 const ata_smart_values * sv, uint64_t num_sectors);
 
 int TestTime(const ata_smart_values * data, int testtype);
 

@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2004-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2004-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,8 +60,8 @@
 #include <ddk/ntddscsi.h>
 #include <ddk/ntddstor.h>
 #else
-// MSVC8, older MinGW
-// (Missing: IOCTL_STORAGE_QUERY_PROPERTY, FILE_DEVICE_SCSI)
+// MSVC10, older MinGW
+// (Missing: IOCTL_SCSI_MINIPORT_*)
 #include <ntddscsi.h>
 #include <winioctl.h>
 #endif
@@ -85,7 +85,7 @@
 #define SELECT_WIN_32_64(x32, x64) (x64)
 #endif
 
-const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 3358 2011-06-06 19:04:20Z chrfranke $";
+const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 3524 2012-03-21 22:19:31Z chrfranke $";
 
 // Disable Win9x/ME specific code if no longer supported by compiler.
 #ifdef _WIN64
@@ -184,8 +184,10 @@ ASSERT_SIZEOF(SCSI_PASS_THROUGH_DIRECT, SELECT_WIN_32_64(44, 56));
 // SMART IOCTL via SCSI MINIPORT ioctl
 
 #ifndef FILE_DEVICE_SCSI
-
 #define FILE_DEVICE_SCSI 0x001b
+#endif
+
+#ifndef IOCTL_SCSI_MINIPORT_SMART_VERSION
 
 #define IOCTL_SCSI_MINIPORT_SMART_VERSION               ((FILE_DEVICE_SCSI << 16) + 0x0500)
 #define IOCTL_SCSI_MINIPORT_IDENTIFY                    ((FILE_DEVICE_SCSI << 16) + 0x0501)
@@ -201,7 +203,7 @@ ASSERT_SIZEOF(SCSI_PASS_THROUGH_DIRECT, SELECT_WIN_32_64(44, 56));
 #define IOCTL_SCSI_MINIPORT_READ_SMART_LOG              ((FILE_DEVICE_SCSI << 16) + 0x050b)
 #define IOCTL_SCSI_MINIPORT_WRITE_SMART_LOG             ((FILE_DEVICE_SCSI << 16) + 0x050c)
 
-#endif // FILE_DEVICE_SCSI
+#endif // IOCTL_SCSI_MINIPORT_SMART_VERSION
 
 ASSERT_CONST(IOCTL_SCSI_MINIPORT, 0x04d008);
 ASSERT_SIZEOF(SRB_IO_CONTROL, 28);
@@ -541,6 +543,10 @@ public:
 
   virtual std::string get_app_examples(const char * appname);
 
+#ifndef __CYGWIN__
+  virtual int64_t get_timer_usec();
+#endif
+
 //virtual bool scan_smart_devices(smart_device_list & devlist, const char * type,
 //  const char * pattern = 0);
 
@@ -581,6 +587,8 @@ class winnt_smart_interface
 : public /*extends*/ win_smart_interface
 {
 public:
+  virtual bool disable_system_auto_standby(bool disable);
+
   virtual bool scan_smart_devices(smart_device_list & devlist, const char * type,
     const char * pattern = 0);
 
@@ -655,6 +663,9 @@ std::string win_smart_interface::get_os_version_str()
     case VER_PLATFORM_WIN32_NT     <<16|0x0600| 1:
       w = (vi.wProductType == VER_NT_WORKSTATION   ?   "win7"
                                                    :   "2008r2"); break;
+    case VER_PLATFORM_WIN32_NT     <<16|0x0600| 2:
+      w = (vi.wProductType == VER_NT_WORKSTATION   ?   "win8"
+                                                   :   "win8s"); break;
     default: w = 0; break;
   }
 
@@ -676,6 +687,31 @@ std::string win_smart_interface::get_os_version_str()
     snprintf(vptr, vlen, "-%s%s", w, w64);
   return vstr;
 }
+
+#ifndef __CYGWIN__
+// MSVCRT only provides ftime() which uses GetSystemTime()
+// This provides only ~15ms resolution by default.
+// Use QueryPerformanceCounter instead (~300ns).
+// (Cygwin provides CLOCK_MONOTONIC which has the same effect)
+int64_t win_smart_interface::get_timer_usec()
+{
+  static int64_t freq = 0;
+
+  LARGE_INTEGER t;
+  if (freq == 0)
+    freq = (QueryPerformanceFrequency(&t) ? t.QuadPart : -1);
+  if (freq <= 0)
+    return smart_interface::get_timer_usec();
+
+  if (!QueryPerformanceCounter(&t))
+    return -1;
+  if (!(0 <= t.QuadPart && t.QuadPart <= (int64_t)(~(uint64_t)0 >> 1)/1000000))
+    return -1;
+
+  return (t.QuadPart * 1000000LL) / freq;
+}
+#endif // __CYGWIN__
+
 
 // Return value for device detection functions
 enum win_dev_type { DEV_UNKNOWN = 0, DEV_ATA, DEV_SCSI, DEV_USB };
@@ -1013,6 +1049,28 @@ std::string win_smart_interface::get_app_examples(const char * appname)
       + strprintf(
          "  The default on this system is /dev/sdX:%s\n", ata_get_def_options()
         );
+}
+
+
+bool winnt_smart_interface::disable_system_auto_standby(bool disable)
+{
+  if (disable) {
+    SYSTEM_POWER_STATUS ps;
+    if (!GetSystemPowerStatus(&ps))
+      return set_err(ENOSYS, "Unknown power status");
+    if (ps.ACLineStatus != 1) {
+      SetThreadExecutionState(ES_CONTINUOUS);
+      if (ps.ACLineStatus == 0)
+        set_err(EIO, "AC offline");
+      else
+        set_err(EIO, "Unknown AC line status");
+      return false;
+    }
+  }
+
+  if (!SetThreadExecutionState(ES_CONTINUOUS | (disable ? ES_SYSTEM_REQUIRED : 0)))
+    return set_err(ENOSYS);
+  return true;
 }
 
 
@@ -1896,7 +1954,7 @@ bool win_tw_cli_device::open()
         // Show tw_cli error message
         err++;
         err[strcspn(err, "\r\n")] = 0;
-        return set_err(EIO, err);
+        return set_err(EIO, "%s", err);
       }
       return set_err(EIO);
     }
@@ -2022,14 +2080,22 @@ static int storage_predict_failure_ioctl(HANDLE hdevice, char * data = 0)
 
 /////////////////////////////////////////////////////////////////////////////
 
+// Return true if Intel ICHxR RAID volume
+static bool is_intel_raid_volume(const STORAGE_DEVICE_DESCRIPTOR_DATA * data)
+{
+  if (!(data->desc.VendorIdOffset && data->desc.ProductIdOffset))
+    return false;
+  const char * vendor = data->raw + data->desc.VendorIdOffset;
+  if (!(!strnicmp(vendor, "Intel", 5) && strspn(vendor+5, " ") == strlen(vendor+5)))
+    return false;
+  if (strnicmp(data->raw + data->desc.ProductIdOffset, "Raid ", 5))
+    return false;
+  return true;
+}
+
 // get DEV_* for open handle
 static win_dev_type get_controller_type(HANDLE hdevice, bool admin, GETVERSIONINPARAMS_EX * ata_version_ex)
 {
-  // Try SMART_GET_VERSION first to detect ATA SMART support
-  // for drivers reporting BusTypeScsi (3ware)
-  if (admin && smart_get_version(hdevice, ata_version_ex) >= 0)
-    return DEV_ATA;
-
   // Get BusType from device descriptor
   STORAGE_DEVICE_DESCRIPTOR_DATA data;
   if (storage_query_property_ioctl(hdevice, &data))
@@ -2042,12 +2108,24 @@ static win_dev_type get_controller_type(HANDLE hdevice, bool admin, GETVERSIONIN
       if (ata_version_ex)
         memset(ata_version_ex, 0, sizeof(*ata_version_ex));
       return DEV_ATA;
+
     case BusTypeScsi:
+    case BusTypeRAID:
+      // Intel ICHxR RAID volume: reports SMART_GET_VERSION but does not support SMART_*
+      if (is_intel_raid_volume(&data))
+        return DEV_SCSI;
+      // LSI/3ware RAID volume: supports SMART_*
+      if (admin && smart_get_version(hdevice, ata_version_ex) >= 0)
+        return DEV_ATA;
+      return DEV_SCSI;
+
     case 0x09: // BusTypeiScsi
     case 0x0a: // BusTypeSas
       return DEV_SCSI;
+
     case BusTypeUsb:
       return DEV_USB;
+
     default:
       return DEV_UNKNOWN;
   }
@@ -2173,8 +2251,9 @@ static bool get_usb_id(int drive, unsigned short & vendor_id, unsigned short & p
   if (!ws.query(we, "SELECT Antecedent,Dependent FROM Win32_USBControllerDevice"))
     return false;
 
-  std::string usb_devid;
-  std::string prev_usb_ant, prev_usb_devid;
+  unsigned short usb_venid = 0, prev_usb_venid = 0;
+  unsigned short usb_proid = 0, prev_usb_proid = 0;
+  std::string prev_usb_ant;
   std::string prev_ant, ant, dep;
 
   const regular_expression regex("^.*PnPEntity\\.DeviceID=\"([^\"]*)\"", REG_EXTENDED);
@@ -2200,10 +2279,14 @@ static bool get_usb_id(int drive, unsigned short & vendor_id, unsigned short & p
 
     if (str_starts_with(devid, "USB\\\\VID_")) {
       // USB bridge entry, save CONTROLLER, ID
-      if (debug)
-        pout("  +-> \"%s\"\n", devid.c_str());
+      int nc = -1;
+      if (!(sscanf(devid.c_str(), "USB\\\\VID_%4hx&PID_%4hx%n",
+            &prev_usb_venid, &prev_usb_proid, &nc) == 2 && nc == 9+4+5+4)) {
+        prev_usb_venid = prev_usb_proid = 0;
+      }
       prev_usb_ant = ant;
-      prev_usb_devid = devid;
+      if (debug)
+        pout("  +-> \"%s\" [0x%04x:0x%04x]\n", devid.c_str(), prev_usb_venid, prev_usb_proid);
       continue;
     }
     else if (str_starts_with(devid, "USBSTOR\\\\")) {
@@ -2220,26 +2303,32 @@ static bool get_usb_id(int drive, unsigned short & vendor_id, unsigned short & p
       // Continue if not name of physical disk drive
       if (name2 != name) {
         if (debug)
-          pout("  |    (Name: \"%s\")\n", name2.c_str());
+          pout("  +---> (\"%s\")\n", name2.c_str());
         continue;
       }
-      if (debug)
-        pout("  |    Name: \"%s\"\n", name2.c_str());
 
-      // Fail if previos USB bridge is associated to other controller
-      if (ant != prev_usb_ant)
+      // Fail if previos USB bridge is associated to other controller or ID is unknown
+      if (!(ant == prev_usb_ant && prev_usb_venid)) {
+        if (debug)
+          pout("  +---> \"%s\" (Error: No USB bridge found)\n", name2.c_str());
         return false;
+      }
 
       // Handle multiple devices with same name
-      if (!usb_devid.empty()) {
+      if (usb_venid) {
         // Fail if multiple devices with same name have different USB bridge types
-        if (usb_devid != prev_usb_devid)
+        if (!(usb_venid == prev_usb_venid && usb_proid == prev_usb_proid)) {
+          if (debug)
+            pout("  +---> \"%s\" (Error: More than one USB ID found)\n", name2.c_str());
           return false;
-        continue;
+        }
       }
 
       // Found
-      usb_devid = prev_usb_devid;
+      usb_venid = prev_usb_venid;
+      usb_proid = prev_usb_proid;
+      if (debug)
+        pout("  +===> \"%s\" [0x%04x:0x%04x]\n", name2.c_str(), usb_venid, usb_proid);
 
       // Continue to check for duplicate names ...
     }
@@ -2249,14 +2338,12 @@ static bool get_usb_id(int drive, unsigned short & vendor_id, unsigned short & p
     }
   }
 
-  // Parse USB ID
-  int nc = -1;
-  if (!(sscanf(usb_devid.c_str(), "USB\\\\VID_%4hx&PID_%4hx%n",
-               &vendor_id, &product_id, &nc) == 2 && nc == 9+4+5+4))
+  if (!usb_venid)
     return false;
 
-  if (debug)
-    pout("USB ID = 0x%04x:0x%04x\n", vendor_id, product_id);
+  vendor_id = usb_venid;
+  product_id = usb_proid;
+
   return true;
 }
 
@@ -3747,7 +3834,7 @@ bool win_aspi_device::scsi_pass_through(scsi_cmnd_io * iop)
     }
     else
       j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
-    pout(buff);
+    pout("%s", buff);
   }
 
   ASPI_SRB srb;
@@ -3990,7 +4077,7 @@ bool win_scsi_device::scsi_pass_through(struct scsi_cmnd_io * iop)
     }
     else
       j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
-    pout(buff);
+    pout("%s", buff);
   }
 
   SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER sb;

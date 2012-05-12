@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2006-10 Douglas Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2009-10 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2006-12 Douglas Gilbert <dgilbert@interlog.com>
+ * Copyright (C) 2009-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,7 +62,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3258 2011-02-14 22:31:01Z manfred99 $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3519 2012-03-06 20:01:44Z chrfranke $";
 
 /* This is a slightly stretched SCSI sense "descriptor" format header.
    The addition is to allow the 0x70 and 0x71 response codes. The idea
@@ -114,28 +114,42 @@ class sat_device
 : public tunnelled_device<
     /*implements*/ ata_device
     /*by tunnelling through a*/, scsi_device
-  >
+  >,
+  virtual public /*implements*/ scsi_device
 {
 public:
   sat_device(smart_interface * intf, scsi_device * scsidev,
-    const char * req_type, int passthrulen = 0);
+    const char * req_type, int passthrulen = 0, bool enable_auto = false);
 
   virtual ~sat_device() throw();
 
+  virtual smart_device * autodetect_open();
+
   virtual bool ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out);
+
+  virtual bool scsi_pass_through(scsi_cmnd_io * iop);
 
 private:
   int m_passthrulen;
+  bool m_enable_auto;
 };
 
 
 sat_device::sat_device(smart_interface * intf, scsi_device * scsidev,
-  const char * req_type, int passthrulen /*= 0*/)
-: smart_device(intf, scsidev->get_dev_name(), "sat", req_type),
+  const char * req_type, int passthrulen /* = 0 */, bool enable_auto /* = false */)
+: smart_device(intf, scsidev->get_dev_name(),
+    (enable_auto ? "sat,auto" : "sat"), req_type),
   tunnelled_device<ata_device, scsi_device>(scsidev),
-  m_passthrulen(passthrulen)
+  m_passthrulen(passthrulen),
+  m_enable_auto(enable_auto)
 {
-  set_info().info_name = strprintf("%s [SAT]", scsidev->get_info_name());
+  if (enable_auto)
+    hide_ata(); // Start as SCSI, switch to ATA in autodetect_open()
+  else
+    hide_scsi(); // ATA always
+
+  set_info().info_name = strprintf("%s [%sSAT]", scsidev->get_info_name(),
+                                   (enable_auto ? "SCSI/" : ""));
 }
 
 sat_device::~sat_device() throw()
@@ -421,6 +435,45 @@ bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
     return true;
 }
 
+bool sat_device::scsi_pass_through(scsi_cmnd_io * iop)
+{
+  scsi_device * scsidev = get_tunnel_dev();
+  if (!scsidev->scsi_pass_through(iop)) {
+    set_err(scsidev->get_err());
+    return false;
+  }
+  return true;
+}
+
+smart_device * sat_device::autodetect_open()
+{
+  if (!open() || !m_enable_auto)
+    return this;
+
+  scsi_device * scsidev = get_tunnel_dev();
+
+  unsigned char inqdata[36] = {0, };
+  if (scsiStdInquiry(scsidev, inqdata, sizeof(inqdata))) {
+      smart_device::error_info err = scsidev->get_err();
+      close();
+      set_err(err.no, "INQUIRY [SAT]: %s", err.msg.c_str());
+      return this;
+  }
+
+  // Check for SAT "VENDOR"
+  int inqsize = inqdata[4] + 5;
+  bool sat = (inqsize >= 36 && !memcmp(inqdata + 8, "ATA     ", 8));
+
+  // Change interface
+  hide_ata(!sat);
+  hide_scsi(sat);
+
+  set_info().dev_type = (sat ? "sat" : scsidev->get_dev_type());
+  set_info().info_name = strprintf("%s [%s]", scsidev->get_info_name(),
+                                   (sat ? "SAT" : "SCSI"));
+  return this;
+}
+
 } // namespace
 
 /////////////////////////////////////////////////////////////////////////////
@@ -590,7 +643,6 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
     int copydata = 0;
     int outlen = 0;
     int ck_cond = 0;    /* set to 1 to read register(s) back */
-    int protocol = 3;   /* non-data */
     int t_dir = 1;      /* 0 -> to device, 1 -> from device */
     int byte_block = 1; /* 0 -> bytes, 1 -> 512 byte blocks */
     int t_length = 0;   /* 0 -> no data transferred */
@@ -615,7 +667,6 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
     case READ_VALUES:           /* READ DATA */
         feature = ATA_SMART_READ_VALUES;
         sector_count = 1;     /* one (512 byte) block */
-        protocol = 4;   /* PIO data-in */
         t_length = 2;   /* sector count holds count */
         copydata = 512;
         break;
@@ -623,7 +674,6 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
         feature = ATA_SMART_READ_THRESHOLDS;
         sector_count = 1;     /* one (512 byte) block */
         lba_low = 1;
-        protocol = 4;   /* PIO data-in */
         t_length = 2;   /* sector count holds count */
         copydata=512;
         break;
@@ -631,7 +681,6 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
         feature = ATA_SMART_READ_LOG_SECTOR;
         sector_count = 1;     /* one (512 byte) block */
         lba_low = select;
-        protocol = 4;   /* PIO data-in */
         t_length = 2;   /* sector count holds count */
         copydata = 512;
         break;
@@ -639,7 +688,6 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
         feature = ATA_SMART_WRITE_LOG_SECTOR;
         sector_count = 1;     /* one (512 byte) block */
         lba_low = select;
-        protocol = 5;   /* PIO data-out */
         t_length = 2;   /* sector count holds count */
         t_dir = 0;      /* to device */
         outlen = 512;
@@ -647,14 +695,12 @@ int usbcypress_device::ata_command_interface(smart_command_set command, int sele
     case IDENTIFY:
         ata_command = ATA_IDENTIFY_DEVICE;
         sector_count = 1;     /* one (512 byte) block */
-        protocol = 4;   /* PIO data-in */
         t_length = 2;   /* sector count holds count */
         copydata = 512;
         break;
     case PIDENTIFY:
         ata_command = ATA_IDENTIFY_PACKET_DEVICE;
         sector_count = 1;     /* one (512 byte) block */
-        protocol = 4;   /* PIO data-in */
         t_length = 2;   /* sector count (7:0) holds count */
         copydata = 512;
         break;
@@ -1251,13 +1297,19 @@ using namespace sat;
 ata_device * smart_interface::get_sat_device(const char * type, scsi_device * scsidev)
 {
   if (!strncmp(type, "sat", 3)) {
-    int ptlen = 0, n1 = -1, n2 = -1;
-    if (!(((sscanf(type, "sat%n,%d%n", &n1, &ptlen, &n2) == 1 && n2 == (int)strlen(type)) || n1 == (int)strlen(type))
-        && (ptlen == 0 || ptlen == 12 || ptlen == 16))) {
-      set_err(EINVAL, "Option '-d sat,<n>' requires <n> to be 0, 12 or 16");
+    const char * t = type + 3;
+    bool enable_auto = false;
+    if (!strncmp(t, ",auto", 5)) {
+      t += 5;
+      enable_auto = true;
+    }
+    int ptlen = 0, n = -1;
+    if (*t && !(sscanf(t, ",%d%n", &ptlen, &n) == 1 && n == (int)strlen(t)
+                && (ptlen == 0 || ptlen == 12 || ptlen == 16))) {
+      set_err(EINVAL, "Option '-d sat[,auto][,N]' requires N to be 0, 12 or 16");
       return 0;
     }
-    return new sat_device(this, scsidev, type, ptlen);
+    return new sat_device(this, scsidev, type, ptlen, enable_auto);
   }
 
   else if (!strncmp(type, "usbcypress", 10)) {
