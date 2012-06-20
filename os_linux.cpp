@@ -5,9 +5,9 @@
  *
  * Copyright (C) 2003-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2003-11 Doug Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2008    Hank Wu <hank@areca.com.tw>
+ * Copyright (C) 2008-12 Hank Wu <hank@areca.com.tw>
  * Copyright (C) 2008    Oliver Bock <brevilo@users.sourceforge.net>
- * Copyright (C) 2008-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2008    Jordan Hargrave <jordan_hargrave@dell.com>
  *
  *  Parts of this file are derived from code that was
@@ -89,7 +89,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 3441 2011-10-12 17:22:15Z chrfranke $"
+const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 3558 2012-06-05 16:42:05Z chrfranke $"
   OS_LINUX_H_CVSID;
 
 
@@ -196,8 +196,9 @@ static const char  smartctl_examples[] =
 		  "  smartctl --all --device=hpt,1/1/3 /dev/sda\n"
 		  "          (Prints all SMART info for the SATA disk attached to the 3rd PMPort\n"
 		  "           of the 1st channel on the 1st HighPoint RAID controller)\n"
-		  "  smartctl --all --device=areca,3 /dev/sg2\n"
-		  "          (Prints all SMART info for 3rd ATA disk on Areca RAID controller)\n"
+		  "  smartctl --all --device=areca,3/1 /dev/sg2\n"
+		  "          (Prints all SMART info for 3rd ATA disk of the 1st enclosure\n"
+		  "           on Areca RAID controller)\n"
   ;
 
 
@@ -605,7 +606,7 @@ static int sg_io_cmnd_io(int dev_fd, struct scsi_cmnd_io * iop, int report,
         }
     }
 
-    if (io_hdr.info | SG_INFO_CHECK) { /* error or warning */
+    if (io_hdr.info & SG_INFO_CHECK) { /* error or warning */
         int masked_driver_status = (LSCSI_DRIVER_MASK & io_hdr.driver_status);
 
         if (0 != io_hdr.host_status) {
@@ -1652,13 +1653,14 @@ class linux_areca_device
   public /*extends*/ linux_smart_device
 {
 public:
-  linux_areca_device(smart_interface * intf, const char * dev_name, int disknum);
+  linux_areca_device(smart_interface * intf, const char * dev_name, int disknum, int encnum = 1);
 
 protected:
   virtual bool ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out); 
 
 private:
   int m_disknum; ///< Disk number.
+  int m_encnum;  ///< Enclosure number.
 };
 
 
@@ -1964,12 +1966,13 @@ static int arcmsr_command_handler(int fd, unsigned long arcmsr_cmd, unsigned cha
 }
 
 
-linux_areca_device::linux_areca_device(smart_interface * intf, const char * dev_name, int disknum)
+linux_areca_device::linux_areca_device(smart_interface * intf, const char * dev_name, int disknum, int encnum)
 : smart_device(intf, dev_name, "areca", "areca"),
   linux_smart_device(O_RDWR | O_EXCL | O_NONBLOCK),
-  m_disknum(disknum)
+  m_disknum(disknum),
+  m_encnum(encnum)
 {
-  set_info().info_name = strprintf("%s [areca_%02d]", dev_name, disknum);
+  set_info().info_name = strprintf("%s [areca_disk#%02d_enc#%02d]", dev_name, disknum, encnum);
 }
 
 // Areca RAID Controller
@@ -2093,7 +2096,8 @@ if (!ata_cmd_is_ok(in,
 	    return set_err(ENOTSUP, "DATA OUT not supported for this Areca controller type");
 	}
 
-	areca_packet[11] = m_disknum - 1;		   // drive number
+	areca_packet[11] = m_disknum - 1;  // disk#
+	areca_packet[19] = m_encnum - 1;   // enc#
 
 	// ----- BEGIN TO SETUP CHECKSUM -----
 	for ( int loop = 3; loop < areca_packet_len - 1; loop++ )
@@ -2927,12 +2931,6 @@ smart_device * linux_smart_interface::missing_option(const char * opt)
   return 0;
 }
 
-// Return true if STR starts with PREFIX.
-static inline bool str_starts_with(const char * str, const char * prefix)
-{
-  return !strncmp(str, prefix, strlen(prefix));
-}
-
 // Return kernel release as integer ("2.6.31" -> 206031)
 static unsigned get_kernel_release()
 {
@@ -3060,16 +3058,17 @@ smart_device * linux_smart_interface::get_custom_smart_device(const char * name,
 
   // Areca?
   disknum = n1 = n2 = -1;
-  if (sscanf(type, "areca,%n%d%n", &n1, &disknum, &n2) == 1 || n1 == 6) {
-    if (n2 != (int)strlen(type)) {
-      set_err(EINVAL, "Option -d areca,N requires N to be a non-negative integer");
+  int encnum = 1;
+  if (sscanf(type, "areca,%n%d/%d%n", &n1, &disknum, &encnum, &n2) >= 1 || n1 == 6) {
+    if (!(1 <= disknum && disknum <= 128)) {
+      set_err(EINVAL, "Option -d areca,N/E (N=%d) must have 1 <= N <= 128", disknum);
       return 0;
     }
-    if (!(1 <= disknum && disknum <= 24)) {
-      set_err(EINVAL, "Option -d areca,N (N=%d) must have 1 <= N <= 24", disknum);
+    if (!(1 <= encnum && encnum <= 8)) {
+      set_err(EINVAL, "Option -d areca,N/E (E=%d) must have 1 <= E <= 8", encnum);
       return 0;
     }
-    return new linux_areca_device(this, name, disknum);
+    return new linux_areca_device(this, name, disknum, encnum);
   }
 
   // Highpoint ?
@@ -3121,7 +3120,7 @@ smart_device * linux_smart_interface::get_custom_smart_device(const char * name,
 
 std::string linux_smart_interface::get_valid_custom_dev_types_str()
 {
-  return "marvell, areca,N, 3ware,N, hpt,L/M/N, megaraid,N"
+  return "marvell, areca,N/E, 3ware,N, hpt,L/M/N, megaraid,N"
 #ifdef HAVE_LINUX_CCISS_IOCTL_H
                                               ", cciss,N"
 #endif

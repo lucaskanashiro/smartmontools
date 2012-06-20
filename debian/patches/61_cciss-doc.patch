@@ -66,7 +66,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -1431,6 +1439,9 @@ configuration file Directives might be:
+@@ -1439,6 +1447,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  

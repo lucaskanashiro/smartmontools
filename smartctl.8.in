@@ -1,7 +1,7 @@
 .ig
  Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
 
- $Id: smartctl.8.in 3530 2012-03-27 19:54:06Z chrfranke $
+ $Id: smartctl.8.in 3561 2012-06-05 19:49:31Z chrfranke $
  
  This program is free software; you can redistribute it and/or modify it
  under the terms of the GNU General Public License as published by the Free
@@ -85,6 +85,9 @@ than the SCSI device used for reading and writing data)!
 Use the forms \fB/dev/disk[0\-9]\fP or equivalently \fBdisk[0\-9]\fP or equivalently
 \fB/dev/rdisk[0\-9]\fP.  Long forms are also available: please use \'\-h\' to see some
 examples. Note that there is currently no Darwin SCSI support.
+
+Use the OS X SAT SMART Driver to access SMART data on SAT capable USB and
+Firewire devices (see INSTALL file).
 .\" %ENDIF OS Darwin
 .\" %IF OS FreeBSD
 .IP \fBFREEBSD\fP: 9
@@ -138,9 +141,13 @@ in the driver. Use \fB"/dev/tw_cli/stdin"\fP or \fB"/dev/tw_cli/clip"\fP
 to parse CLI or 3DM output from standard input or clipboard.
 The option \'\-d 3ware,N\' is not necessary on Windows.
 
-[NEW EXPERIMENTAL SMARTCTL FEATURE] For disks behind Intel Matrix RAID
-driver use \fB"/dev/csmi[0\-9],N"\fP where N specifies the port behind
-the logical scsi controller "\\\\.\\Scsi[0\-9]:".
+For disks behind an Intel ICHxR controller with RST driver use
+\fB"/dev/csmi[0\-9],N"\fP where N specifies the port behind the logical
+scsi controller "\\\\.\\Scsi[0\-9]:".
+
+[NEW EXPERIMENTAL SMARTCTL FEATURE] For SATA disks behind an Areca SATA
+or SAS controller use \fB"/dev/arcmsr[0\-9]"\fP, see \'\-d areca,N[/E]\' below.
+
 The prefix \fB"/dev/"\fP is optional.
 .\" %ENDIF OS Windows Cygwin
 .\" %IF OS Cygwin
@@ -301,7 +308,8 @@ SAT defines two ATA PASS THROUGH SCSI commands, one 12 bytes long and
 the other 16 bytes long.  The default is the 16 byte variant which can be
 overridden with either \'\-d sat,12\' or \'\-d sat,16\'.
 
-If \'-d sat,auto\' is specified, device type SAT (for ATA/SATA disks) is
+[NEW EXPERIMENTAL SMARTCTL FEATURE] If \'-d sat,auto\' is specified,
+device type SAT (for ATA/SATA disks) is
 only used if the SCSI INQUIRY data reports a SATL (VENDOR: "ATA     ").
 Otherwise device type SCSI (for SCSI/SAS disks) is used.
 
@@ -433,12 +441,12 @@ The necessary WRITE LOG commands can not be passed through the SCSI
 interface.
 
 .\" %ENDIF OS FreeBSD Linux
-.\" %IF OS Linux FreeBSD
+.\" %IF OS FreeBSD Linux Windows Cygwin
 .I areca,N
-\- [Linux and FreeBSD only] the device consists of one or more SATA disks connected to an
-Areca SATA RAID controller.  The positive integer N (in the range from 1 to
-24 inclusive) denotes which disk on the controller is monitored.
-.\" %ENDIF OS Linux FreeBSD
+\- [FreeBSD, Linux, Windows and Cygwin only] the device consists of one or more SATA disks
+connected to an Areca SATA RAID controller.  The positive integer N (in the range
+from 1 to 24 inclusive) denotes which disk on the controller is monitored.
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .\" %IF OS Linux
 On Linux use syntax such as:
 .nf
@@ -457,11 +465,22 @@ On FreeBSD use syntax such as:
 \fBsmartctl \-a \-d areca,3 /dev/arcmsr2\fP
 .fi
 .\" %ENDIF OS FreeBSD
+.\" %IF OS Windows Cygwin
+[NEW EXPERIMENTAL SMARTCTL FEATURE] On Windows and Cygwin use syntax such as:
+.nf
+\fBsmartctl \-a \-d areca,2 /dev/arcmsr0\fP
+.fi
+.nf
+\fBsmartctl \-a \-d areca,3 /dev/arcmsr1\fP
+.fi
+.\" %ENDIF OS Windows Cygwin
+.\" %IF OS FreeBSD Linux Windows Cygwin
 The first line above addresses the second disk on the first Areca RAID controller.
 The second line addresses the third disk on the second Areca RAID
 controller.  
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .\" %IF OS Linux
-To help identify the correct device on Linus, use the command:
+To help identify the correct device on Linux, use the command:
 .nf
 \fBcat /proc/scsi/sg/device_hdr /proc/scsi/sg/devices\fP
 .fi
@@ -471,13 +490,21 @@ smartmontools are the ones with the type field equal to 3.  If the
 incorrect device is addressed, please read the warning/error messages
 carefully.  They should provide hints about what devices to use.
 .\" %ENDIF OS Linux
+.\" %IF OS FreeBSD Linux Windows Cygwin
 
-.\" %IF OS Linux FreeBSD
 Important: the Areca controller must have firmware version 1.46 or
 later.  Lower-numbered firmware versions will give (harmless) SCSI
 error messages and no SMART information.
 
-.\" %ENDIF OS Linux FreeBSD
+.I areca,N/E
+\- [FreeBSD, Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTCTL FEATURE] the
+device consists of one or more SATA disks connected to an Areca SAS RAID controller.
+The integer N (range 1 to 128) denotes the channel (slot) and E (range
+1 to 8) denotes the enclosure.
+Important: This requires upcoming Areca SAS controller firmware version 1.51 or a
+recent beta version.
+
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .\" %IF OS FreeBSD Linux
 .I cciss,N
 \- [FreeBSD and Linux only] the device consists of one or more SCSI/SAS disks
@@ -1064,9 +1091,9 @@ This number can be changed by the optional parameter NUM.
 If ',error' is appended and the Extended Comprehensive SMART error
 log is not supported, the Summary SMART self-test log is printed.
 
-Please note that some recent (e.g. Samsung) drives report errors only
-in the Extended Comprehensive SMART error log. The Summary SMART error
-log can be read but is always empty.
+Please note that recent drives may report errors only in the Extended
+Comprehensive SMART error log.  The Summary SMART error log may be reported
+as supported but is always empty then.
 
 .I selftest
 \- [ATA] prints the SMART self\-test log.  The disk maintains a self\-test
@@ -1198,7 +1225,8 @@ and descriptions of the ATA Device Statistics log pages
 entries from all supported pages are printed.  If PAGE 0 is specified,
 the list of supported pages is printed.  Device Statistics was
 introduced in ATA\-8 ACS and is only supported by some recent devices
-(e.g. Intel 320 and 710 Series SSDs).
+(e.g. Hitachi 7K3000, Intel 320, 330 and 710 Series SSDs, Crucial/Micron
+m4 SSDs).
 
 .I sataphy[,reset]
 \- [SATA only] prints values and descriptions of the SATA Phy Event
@@ -1824,7 +1852,7 @@ T13/1699-D Revision 6a (ATA8-ACS).  Note that the subcommands
 \fBWARNING: Only run subcommands documented by the vendor of the
 device.\fP
 
-Example for Intel (X18\-M/X25\-M G2 and 320 Series) SSDs only:
+Example for Intel (X18/X25\-M G2, 320, 520 and 710 Series) SSDs only:
 The subcommand 0x40 (\'\-t vendor,0x40\') clears the timed workload
 related SMART attributes (226, 227, 228).  Note that the raw values of
 these attributes are held at 65535 (0xffff) until the workload timer
@@ -2164,4 +2192,4 @@ Links to these and other documents may be found on the Links page of the
 
 .SH
 SVN ID OF THIS PAGE:
-$Id: smartctl.8.in 3530 2012-03-27 19:54:06Z chrfranke $
+$Id: smartctl.8.in 3561 2012-06-05 19:49:31Z chrfranke $

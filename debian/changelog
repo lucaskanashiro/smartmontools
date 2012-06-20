@@ -1,3 +1,14 @@
+smartmontools (5.42+svn3561-1) unstable; urgency=low
+
+  * [f4e463d] Imported Upstream version 5.42+svn3561
+  * [23f7a2f] Refreshed patches
+  * [16216c8] Fixed FTBFS on kfreebsd.
+    Thanks to Petr Salinger (Closes: #676142)
+  * [6652700] Fixed regression introduced in 10mail script (Closes: #649515)
+  * [fd647e5] Remove /etc/init.d/smartd (Closes: #677095)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Wed, 20 Jun 2012 16:36:24 +0200
+
 smartmontools (5.42+svn3539-1) unstable; urgency=low
 
   * [e165493] Imported Upstream version 5.42+svn3539

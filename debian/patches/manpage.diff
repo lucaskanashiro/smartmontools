@@ -1,7 +1,7 @@
 Fixed example path in man pages
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -1524,7 +1524,7 @@ sleep 30
+@@ -1532,7 +1532,7 @@ sleep 30
  .fi
  
  Some example scripts are distributed with the smartmontools package,

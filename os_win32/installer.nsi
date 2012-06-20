@@ -3,7 +3,7 @@
 ;
 ; Home page of code is: http://smartmontools.sourceforge.net
 ;
-; Copyright (C) 2006-11 Christian Franke <smartmontools-support@lists.sourceforge.net>
+; Copyright (C) 2006-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -13,13 +13,14 @@
 ; You should have received a copy of the GNU General Public License
 ; (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 ;
-; $Id: installer.nsi 3457 2011-10-20 16:36:47Z chrfranke $
+; $Id: installer.nsi 3545 2012-05-25 21:19:03Z chrfranke $
 ;
 
 
 ;--------------------------------------------------------------------
 ; Command line arguments:
-; makensis -DINPDIR=<input-dir> -DOUTFILE=<output-file> -DVERSTR=<version-string> installer.nsi
+; makensis -DINPDIR=<input-dir> -DINPDIR64=<input-dir-64-bit> \
+;   -DOUTFILE=<output-file> -DVERSTR=<version-string> installer.nsi
 
 !ifndef INPDIR
   !define INPDIR "."
@@ -40,11 +41,17 @@ SetCompressor /solid lzma
 XPStyle on
 InstallColors /windows
 
-InstallDir "$PROGRAMFILES\smartmontools"
-InstallDirRegKey HKLM "Software\smartmontools" "Install_Dir"
+; Set in .onInit
+;InstallDir "$PROGRAMFILES\smartmontools"
+;InstallDirRegKey HKLM "Software\smartmontools" "Install_Dir"
 
 Var EDITOR
-Var UBCDDIR
+
+!ifdef INPDIR64
+  Var X64
+  Var INSTDIR32
+  Var INSTDIR64
+!endif
 
 LicenseData "${INPDIR}\doc\COPYING.txt"
 
@@ -61,12 +68,11 @@ RequestExecutionLevel admin
 
 Page license
 Page components
-Page directory SkipProgPath "" ""
-PageEx directory
-  PageCallbacks SkipUBCDPath "" ""
-  DirText "Setup will install the UBCD4Win plugin in the following folder."
-  DirVar $UBCDDIR
-PageExEnd
+!ifdef INPDIR64
+  Page directory CheckX64
+!else
+  Page directory
+!endif
 Page instfiles
 
 UninstPage uninstConfirm
@@ -75,20 +81,41 @@ UninstPage instfiles
 InstType "Full"
 InstType "Extract files only"
 InstType "Drive menu"
-InstType "UBCD4Win plugin"
 
 
 ;--------------------------------------------------------------------
 ; Sections
 
+!ifdef INPDIR64
+  Section "64-bit version (EXPERIMENTAL)" X64_SECTION
+    ; Handled in Function CheckX64
+  SectionEnd
+!endif
+
 SectionGroup "!Program files"
+
+  !macro FileExe path option
+    !ifdef INPDIR64
+      ; Use dummy SetOutPath to control archive location of executables
+      StrCmp $X64 "" +5
+        Goto +2
+          SetOutPath "$INSTDIR\bin64"
+        File ${option} '${INPDIR64}\${path}'
+      GoTo +4
+        Goto +2
+          SetOutPath "$INSTDIR\bin"
+        File ${option} '${INPDIR}\${path}'
+    !else
+      File ${option} '${INPDIR}\${path}'
+    !endif
+  !macroend
 
   Section "smartctl" SMARTCTL_SECTION
 
     SectionIn 1 2
 
     SetOutPath "$INSTDIR\bin"
-    File "${INPDIR}\bin\smartctl.exe"
+    !insertmacro FileExe "bin\smartctl.exe" ""
 
   SectionEnd
 
@@ -105,14 +132,15 @@ SectionGroup "!Program files"
       StrCmp $0 "" nosrv
         ExecWait "net stop smartd" $1
   nosrv:
-    File "${INPDIR}\bin\smartd.exe"
+    !insertmacro FileExe "bin\smartd.exe" ""
 
     IfFileExists "$INSTDIR\bin\smartd.conf" 0 +2
       MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Replace existing configuration file$\n$INSTDIR\bin\smartd.conf ?" IDYES 0 IDNO +2
         File "${INPDIR}\doc\smartd.conf"
 
-    IfFileExists "$WINDIR\system32\cmd.exe" 0 +2
-      File /nonfatal "${INPDIR}\bin\syslogevt.exe"
+    IfFileExists "$WINDIR\system32\cmd.exe" 0 nosysl
+      !insertmacro FileExe "bin\syslogevt.exe" /nonfatal
+    nosysl:
 
     ; Restart service ?
     StrCmp $1 "0" 0 +3
@@ -126,7 +154,7 @@ SectionGroup "!Program files"
     SectionIn 1 2
 
     SetOutPath "$INSTDIR\bin"
-    File "${INPDIR}\bin\smartctl-nc.exe"
+    !insertmacro FileExe "bin\smartctl-nc.exe" ""
 
   SectionEnd
 
@@ -155,7 +183,14 @@ Section "!Documentation" DOC_SECTION
   File "${INPDIR}\doc\README.txt"
   File "${INPDIR}\doc\TODO.txt"
   File "${INPDIR}\doc\WARNINGS.txt"
-  File "${INPDIR}\doc\checksums.txt"
+!ifdef INPDIR64
+  StrCmp $X64 "" +3
+    File "${INPDIR64}\doc\checksums64.txt"
+  GoTo +2
+    File "${INPDIR}\doc\checksums32.txt"
+!else
+  File "${INPDIR}\doc\checksums??.txt"
+!endif
   File "${INPDIR}\doc\smartctl.8.html"
   File "${INPDIR}\doc\smartctl.8.txt"
   File "${INPDIR}\doc\smartd.8.html"
@@ -169,7 +204,7 @@ SectionEnd
 Section "Uninstaller" UNINST_SECTION
 
   SectionIn 1
-  AddSize 35
+  AddSize 40
 
   CreateDirectory "$INSTDIR"
 
@@ -209,10 +244,11 @@ Section "Start Menu Shortcuts" MENU_SECTION
 
   ; runcmdu
   IfFileExists "$INSTDIR\bin\smartctl.exe" 0 +2
-  IfFileExists "$INSTDIR\bin\smartd.exe" 0 +4
+  IfFileExists "$INSTDIR\bin\smartd.exe" 0 noruncmd
     SetOutPath "$INSTDIR\bin"
-    File "${INPDIR}\bin\runcmdu.exe"
+    !insertmacro FileExe "bin\runcmdu.exe" ""
     File "${INPDIR}\bin\runcmdu.exe.manifest"
+  noruncmd:
 
   ; smartctl
   IfFileExists "$INSTDIR\bin\smartctl.exe" 0 noctl
@@ -352,49 +388,6 @@ SectionGroup "Add smartctl to drive menu"
 
 SectionGroupEnd
 
-Section "UBCD4Win Plugin" UBCD_SECTION
-
-  SectionIn 4
-
-  SetOutPath "$UBCDDIR"
-  DetailPrint "Create file: smartmontools.inf"
-  FileOpen $0 "$UBCDDIR\smartmontools.inf" "w"
-  FileWrite $0 '; smartmontools.inf$\r$\n; PE Builder v3 plug-in INF file$\r$\n'
-  FileWrite $0 '; Created by smartmontools installer$\r$\n'
-  FileWrite $0 '; http://smartmontools.sourceforge.net/$\r$\n$\r$\n'
-  FileWrite $0 '[Version]$\r$\nSignature= "$$Windows NT$$"$\r$\n$\r$\n'
-  FileWrite $0 '[PEBuilder]$\r$\nName="Disk -Diagnostic: smartmontools"$\r$\n'
-  FileWrite $0 'Enable=1$\r$\nHelp="files\smartctl.8.html"$\r$\n$\r$\n'
-  FileWrite $0 '[WinntDirectories]$\r$\na=Programs\smartmontools,2$\r$\n$\r$\n'
-  FileWrite $0 '[SourceDisksFolders]$\r$\nfiles=a,,1$\r$\n$\r$\n'
-  FileWrite $0 '[Append]$\r$\nnu2menu.xml, smartmontools_nu2menu.xml$\r$\n'
-  FileClose $0
-
-  DetailPrint "Create file: smartmontools_nu2menu.xml"
-  FileOpen $0 "$UBCDDIR\smartmontools_nu2menu.xml" "w"
-  FileWrite $0 '<!-- Nu2Menu entry for smartmontools -->$\r$\n<NU2MENU>$\r$\n'
-  FileWrite $0 '$\t<MENU ID="Programs">$\r$\n$\t$\t<MITEM TYPE="POPUP" MENUID="Disk Tools">'
-  FileWrite $0 'Disk Tools</MITEM>$\r$\n$\t</MENU>$\r$\n$\t<MENU ID="Disk Tools">$\r$\n'
-  FileWrite $0 '$\t$\t<MITEM TYPE="POPUP" MENUID="Diagnostic">Diagnostic</MITEM>$\r$\n$\t</MENU>'
-  FileWrite $0 '$\r$\n$\t<MENU ID="Diagnostic">$\r$\n$\t$\t<MITEM TYPE="ITEM" DISABLED="'
-  FileWrite $0 '@Not(@FileExists(@GetProgramDrive()\Programs\smartmontools\smartctl.exe))" '
-  FileWrite $0 'CMD="RUN" FUNC="cmd.exe /k cd /d @GetProgramDrive()\Programs\smartmontools&'
-  FileWrite $0 'set PATH=@GetProgramDrive()\Programs\smartmontools;%PATH%  ">'
-  FileWrite $0 'smartctl</MITEM>$\r$\n$\t</MENU>$\r$\n</NU2MENU>$\r$\n'
-  FileClose $0
-  
-  SetOutPath "$UBCDDIR\files"
-  File "${INPDIR}\bin\smartctl.exe"
-  File "${INPDIR}\bin\smartd.exe"
-  File "${INPDIR}\doc\smartctl.8.html"
-  File "${INPDIR}\doc\smartctl.8.txt"
-  File "${INPDIR}\doc\smartd.8.html"
-  File "${INPDIR}\doc\smartd.8.txt"
-  File "${INPDIR}\doc\smartd.conf"
-
-SectionEnd
-
-
 ;--------------------------------------------------------------------
 
 Section "Uninstall"
@@ -457,7 +450,7 @@ Section "Uninstall"
   Delete "$INSTDIR\doc\README.txt"
   Delete "$INSTDIR\doc\TODO.txt"
   Delete "$INSTDIR\doc\WARNINGS.txt"
-  Delete "$INSTDIR\doc\checksums.txt"
+  Delete "$INSTDIR\doc\checksums*.txt"
   Delete "$INSTDIR\doc\smartctl.8.html"
   Delete "$INSTDIR\doc\smartctl.8.txt"
   Delete "$INSTDIR\doc\smartd.8.html"
@@ -506,18 +499,36 @@ SectionEnd
 ;--------------------------------------------------------------------
 ; Functions
 
+!macro AdjustSectionSize section
+  SectionGetSize ${section} $0
+  IntOp $0 $0 / 2
+  SectionSetSize ${section} $0
+!macroend
+
 Function .onInit
+
+  ; Set default install directories
+  StrCmp $INSTDIR "" 0 endinst ; /D=PATH option specified ?
+  ReadRegStr $INSTDIR HKLM "Software\smartmontools" "Install_Dir"
+  StrCmp $INSTDIR "" 0 endinst ; Already installed ?
+    StrCpy $INSTDIR "$PROGRAMFILES\smartmontools"
+!ifdef INPDIR64
+    StrCpy $INSTDIR32 $INSTDIR
+    StrCpy $INSTDIR64 "$PROGRAMFILES64\smartmontools"
+!endif
+  endinst:
+
+!ifdef INPDIR64
+  ; Sizes of binary sections include 32-bit and 64-bit executables
+  !insertmacro AdjustSectionSize ${SMARTCTL_SECTION}
+  !insertmacro AdjustSectionSize ${SMARTD_SECTION}
+  !insertmacro AdjustSectionSize ${SMARTCTL_NC_SECTION}
+!endif
 
   ; Use Notepad++ if installed
   StrCpy $EDITOR "$PROGRAMFILES\Notepad++\notepad++.exe"
   IfFileExists "$EDITOR" +2 0
     StrCpy $EDITOR "notepad.exe"
-
-  ; Get UBCD4Win install location
-  ReadRegStr $0 HKLM "Software\UBCD4Win" "InstallPath"
-  StrCmp $0 "" 0 +2
-    StrCpy $0 "C:\UBCD4Win"
-  StrCpy $UBCDDIR "$0\plugin\Disk\Diagnostic\smartmontools"
 
   ; Hide "Add install dir to PATH" on 9x/ME
   IfFileExists "$WINDIR\system32\cmd.exe" +2 0
@@ -525,6 +536,27 @@ Function .onInit
 
   Call ParseCmdLine
 FunctionEnd
+
+; Check x64 section and update INSTDIR accordingly
+
+!ifdef INPDIR64
+Function CheckX64
+  SectionGetFlags ${X64_SECTION} $0
+  IntOp $0 $0 & ${SF_SELECTED}
+  IntCmp $0 ${SF_SELECTED} x64
+    StrCpy $X64 ""
+    StrCmp $INSTDIR32 "" +3
+      StrCpy $INSTDIR $INSTDIR32
+      StrCpy $INSTDIR32 ""
+    Goto done
+  x64:
+    StrCpy $X64 "t"
+    StrCmp $INSTDIR64 "" +3
+      StrCpy $INSTDIR $INSTDIR64
+      StrCpy $INSTDIR64 ""
+  done:
+FunctionEnd
+!endif
 
 ; Command line parsing
 !macro CheckCmdLineOption name section
@@ -554,6 +586,12 @@ Function ParseCmdLine
   Var /global nomatch
   StrCpy $nomatch "t"
   ; turn sections on or off
+!ifdef INPDIR64
+  !insertmacro CheckCmdLineOption "x64" ${X64_SECTION}
+  Call CheckX64
+  StrCmp $opts "x64" 0 +2
+    Return ; leave sections unchanged if only "x64" is specified
+!endif
   !insertmacro CheckCmdLineOption "smartctl" ${SMARTCTL_SECTION}
   !insertmacro CheckCmdLineOption "smartd" ${SMARTD_SECTION}
   !insertmacro CheckCmdLineOption "smartctlnc" ${SMARTCTL_NC_SECTION}
@@ -569,7 +607,6 @@ Function ParseCmdLine
   !insertmacro CheckCmdLineOption "drive3" ${DRIVE_3_SECTION}
   !insertmacro CheckCmdLineOption "drive4" ${DRIVE_4_SECTION}
   !insertmacro CheckCmdLineOption "drive5" ${DRIVE_5_SECTION}
-  !insertmacro CheckCmdLineOption "ubcd" ${UBCD_SECTION}
   StrCmp $opts "-" done
   StrCmp $nomatch "" done
     StrCpy $0 "$allopts,-" "" 1
@@ -578,45 +615,12 @@ Function ParseCmdLine
 done:
 FunctionEnd
 
-; Directory page callbacks
-
-!macro CheckSection section
-  SectionGetFlags ${section} $0
-  IntOp $0 $0 & 1
-  IntCmp $0 1 done
-!macroend
-
-Function SkipProgPath
-  !insertmacro CheckSection ${SMARTCTL_SECTION}
-  !insertmacro CheckSection ${SMARTCTL_NC_SECTION}
-  !insertmacro CheckSection ${SMARTD_SECTION}
-  !insertmacro CheckSection ${DRIVEDB_SECTION}
-  !insertmacro CheckSection ${DOC_SECTION}
-  !insertmacro CheckSection ${MENU_SECTION}
-  !insertmacro CheckSection ${PATH_SECTION}
-  !insertmacro CheckSection ${DRIVE_0_SECTION}
-  !insertmacro CheckSection ${DRIVE_1_SECTION}
-  !insertmacro CheckSection ${DRIVE_2_SECTION}
-  !insertmacro CheckSection ${DRIVE_3_SECTION}
-  !insertmacro CheckSection ${DRIVE_4_SECTION}
-  !insertmacro CheckSection ${DRIVE_5_SECTION}
-  Abort
-done:
-FunctionEnd
-
-Function SkipUBCDPath
-  !insertmacro CheckSection ${UBCD_SECTION}
-  Abort
-done:
-FunctionEnd
-
-
 ; Install runcmda.exe if missing
 
 Function CheckRunCmdA
   IfFileExists "$INSTDIR\bin\runcmda.exe" done 0
     SetOutPath "$INSTDIR\bin"
-    File "${INPDIR}\bin\runcmda.exe"
+    !insertmacro FileExe "bin\runcmda.exe" ""
     File "${INPDIR}\bin\runcmda.exe.manifest"
   done:
 FunctionEnd
@@ -789,6 +793,10 @@ FunctionEnd
 !endif
 
 Function ShellLinkSetRunAs
+  ; Set archive location of $PLUGINSDIR
+  Goto +2
+    SetOutPath "$INSTDIR"
+
   System::Store S ; push $0-$9, $R0-$R9
   pop $9
   ; $0 = CoCreateInstance(CLSID_ShellLink, 0, CLSCTX_INPROC_SERVER, IID_IShellLink, &$1)

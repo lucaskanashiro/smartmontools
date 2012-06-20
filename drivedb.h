@@ -75,7 +75,7 @@
 /*
 const drive_settings builtin_knowndrives[] = {
  */
-  { "$Id: drivedb.h 3538 2012-05-01 19:45:49Z chrfranke $",
+  { "$Id: drivedb.h 3559 2012-06-05 18:35:10Z chrfranke $",
     "-", "-",
     "This is a dummy entry to hold the SVN-Id of drivedb.h",
     ""
@@ -204,6 +204,7 @@ const drive_settings builtin_knowndrives[] = {
     "KINGSTON SH100S3(120|240)G|" // Hyper-X, SF-2281, tested with SH100S3240G/320ABBF0
     "OCZ[ -](AGILITY2([ -]EX)?|COLOSSUS2|ONYX2|VERTEX(2|-LE))( [123]\\..*)?|" // SF-1200,
       // tested with OCZ-VERTEX2/1.11, OCZ-VERTEX2 3.5/1.11
+    "OCZ-NOCTI|" // mSATA, SF-2100, tested with OCZ-NOCTI/2.15
     "OCZ-REVODRIVE3?( X2)?|" // PCIe, SF-1200/2281, tested with
       // OCZ-REVODRIVE( X2)?/1.20, OCZ-REVODRIVE3 X2/2.11
     "OCZ[ -](VELO|VERTEX2[ -](EX|PRO))( [123]\\..*)?|" // SF-1500, tested with
@@ -450,6 +451,22 @@ const drive_settings builtin_knowndrives[] = {
     "-v 226,raw48,Workld_Media_Wear_Indic "
     "-v 227,raw48,Workld_Host_Reads_Perc "
     "-v 228,raw48,Workload_Minutes "
+  //"-v 232,raw48,Available_Reservd_Space "
+  //"-v 233,raw48,Media_Wearout_Indicator "
+    "-v 241,raw48,Host_Writes_32MiB "
+    "-v 242,raw48,Host_Reads_32MiB "
+    "-v 249,raw48,NAND_Writes_1GiB"
+  },
+  { "Intel 330 Series SSDs", // tested with INTEL SSDSC2CT180A3/300i
+    "INTEL SSDSC2CT(060|120|180)A3",
+    "", "",
+  //"-v 5,raw16(raw16),Reallocated_Sector_Ct "
+    "-v 9,msec24hour32,Power_On_Hours_and_Msec "
+  //"-v 12,raw48,Power_Cycle_Count "
+  //"-v 181,raw48,Program_Fail_Cnt_Total " // ] Missing in 330 specification from April 2012
+  //"-v 182,raw48,Erase_Fail_Count_Total " // ]
+  //"-v 192,raw48,Power-Off_Retract_Count "
+    "-v 225,raw48,Host_Writes_32MiB "
   //"-v 232,raw48,Available_Reservd_Space "
   //"-v 233,raw48,Media_Wearout_Indicator "
     "-v 241,raw48,Host_Writes_32MiB "
@@ -2214,6 +2231,13 @@ const drive_settings builtin_knowndrives[] = {
   // USB ID entries
   ////////////////////////////////////////////////////
 
+  // Hewlett-Packard
+  { "USB: HP Desktop HD BD07; ", // 2TB
+    "0x03f0:0xbd07",
+    "",
+    "",
+    "-d sat"
+  },
   // ALi
   { "USB: ; ALi M5621", // USB->PATA
     "0x0402:0x5621",
@@ -2345,6 +2369,12 @@ const drive_settings builtin_knowndrives[] = {
     "-d usbsunplus"
   },
   // Iomega
+  { "USB: Iomega Prestige Desktop USB 3.0; ",
+    "0x059b:0x0070",
+    "", // 0x0004
+    "",
+    "-d sat" // ATA output registers missing
+  },
   { "USB: Iomega LPHD080-0; ",
     "0x059b:0x0272",
     "",
@@ -2468,7 +2498,7 @@ const drive_settings builtin_knowndrives[] = {
     "0x067b:0x2507",
     "",
     "",
-    "" // unsupported
+    "-d usbjmicron,0" // Port number is required
   },
   { "USB: ; Prolific PL3507", // USB+IEE1394->PATA
     "0x067b:0x3507",
@@ -2746,6 +2776,12 @@ const drive_settings builtin_knowndrives[] = {
     "",
     "-d sat"
   },
+  { "USB: WD My Passport USB 3.0; ",
+    "0x1058:0x0748",
+    "",
+    "",
+    "-d sat"
+  },
   { "USB: WD My Book ES; ",
     "0x1058:0x0906",
     "", // 0x0012
@@ -2819,8 +2855,8 @@ const drive_settings builtin_knowndrives[] = {
     "-d sat"
   },
   { "USB: WD My Book Essential USB 3.0; ", // 3TB
-    "0x1058:0x1130",
-    "", // 0x1012
+    "0x1058:0x11[34]0",
+    "", // 0x1012/0x1003
     "",
     "-d sat"
   },
@@ -3020,12 +3056,25 @@ const drive_settings builtin_knowndrives[] = {
     "",
     "-d usbsunplus"
   },
+  // Unknown: 0x1f75
+  { "USB: Sharkoon SATA QuickDeck Pro; ", // USB 2.0/3.0
+    "0x1f75:0x0888",
+    "", // 0x0034
+    "",
+    "" // unsupported
+  },
   // Hitachi/SimpleTech
   { "USB: Hitachi Touro Desk; JMicron", // 3TB
     "0x4971:0x1011",
     "",
     "",
     "-d usbjmicron"
+  },
+  { "USB: Hitachi Touro Desk 3.0; ", // 2TB
+    "0x4971:0x1015",
+    "", // 0x0000
+    "",
+    "-d sat" // ATA output registers missing
   },
   { "USB: Hitachi/SimpleTech; JMicron", // 1TB
     "0x4971:0xce17",

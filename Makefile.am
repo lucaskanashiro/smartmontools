@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3527 2012-03-25 16:42:24Z chrfranke $
+# $Id: Makefile.am 3545 2012-05-25 21:19:03Z chrfranke $
 #
 
 @SET_MAKE@
@@ -656,7 +656,7 @@ FILES_WIN32 = \
         $(docdir_win32)/README.txt \
         $(docdir_win32)/TODO.txt \
         $(docdir_win32)/WARNINGS.txt \
-        $(docdir_win32)/checksums.txt \
+        $(docdir_win32)/checksums$(win_bits).txt \
         $(docdir_win32)/smartd.conf \
         $(docdir_win32)/smartctl.8.html \
         $(docdir_win32)/smartctl.8.txt \
@@ -708,11 +708,13 @@ if OS_WIN32_NSIS
 # Build NSIS installer
 # Note: Only option character '-' is also compatible with Linux version of makensis
 $(distinst_win32): os_win32/installer.nsi distdir.mkdir $(FILES_WIN32)
+	test -z '$(builddir_win64)' || ( cd $(builddir_win64) && make distdir-win32 )
 	@date=`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`; \
 	rev=`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`; \
 	verstr="$(PACKAGE_VERSION) $$date $$rev "$(BUILD_INFO); \
-	echo "'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$@ -DVERSTR='$$verstr' $<"; \
-	'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) -DOUTFILE=$@ -DVERSTR="$$verstr" $<
+	d64=; test -z '$(builddir_win64)' || d64='-DINPDIR64=$(builddir_win64)/$(PACKAGE)-$(VERSION).win64'; \
+	echo "'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSTR='$$verstr' $<"; \
+	'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSTR="$$verstr" $<
 	md5sum $@ > $@.md5
 	sha1sum $@ > $@.sha1
 	sha256sum $@ > $@.sha256
@@ -772,7 +774,7 @@ $(docdir_win32)/%.conf: $(srcdir)/%.conf
 	$(UNIX2DOS) < $< > $@
 	touch -r $< $@
 
-$(docdir_win32)/checksums.txt: $(EXEFILES_WIN32)
+$(docdir_win32)/checksums$(win_bits).txt: $(EXEFILES_WIN32)
 	(cd $(exedir_win32) && md5sum *.exe && sha1sum *.exe && sha256sum *.exe) \
 	| $(UNIX2DOS) > $@
 
