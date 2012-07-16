@@ -1,3 +1,10 @@
+smartmontools (5.42+svn3561-3) unstable; urgency=high
+
+  * [f10872d] Really fix FTBFS on kfreebsd.
+    Thanks to Petr Salinger (Closes: #677393)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Mon, 16 Jul 2012 15:21:56 +0200
+
 smartmontools (5.42+svn3561-2) unstable; urgency=high
 
   * [743e0f4] Fixed FTBFS in kfreebsd.
