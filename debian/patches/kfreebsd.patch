@@ -11,3 +11,13 @@
  #  include CISS_LOCATION
  #  define _HAVE_CCISS
  #endif
+--- a/os_freebsd.cpp
++++ b/os_freebsd.cpp
+@@ -466,6 +466,7 @@ protected:
+ private:
+   int m_escalade_type; ///< Type string for escalade_command_interface().
+   int m_disknum; ///< Disk number.
++  int m_encnum;  ///< Enclosure number.
+ };
+ 
+ freebsd_escalade_device::freebsd_escalade_device(smart_interface * intf, const char * dev_name,
