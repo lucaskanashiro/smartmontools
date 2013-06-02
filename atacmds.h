@@ -13,8 +13,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -26,7 +25,7 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 3528 2012-03-25 17:13:47Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 3632 2012-10-09 10:10:53Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -67,14 +66,6 @@ typedef enum {
   WRITE_LOG
 } smart_command_set;
 
-// Possible values for fix_firmwarebug.
-enum {
-  FIX_NOTSPECIFIED = 0,
-  FIX_NONE,
-  FIX_SAMSUNG,
-  FIX_SAMSUNG2,
-  FIX_SAMSUNG3
-};
 
 // ATA Specification Command Register Values (Commands)
 #define ATA_CHECK_POWER_MODE            0xe5
@@ -727,6 +718,37 @@ private:
 };
 
 
+// Possible values for firmwarebugs
+enum firmwarebug_t {
+  BUG_NONE = 0,
+  BUG_NOLOGDIR,
+  BUG_SAMSUNG,
+  BUG_SAMSUNG2,
+  BUG_SAMSUNG3,
+  BUG_XERRORLBA
+};
+
+// Set of firmware bugs
+class firmwarebug_defs
+{
+public:
+  firmwarebug_defs()
+    : m_bugs(0) { }
+
+  bool is_set(firmwarebug_t bug) const
+    { return !!(m_bugs & (1 << bug)); }
+
+  void set(firmwarebug_t bug)
+    { m_bugs |= (1 << bug); }
+
+  void set(firmwarebug_defs bugs)
+    { m_bugs |= bugs.m_bugs; }
+
+private:
+  unsigned m_bugs;
+};
+
+
 // Print ATA debug messages?
 extern unsigned char ata_debugmode;
 
@@ -734,7 +756,8 @@ extern unsigned char ata_debugmode;
 extern bool dont_print_serial_number;
 
 // Get information from drive
-int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id);
+int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_swapped_id,
+                      unsigned char * raw_buf = 0);
 int ataCheckPowerMode(ata_device * device);
 
 // Issue a no-data ATA command with optional sector count register value
@@ -747,11 +770,10 @@ bool ata_set_features(ata_device * device, unsigned char features, int sector_co
 int ataReadSmartValues(ata_device * device,struct ata_smart_values *);
 int ataReadSmartThresholds(ata_device * device, struct ata_smart_thresholds_pvt *);
 int ataReadErrorLog (ata_device * device, ata_smart_errorlog *data,
-                     unsigned char fix_firmwarebug);
+                     firmwarebug_defs firmwarebugs);
 int ataReadSelfTestLog(ata_device * device, ata_smart_selftestlog * data,
-                       unsigned char fix_firmwarebug);
+                       firmwarebug_defs firmwarebugs);
 int ataReadSelectiveSelfTestLog(ata_device * device, struct ata_selective_self_test_log *data);
-int ataSetSmartThresholds(ata_device * device, struct ata_smart_thresholds_pvt *);
 int ataReadLogDirectory(ata_device * device, ata_smart_log_directory *, bool gpl);
 
 // Read GP Log page(s)
@@ -763,7 +785,7 @@ bool ataReadSmartLog(ata_device * device, unsigned char logaddr,
                      void * data, unsigned nsectors);
 // Read SMART Extended Comprehensive Error Log
 bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
-                        unsigned nsectors);
+                        unsigned nsectors, firmwarebug_defs firwarebugs);
 // Read SMART Extended Self-test Log
 bool ataReadExtSelfTestLog(ata_device * device, ata_smart_extselftestlog * log,
                            unsigned nsectors);
@@ -799,13 +821,13 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
                                  const ata_smart_values * sv, uint64_t num_sectors,
                                  const ata_selective_selftest_args * prev_spans = 0);
 
-// Returns the latest compatibility of ATA/ATAPI Version the device
-// supports. Returns -1 if Version command is not supported
-int ataVersionInfo(const char ** description, const ata_identify_device * drive, unsigned short * minor);
-
 // Get World Wide Name (WWN) fields.
 // Return NAA field or -1 if WWN is unsupported.
 int ata_get_wwn(const ata_identify_device * id, unsigned & oui, uint64_t & unique_id);
+
+// Get nominal media rotation rate.
+// Returns: 0 = not reported, 1 = SSD, >1 = HDD rpm, < 0 = -(Unknown value)
+int ata_get_rotation_rate(const ata_identify_device * id);
 
 // If SMART supported, this is guaranteed to return 1 if SMART is enabled, else 0.
 int ataDoesSmartWork(ata_device * device);
@@ -883,7 +905,8 @@ std::string ata_format_attr_raw_value(const ata_smart_attribute & attr,
 
 // Get attribute name
 std::string ata_get_smart_attr_name(unsigned char id,
-                                    const ata_vendor_attr_defs & defs);
+                                    const ata_vendor_attr_defs & defs,
+                                    int rpm = 0);
 
 // External handler function, for when a checksum is not correct.  Can
 // simply return if no action is desired, or can print error messages
@@ -897,15 +920,6 @@ int ata_find_attr_index(unsigned char id, const ata_smart_values & smartval);
 // Return Temperature Attribute raw value selected according to possible
 // non-default interpretations. If the Attribute does not exist, return 0
 unsigned char ata_return_temperature_value(const ata_smart_values * data, const ata_vendor_attr_defs & defs);
-
-
-// This are the meanings of the Self-test failure checkpoint byte.
-// This is in the self-test log at offset 4 bytes into the self-test
-// descriptor and in the SMART READ DATA structure at byte offset
-// 371. These codes are not well documented.  The meanings returned by
-// this routine are used (at least) by Maxtor and IBM. Returns NULL if
-// not recognized.
-const char *SelfTestFailureCodeName(unsigned char which);
 
 
 #define MAX_ATTRIBUTE_NUM 256
@@ -924,6 +938,13 @@ unsigned char get_unc_attr_id(bool offline, const ata_vendor_attr_defs & defs,
 // parse_attribute_def().
 std::string create_vendor_attribute_arg_list();
 
+// Parse firmwarebug def (-F option).
+// Return false on error.
+bool parse_firmwarebug_def(const char * opt, firmwarebug_defs & firmwarebugs);
+
+// Return a string of valid argument words for parse_firmwarebug_def()
+const char * get_valid_firmwarebug_args();
+
 
 // These are two of the functions that are defined in os_*.c and need
 // to be ported to get smartmontools onto another OS.
@@ -934,12 +955,6 @@ std::string create_vendor_attribute_arg_list();
 //int highpoint_command_interface(int device, smart_command_set command, int select, char *data);
 //int areca_command_interface(int fd, int disknum, smart_command_set command, int select, char *data);
 
-
-// Optional functions of os_*.c
-#ifdef HAVE_ATA_IDENTIFY_IS_CACHED
-// Return true if OS caches the ATA identify sector
-//int ata_identify_is_cached(int fd);
-#endif
 
 // This function is exported to give low-level capability
 int smartcommandhandler(ata_device * device, smart_command_set command, int select, char *data);
@@ -957,7 +972,7 @@ int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
 
 // Print Smart self-test log, used by smartctl and smartd.
 int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
-                             unsigned char fix_firmwarebug);
+                             firmwarebug_defs firmwarebugs);
 
 // Get capacity and sector sizes from IDENTIFY data
 struct ata_size_info

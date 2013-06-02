@@ -4,5 +4,3 @@
 61_cciss-doc.patch
 63_removable.patch
 manpage.diff
-fix-generic.diff
-kfreebsd.patch

@@ -1,11 +1,11 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3545 2012-05-25 21:19:03Z chrfranke $
+# $Id: Makefile.am 3759 2013-01-26 21:11:02Z chrfranke $
 #
 
 @SET_MAKE@
 
-ACLOCAL_AM_FLAGS = -I m4
+ACLOCAL_AMFLAGS = -I m4
 
 # Make sure .cpp takes precedence to avoid compiling old .c file
 SUFFIXES = .cpp .c .s .o
@@ -34,8 +34,9 @@ if NEED_REGEX
 AM_CPPFLAGS += -I$(srcdir)/regex
 endif
 
-sbin_PROGRAMS = smartd 	\
-		smartctl
+sbin_PROGRAMS = \
+        smartctl \
+        smartd
 
 if ENABLE_DRIVEDB
 if OS_WIN32_MINGW
@@ -45,115 +46,136 @@ endif
 endif
 
 
-smartd_SOURCES =  smartd.cpp      \
-                  atacmdnames.cpp \
-                  atacmdnames.h   \
-                  atacmds.cpp     \
-                  atacmds.h       \
-                  dev_ata_cmd_set.cpp \
-                  dev_ata_cmd_set.h   \
-                  dev_interface.cpp   \
-                  dev_interface.h     \
-                  dev_tunnelled.h     \
-                  drivedb.h           \
-                  int64.h         \
-                  knowndrives.cpp \
-                  knowndrives.h   \
-                  scsicmds.cpp    \
-                  scsicmds.h      \
-                  scsiata.cpp     \
-                  utility.cpp     \
-                  utility.h
+smartctl_SOURCES = \
+        smartctl.cpp \
+        smartctl.h \
+        atacmdnames.cpp \
+        atacmdnames.h \
+        atacmds.cpp \
+        atacmds.h \
+        ataidentify.cpp \
+        ataidentify.h \
+        ataprint.cpp \
+        ataprint.h \
+        dev_ata_cmd_set.cpp \
+        dev_ata_cmd_set.h \
+        dev_interface.cpp \
+        dev_interface.h \
+        dev_tunnelled.h \
+        drivedb.h \
+        int64.h \
+        knowndrives.cpp \
+        knowndrives.h \
+        scsicmds.cpp \
+        scsicmds.h \
+        scsiata.cpp \
+        scsiprint.cpp \
+        scsiprint.h \
+        utility.cpp \
+        utility.h
+
+smartctl_LDADD = @os_deps@ @os_libs@
+smartctl_DEPENDENCIES = @os_deps@
+
+EXTRA_smartctl_SOURCES = \
+        os_darwin.cpp \
+        os_darwin.h \
+        os_linux.cpp \
+        os_linux.h \
+        os_freebsd.cpp \
+        os_freebsd.h \
+        os_netbsd.cpp \
+        os_netbsd.h \
+        os_openbsd.cpp \
+        os_openbsd.h \
+        os_qnxnto.cpp \
+        os_qnxnto.h \
+        os_solaris.cpp \
+        os_solaris.h \
+        os_solaris_ata.s \
+        os_win32.cpp \
+        os_generic.cpp \
+        os_generic.h \
+        cciss.cpp \
+        cciss.h \
+        cissio_freebsd.h \
+        dev_areca.cpp \
+        dev_areca.h \
+        dev_legacy.cpp \
+        megaraid.h
+
+if OS_WIN32_MINGW
+
+smartctl_LDADD        += smartctl_res.o
+smartctl_DEPENDENCIES += smartctl_res.o
+
+endif
+
+
+smartd_SOURCES = \
+        smartd.cpp \
+        atacmdnames.cpp \
+        atacmdnames.h \
+        atacmds.cpp \
+        atacmds.h \
+        dev_ata_cmd_set.cpp \
+        dev_ata_cmd_set.h \
+        dev_interface.cpp \
+        dev_interface.h \
+        dev_tunnelled.h \
+        drivedb.h \
+        int64.h \
+        knowndrives.cpp \
+        knowndrives.h \
+        scsicmds.cpp \
+        scsicmds.h \
+        scsiata.cpp \
+        utility.cpp \
+        utility.h
 
 smartd_LDADD = @os_deps@ @os_libs@ @CAPNG_LDADD@
 smartd_DEPENDENCIES = @os_deps@
 
-EXTRA_smartd_SOURCES = os_darwin.cpp    \
-                       os_darwin.h      \
-                       os_linux.cpp     \
-                       os_linux.h       \
-                       os_freebsd.cpp   \
-                       os_freebsd.h     \
-                       os_netbsd.cpp    \
-                       os_netbsd.h      \
-                       os_openbsd.cpp   \
-                       os_openbsd.h     \
-                       os_qnxnto.cpp    \
-                       os_qnxnto.h      \
-                       os_solaris.cpp   \
-                       os_solaris.h     \
-                       os_solaris_ata.s \
-                       os_win32.cpp     \
-                       os_generic.cpp   \
-                       os_generic.h     \
-                       cciss.cpp        \
-                       cciss.h          \
-                       cissio_freebsd.h \
-                       dev_legacy.cpp   \
-                       megaraid.h
-
+EXTRA_smartd_SOURCES = \
+        os_darwin.cpp \
+        os_darwin.h \
+        os_linux.cpp \
+        os_linux.h \
+        os_freebsd.cpp \
+        os_freebsd.h \
+        os_netbsd.cpp \
+        os_netbsd.h \
+        os_openbsd.cpp \
+        os_openbsd.h \
+        os_qnxnto.cpp \
+        os_qnxnto.h \
+        os_solaris.cpp \
+        os_solaris.h \
+        os_solaris_ata.s \
+        os_win32.cpp \
+        os_generic.cpp \
+        os_generic.h \
+        cciss.cpp \
+        cciss.h \
+        cissio_freebsd.h \
+        dev_areca.cpp \
+        dev_areca.h \
+        dev_legacy.cpp \
+        megaraid.h
 
 if OS_WIN32_MINGW
 
 smartd_SOURCES += \
         os_win32/daemon_win32.cpp \
         os_win32/daemon_win32.h \
-        os_win32/hostname_win32.cpp \
-        os_win32/hostname_win32.h \
         os_win32/syslog_win32.cpp \
         os_win32/syslog.h
 
+smartd_LDADD        += smartd_res.o
+smartd_DEPENDENCIES += smartd_res.o
+
 endif
 
-smartctl_SOURCES= smartctl.cpp    \
-                  smartctl.h      \
-                  atacmdnames.cpp \
-                  atacmdnames.h   \
-                  atacmds.cpp     \
-                  atacmds.h       \
-                  ataprint.cpp    \
-                  ataprint.h      \
-                  dev_ata_cmd_set.cpp \
-                  dev_ata_cmd_set.h   \
-                  dev_interface.cpp   \
-                  dev_interface.h     \
-                  dev_tunnelled.h     \
-                  drivedb.h           \
-                  int64.h         \
-                  knowndrives.cpp \
-                  knowndrives.h   \
-                  scsicmds.cpp    \
-                  scsicmds.h      \
-                  scsiata.cpp     \
-                  scsiprint.cpp   \
-                  scsiprint.h     \
-                  utility.cpp     \
-                  utility.h
-
-
-smartctl_LDADD = @os_deps@ @os_libs@
-smartctl_DEPENDENCIES = @os_deps@
-
-EXTRA_smartctl_SOURCES = os_linux.cpp \
-                       os_linux.h     \
-                       os_freebsd.cpp \
-                       os_freebsd.h   \
-                       os_netbsd.cpp  \
-                       os_netbsd.h    \
-                       os_openbsd.cpp \
-                       os_openbsd.h   \
-                       os_qnxnto.cpp  \
-                       os_qnxnto.h    \
-                       os_solaris.cpp \
-                       os_solaris.h   \
-                       os_win32.cpp   \
-                       os_generic.cpp \
-                       os_generic.h   \
-                       cciss.cpp      \
-                       cciss.h        \
-                       cissio_freebsd.h \
-                       dev_legacy.cpp \
-                       megaraid.h
 
 if NEED_GETOPT_LONG
 
@@ -270,15 +292,17 @@ man_MANS =        smartd.conf.5 \
 endif
 
 docsdir=$(docdir)
-docs_DATA = AUTHORS     \
-            CHANGELOG   \
-            COPYING     \
-            INSTALL     \
-            NEWS        \
-            README      \
-            TODO        \
-            WARNINGS    \
-            smartd.conf
+docs_DATA = \
+        AUTHORS \
+        ChangeLog \
+        ChangeLog-5.0-6.0 \
+        COPYING \
+        INSTALL \
+        NEWS \
+        README \
+        TODO \
+        WARNINGS \
+        smartd.conf
 
 examplesdir=$(exampledir)
 examples_DATA = \
@@ -321,6 +345,10 @@ uninstall-sysconfDATA:
 	echo " rm -f $$f"; \
 	rm -f "$$f"
 
+# automake does not allow 'sysconf_SCRIPTS'
+sysscriptdir = $(sysconfdir)
+sysscript_SCRIPTS = smartd_warning.sh
+
 EXTRA_DIST = \
         autogen.sh \
         smartd.initd.in \
@@ -330,6 +358,7 @@ EXTRA_DIST = \
         smartd.conf.5.in \
         smartd.conf \
         smartd.service.in \
+        smartd_warning.sh.in \
         update-smart-drivedb.in \
         m4/pkg.m4 \
         os_darwin/SMART.in \
@@ -339,10 +368,13 @@ EXTRA_DIST = \
         os_win32/runcmd.c \
         os_win32/runcmda.exe.manifest \
         os_win32/runcmdu.exe.manifest \
-        os_win32/syslogevt.c \
+        os_win32/smartctl_res.rc.in \
+        os_win32/smartd_res.rc.in \
+        os_win32/smartd_warning.cmd \
         os_win32/syslogevt.mc \
         os_win32/update-smart-drivedb.nsi \
         os_win32/wbemcli_small.h \
+        os_win32/wtssendmsg.c \
         $(docs_DATA) \
         $(examples_DATA) \
         $(examples_SCRIPTS)
@@ -363,6 +395,7 @@ CLEANFILES = \
         smartd.initd \
         smartd.freebsd.initd \
         smartd.service \
+        smartd_warning.sh \
         svnversion.h \
         update-smart-drivedb \
         SMART
@@ -386,7 +419,7 @@ utility.o: svnversion.h
 
 if IS_SVN_BUILD
 # Get version info from SVN
-svnversion.h: CHANGELOG Makefile $(svn_deps)
+svnversion.h: ChangeLog Makefile $(svn_deps)
 	echo '/* svnversion.h.  Generated by Makefile from svn info.  */' > $@
 	(cd $(srcdir) \
 	 && svnversion 2>/dev/null | sed -n 's,^\([0-9].*\),REV  "\1",p' \
@@ -396,9 +429,9 @@ svnversion.h: CHANGELOG Makefile $(svn_deps)
 else
 
 # SVN not available, guess version info from Id strings
-svnversion.h: CHANGELOG Makefile
+svnversion.h: ChangeLog Makefile
 	echo '/* svnversion.h.  Generated by Makefile from Id strings.  */' > $@
-	(cd $(srcdir) && cat CHANGELOG Makefile.am configure.in smart*.in *.cpp *.h *.s) \
+	(cd $(srcdir) && cat ChangeLog Makefile.am configure.ac smart*.in *.cpp *.h *.s) \
 	| sed -n 's,^.*\$$[I][d]: [^ ]* \([0-9][0-9]* [0-9][-0-9]* [0-9][:0-9]*\)[^:0-9][^$$]*\$$.*$$,\1,p' \
 	| sort -n -r \
 	| sed -n 'h;s,^\([^ ]*\) .*$$,REV  "\1",p;g;s,^[^ ]* \([^ ]*\) .*$$,DATE "\1",p;g;s,^[^ ]* [^ ]* \([^ ]*\)$$,TIME "\1",p;q' \
@@ -424,6 +457,9 @@ update-smart-drivedb: update-smart-drivedb.in config.status
 	$(SHELL) ./config.status --file=$@
 	chmod +x $@
 
+smartd_warning.sh: smartd_warning.sh.in config.status
+	$(SHELL) ./config.status --file=$@
+	chmod +x $@
 
 if INSTALL_INITSCRIPT
 if OS_DARWIN
@@ -494,8 +530,8 @@ systemdsystemunit_DATA = smartd.service
 endif
 
 smartd.service: smartd.service.in Makefile
-	sed "s|/usr/local/sbin/smartd|$(sbindir)/smartd|g; \
-	     s|/usr/local/etc/sysconfig/smartmontools|$(sysconfdir)/sysconfig/smartmontools|g" \
+	sed -e 's|/usr/local/sbin/smartd|$(sbindir)/smartd|g' \
+	    -e 's|/usr/local/etc/sysconfig/smartmontools|$(sysconfdir)/sysconfig/smartmontools|g' \
 	$(srcdir)/smartd.service.in > $@
 
 if ENABLE_CAPABILITIES
@@ -523,17 +559,18 @@ MAN_ATTRIBUTELOG = sed '/^\.\\" %IF ENABLE_ATTRIBUTELOG/,/^\.\\" %ENDIF ENABLE_A
 endif
 
 MAN_FILTER = \
-    sed "s|CURRENT_SVN_VERSION|$(releaseversion)|g; \
-         s|CURRENT_SVN_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g; \
-         s|CURRENT_SVN_REV|`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`|g; \
-         s|/usr/local/share/man/|$(mandir)/|g; \
-         s|/usr/local/sbin/|$(sbindir)/|g; \
-         s|/usr/local/etc/rc\\.d/init.d/|$(initddir)/|g; \
-         s|/usr/local/share/doc/smartmontools/examplescripts/|!exampledir!|g; \
-         s|/usr/local/share/doc/smartmontools/|$(docsdir)/|g; \
-         s|!exampledir!|$(exampledir)/|g; \
-         s|/usr/local/etc/smartd\\.conf|$(sysconfdir)/smartd.conf|g; \
-         s|/usr/local/etc/smart_drivedb\\.h|$(sysconfdir)/smart_drivedb\\.h|g" | \
+    sed -e 's|CURRENT_SVN_VERSION|$(releaseversion)|g' \
+        -e "s|CURRENT_SVN_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g" \
+        -e "s|CURRENT_SVN_REV|`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`|g" \
+        -e 's|/usr/local/share/man/|$(mandir)/|g' \
+        -e 's|/usr/local/sbin/|$(sbindir)/|g' \
+        -e 's|/usr/local/etc/rc\.d/init.d/|$(initddir)/|g' \
+        -e 's|/usr/local/share/doc/smartmontools/examplescripts/|!exampledir!|g' \
+        -e 's|/usr/local/share/doc/smartmontools/|$(docsdir)/|g' \
+        -e 's|!exampledir!|$(exampledir)/|g' \
+        -e 's|/usr/local/etc/smartd\.conf|$(sysconfdir)/smartd.conf|g' \
+        -e 's|/usr/local/etc/smartd_warning\.|$(sysconfdir)/smartd_warning.|g' \
+        -e 's|/usr/local/etc/smart_drivedb\.h|$(sysconfdir)/smart_drivedb.h|g' | \
     $(MAN_ATTRIBUTELOG) | \
     $(MAN_CAPABILITIES) | \
     $(MAN_DRIVEDB) | \
@@ -567,11 +604,11 @@ MAN2HTML = man2html
 MAN2TXT = groff -man -Tascii -P'-bcou'
 
 # Remove HTTP header and fix links in man2html output
-FIXHTML = sed '1s,^Content-type.*,,' \
-        | sed 's,<A HREF="http://[-a-z/]*/man2html?\([1-8]\)+\(smart[cd][.a-z]*\)">,<A HREF="\2.\1.html">,g' \
-        | sed 's,<A HREF="http://[-a-z/]*/man2html">,<A HREF=".">,g' \
-        | sed 's,<A HREF="http://[-a-z/]*/man2html?[^"]*">\([^<]*\)</A>,\1,g' \
-        | sed 's,<A HREF="mailto:[^s][^m][^a][^"]*">\([^<]*\)</A>,\1,g'
+FIXHTML = sed -e '1s,^Content-type.*,,' \
+              -e 's,<A HREF="[^"]*/man2html?\([1-8]\)+\(smart[cd][.a-z]*\)">,<A HREF="\2.\1.html">,g' \
+              -e 's,<A HREF="[^"]*/man2html">,<A HREF=".">,g' \
+              -e 's,<A HREF="[^"]*/man2html?[^"]*">\([^<]*\)</A>,\1,g' \
+              -e 's,<A HREF="mailto:[^s][^m][^a][^"]*">\([^<]*\)</A>,\1,g'
 
 # Convert man pages into .html and .txt
 
@@ -612,6 +649,30 @@ check:
 
 
 if OS_WIN32_MINGW
+# Windows resources
+
+smartctl_res.o: smartctl_res.rc
+	$(WINDRES) $< $@
+
+smartd_res.o: smartd_res.rc syslogevt.rc
+	$(WINDRES) -I. $< $@
+
+# Convert version for VERSIONINFO resource: 6.1 r3754 -> 6.1.0.3754
+WIN_RC_FILTER = \
+    ( ver=`echo '$(PACKAGE_VERSION).0' | sed -n 's,^\([0-9]*\.[0-9]*\.[0-9]*\).*$$,\1,p'`; \
+      rev=`sed -n 's,^.*REV[^"]*"\([0-9]*\).*$$,\1,p' svnversion.h`; \
+      txtver="$${ver:-0.0.0}.$${rev:-0}"; binver=`echo "$$txtver" | sed 's|\.|,|g'`; \
+      sed -e "s|@BINARY_VERSION@|$$binver|g" -e "s|@TEXT_VERSION@|$$txtver|g"; )
+
+smartctl_res.rc: os_win32/smartctl_res.rc.in Makefile svnversion.h
+	cat $< | $(WIN_RC_FILTER) > $@
+
+smartd_res.rc: os_win32/smartd_res.rc.in Makefile svnversion.h
+	cat $< | $(WIN_RC_FILTER) > $@
+
+syslogevt.rc: os_win32/syslogevt.mc
+	$(WINDMC) -b $<
+
 # Definitions for Windows distribution
 
 if OS_WIN64
@@ -631,13 +692,10 @@ EXEFILES_WIN32 = \
         $(exedir_win32)/smartctl.exe \
         $(exedir_win32)/smartctl-nc.exe \
         $(exedir_win32)/smartd.exe \
+        $(exedir_win32)/smartd_warning.cmd \
         $(exedir_win32)/runcmda.exe \
-        $(exedir_win32)/runcmdu.exe
-
-if OS_WIN32_WINDMC
-EXEFILES_WIN32 += \
-        $(exedir_win32)/syslogevt.exe
-endif
+        $(exedir_win32)/runcmdu.exe \
+        $(exedir_win32)/wtssendmsg.exe
 
 if ENABLE_DRIVEDB
 if OS_WIN32_NSIS
@@ -649,7 +707,8 @@ endif
 FILES_WIN32 = \
         $(EXEFILES_WIN32) \
         $(docdir_win32)/AUTHORS.txt \
-        $(docdir_win32)/CHANGELOG.txt \
+        $(docdir_win32)/ChangeLog.txt \
+        $(docdir_win32)/ChangeLog-5.0-6.0.txt \
         $(docdir_win32)/COPYING.txt \
         $(docdir_win32)/INSTALL.txt \
         $(docdir_win32)/NEWS.txt \
@@ -676,8 +735,11 @@ CLEANFILES += \
         $(FILES_WIN32) \
         runcmdu.exe \
         smartctl-nc.exe smartctl-nc.exe.tmp \
-        syslogevt.exe syslogevt.h syslogevt.o \
-        syslogevt.res.o syslogevt.rc syslogevt_*.bin \
+        smartctl_res.rc smartctl_res.o \
+        smartd_res.rc smartd_res.o \
+        syslogevt.h syslogevt.o \
+        syslogevt.rc syslogevt_*.bin \
+        wtssendmsg.exe \
         update-smart-drivedb.exe \
         distdir.mkdir
 
@@ -758,6 +820,10 @@ $(exedir_win32)/%.exe.manifest: $(srcdir)/os_win32/%.exe.manifest
 	$(UNIX2DOS) < $< > $@
 	touch -r $< $@
 
+$(exedir_win32)/%.cmd: $(srcdir)/os_win32/%.cmd
+	$(UNIX2DOS) < $< > $@
+	touch -r $< $@
+
 $(docdir_win32)/%.html: %.html
 	$(UNIX2DOS) < $< > $@
 	touch -r $< $@
@@ -794,36 +860,32 @@ smartctl-nc.exe: smartctl.exe
 	  else echo "EXE patch failed"; exit 1; fi
 	mv -f $@.tmp $@
 
-# Build runcmd?.exe
+# Build runcmd?.exe and wtssendmsg.exe
 runcmdu.exe: os_win32/runcmd.c
 	$(CC) -Os -o $@ $<
 
-if OS_WIN32_WINDMC
-# Build syslogevt.exe event message file tool
+wtssendmsg.exe: os_win32/wtssendmsg.c
+	$(CC) -Os -o $@ $< -lwtsapi32
 
-syslogevt.exe: syslogevt.o syslogevt.res.o
-	$(LINK) $^
+# Build os_win32/vc10/{config.h,smart*.rc,svnversion.h} for MSVC10 from MinGW files
 
-syslogevt.o: os_win32/syslogevt.c syslogevt.rc
-	$(CC) -c -I. -Os -o $@ $<
+config-vc10: $(srcdir)/os_win32/vc10/config.h \
+             $(srcdir)/os_win32/vc10/smartctl_res.rc \
+             $(srcdir)/os_win32/vc10/smartd_res.rc \
+             $(srcdir)/os_win32/vc10/svnversion.h
 
-syslogevt.res.o: syslogevt.rc
-	$(WINDRES) $< $@
-
-syslogevt.rc: os_win32/syslogevt.mc
-	$(WINDMC) -b $<
-endif
-
-# Build {config,svnversion}_vc10.h for MSVC10 from MinGW {config,svnversion}.h
-
-config-vc10: $(srcdir)/os_win32/config_vc10.h  $(srcdir)/os_win32/svnversion_vc10.h
-
-$(srcdir)/os_win32/config_vc10.h: config.h Makefile
-	sed -e '1i/* config_vc10.h.  Generated from config.h by Makefile.  */' \
+$(srcdir)/os_win32/vc10/config.h: config.h Makefile
+	sed -e '1i/* os_win32/vc10/config.h.  Generated from config.h by Makefile.  */' \
 	    -e 's,^#define HAVE_\(ATTR_PACKED\|GETTIMEOFDAY\|INTTYPES_H\|[DK_]*NTDDDISK_H\|STRINGS_H\|STRTOULL\|UNISTD_H\|WORKING_SNPRINTF\) 1$$,/* #undef HAVE_\1 */,' \
 	    -e 's,^\(#define SMARTMONTOOLS_BUILD_HOST "[^-]*\)[^"]*,\1-pc-w32vc10,' $< > $@
 
-$(srcdir)/os_win32/svnversion_vc10.h: svnversion.h
+$(srcdir)/os_win32/vc10/svnversion.h: svnversion.h
+	cp $< $@
+
+$(srcdir)/os_win32/vc10/smartctl_res.rc: smartctl_res.rc
+	cp $< $@
+
+$(srcdir)/os_win32/vc10/smartd_res.rc: smartd_res.rc
 	cp $< $@
 
 endif

@@ -7,7 +7,7 @@
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * Additional SCSI work:
- * Copyright (C) 2003-10 Douglas Gilbert <dgilbert@interlog.com>
+ * Copyright (C) 2003-13 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,8 +15,8 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -29,7 +29,7 @@
 #ifndef SCSI_PRINT_H_
 #define SCSI_PRINT_H_
 
-#define SCSIPRINT_H_CVSID "$Id: scsiprint.h 3413 2011-09-06 21:23:00Z dpgilbert $\n"
+#define SCSIPRINT_H_CVSID "$Id: scsiprint.h 3776 2013-02-17 04:25:42Z dpgilbert $\n"
 
 // Options for scsiPrintMain
 struct scsi_print_options
@@ -49,8 +49,12 @@ struct scsi_print_options
   bool smart_short_selftest, smart_short_cap_selftest;
   bool smart_extend_selftest, smart_extend_cap_selftest;
   bool smart_selftest_abort;
+  bool smart_selftest_force; // Ignore already running test
 
   bool sasphy, sasphy_reset;
+  
+  bool get_wce, get_rcd;
+  short int set_wce, set_rcd;  // disable(-1), enable(1) cache
 
   scsi_print_options()
     : drive_info(false),
@@ -66,7 +70,10 @@ struct scsi_print_options
       smart_short_selftest(false), smart_short_cap_selftest(false),
       smart_extend_selftest(false), smart_extend_cap_selftest(false),
       smart_selftest_abort(false),
-      sasphy(false), sasphy_reset(false)
+      smart_selftest_force(false),
+      sasphy(false), sasphy_reset(false),
+      get_wce(false), get_rcd(false),
+      set_wce(0), set_rcd(0)
     { }
 };
 

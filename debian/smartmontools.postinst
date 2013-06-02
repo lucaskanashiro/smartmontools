@@ -12,6 +12,6 @@ if dpkg --compare-versions "$2" lt "5.38+svn2879-1"; then
 fi
 
 dpkg-maintscript-helper rm_conffile \
-	/etc/init.d/smartd  5.42+svn3539-1~ smartmontools -- "$@" 
+	/etc/init.d/smartd 6.1+svn3812-1~ smartmontools -- "$@" 
 
 #DEBHELPER#

@@ -13,8 +13,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -26,7 +25,7 @@
 #ifndef ATAPRINT_H_
 #define ATAPRINT_H_
 
-#define ATAPRINT_H_CVSID "$Id: ataprint.h 3530 2012-03-27 19:54:06Z chrfranke $\n"
+#define ATAPRINT_H_CVSID "$Id: ataprint.h 3609 2012-09-20 21:24:43Z chrfranke $\n"
 
 #include <vector>
 
@@ -47,6 +46,7 @@ struct ata_log_request
 struct ata_print_options
 {
   bool drive_info;
+  int identify_word_level, identify_bit_level;
   bool smart_check_status;
   bool smart_general_values;
   bool smart_vendor_attrib;
@@ -84,7 +84,7 @@ struct ata_print_options
   enum { FMT_BRIEF = 0x01, FMT_HEX_ID = 0x02, FMT_HEX_VAL = 0x04 };
   unsigned char output_format; // FMT_* flags
 
-  unsigned char fix_firmwarebug; // FIX_*, see atacmds.h
+  firmwarebug_defs firmwarebugs; // -F options
   bool fix_swapped_id; // Fix swapped ID strings returned by some buggy drivers
 
   ata_vendor_attr_defs attribute_defs; // -v options
@@ -109,6 +109,7 @@ struct ata_print_options
 
   ata_print_options()
     : drive_info(false),
+      identify_word_level(-1), identify_bit_level(-1),
       smart_check_status(false),
       smart_general_values(false),
       smart_vendor_attrib(false),
@@ -131,7 +132,6 @@ struct ata_print_options
       smart_selftest_type(-1), smart_selftest_force(false),
       sct_temp_int(0), sct_temp_int_pers(false),
       output_format(0),
-      fix_firmwarebug(FIX_NOTSPECIFIED),
       fix_swapped_id(false),
       ignore_presets(false),
       show_presets(false),

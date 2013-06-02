@@ -2,7 +2,7 @@
 set -e
 
 dpkg-maintscript-helper rm_conffile \
-        /etc/init.d/smartd  5.42+svn3539-1~ smartmontools -- "$@"
+        /etc/init.d/smartd 6.1+svn3812-1~ smartmontools -- "$@"
 
 #DEBHELPER#
 

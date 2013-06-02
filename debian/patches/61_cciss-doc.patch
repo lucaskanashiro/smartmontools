@@ -8,7 +8,7 @@ minor exceptions
 
 --- a/smartd.8.in
 +++ b/smartd.8.in
-@@ -161,6 +161,10 @@ below).
+@@ -153,6 +153,10 @@ Directive in the configuration file; see
  .SH 
  OPTIONS
  
@@ -18,10 +18,10 @@ minor exceptions
 +
  .TP
  .B \-A PREFIX, \-\-attributelog=PREFIX
- [ATA only] Writes \fBsmartd\fP attribute information (normalized and raw
+ Writes \fBsmartd\fP attribute information (normalized and raw
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -91,6 +91,12 @@ DEVICESCAN -n standby -m root -M exec /u
+@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /u
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -36,7 +36,7 @@ minor exceptions
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -132,10 +132,11 @@ Section below!
+@@ -97,10 +97,11 @@ Section below!
  .B # This is an example smartd startup config file
  .B # /usr/local/etc/smartd.conf for monitoring three
  .B # ATA disks, three SCSI disks, six ATA disks
@@ -52,8 +52,8 @@ minor exceptions
  .B # device, four SATA disks connected to an Areca
  .B # RAID controller, and one SATA disk.
  .B #
-@@ -206,6 +207,13 @@ Section below!
- .B \ \ /dev/twl0 -d 3ware,1 -a -s L/../../7/02
+@@ -178,6 +179,13 @@ Section below!
+ .\" %ENDIF OS FreeBSD
  .B #
  .nf
 +.B # Monitor 2 disks connected to the first HP SmartArray controller which
@@ -66,7 +66,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -1439,6 +1447,9 @@ configuration file Directives might be:
+@@ -1497,6 +1505,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  

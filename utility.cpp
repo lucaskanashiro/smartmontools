@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-12 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -13,8 +13,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -53,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 3500 2012-01-01 18:03:36Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 3739 2013-01-01 16:32:48Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -91,7 +90,7 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
       "(build date "__DATE__")" // checkout without expansion of Id keywords
 #endif
       " [%s] "BUILD_INFO"\n"
-    "Copyright (C) 2002-12 by Bruce Allen, http://smartmontools.sourceforge.net\n",
+    "Copyright (C) 2002-13, Bruce Allen, Christian Franke, www.smartmontools.org\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -503,27 +502,6 @@ int split_report_arg(char *s, int *i)
   return 0;
 }
 
-// same as above but sets *i to -1 if missing , argument
-int split_report_arg2(char *s, int *i){
-  char *tailptr;
-  s+=6;
-
-  if (*s=='\0' || !isdigit((int)*s)) { 
-    // What's left must be integer
-    *i=-1;
-    return 1;
-  }
-
-  errno = 0;
-  *i = (int) strtol(s, &tailptr, 10);
-  if (errno || *tailptr != '\0') {
-    *i=-1;
-    return 1;
-  }
-
-  return 0;
-}
-
 #ifndef HAVE_STRTOULL
 // Replacement for missing strtoull() (Linux with libc < 6, MSVC)
 // Functionality reduced to requirements of smartd and split_selective_arg().
@@ -617,6 +595,8 @@ int split_selective_arg(char *s, uint64_t *start,
       return 0;
     }
   }
+
+  errno = 0;
   *stop = strtoull(s+1, &tailptr, 0);
   if (errno || *tailptr != '\0')
     return 1;
@@ -702,33 +682,6 @@ bool nonempty(const void * data, int size)
     if (((const unsigned char *)data)[i])
       return true;
   return false;
-}
-
-
-// This routine converts an integer number of milliseconds into a test
-// string of the form Xd+Yh+Zm+Ts.msec.  The resulting text string is
-// written to the array.
-void MsecToText(unsigned int msec, char *txt){
-  unsigned int days, hours, min, sec;
-
-  days       = msec/86400000U;
-  msec      -= days*86400000U;
-
-  hours      = msec/3600000U; 
-  msec      -= hours*3600000U;
-
-  min        = msec/60000U;
-  msec      -= min*60000U;
-
-  sec        = msec/1000U;
-  msec      -= sec*1000U;
-
-  if (days) {
-    txt += sprintf(txt, "%2dd+", (int)days);
-  }
-
-  sprintf(txt, "%02d:%02d:%02d.%03d", (int)hours, (int)min, (int)sec, (int)msec);  
-  return;
 }
 
 // Format integer with thousands separator

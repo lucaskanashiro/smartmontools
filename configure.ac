@@ -1,15 +1,15 @@
 #
-# $Id: configure.in 3527 2012-03-25 16:42:24Z chrfranke $
+# $Id: configure.ac 3811 2013-04-20 17:10:41Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
-AC_INIT(smartmontools, 5.43, smartmontools-support@lists.sourceforge.net)
+AC_INIT(smartmontools, 6.2, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
 smartmontools_configure_date=`date -u +'%Y-%m-%d %T %Z'`
-smartmontools_cvs_tag=`echo '$Id: configure.in 3527 2012-03-25 16:42:24Z chrfranke $'`
-smartmontools_release_date=2011-10-20
-smartmontools_release_time="19:19:34 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.ac 3811 2013-04-20 17:10:41Z chrfranke $'`
+smartmontools_release_date=2013-03-16
+smartmontools_release_time="14:35:27 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_DATE, "$smartmontools_configure_date", [smartmontools Configure Date])
@@ -48,8 +48,8 @@ case "${host}" in
     /usr/bin/uname | grep -i '^CYGWIN' >/dev/null; then
       AC_MSG_ERROR([Build with MinGW on Cygwin requires cross-compilation, see INSTALL file.])
     fi
-    AC_CHECK_PROGS(WINDMC, [${host}-windmc windmc])
-    AC_CHECK_PROGS(WINDRES, [${host}-windres windres])
+    AC_CHECK_TOOL(WINDMC, [windmc])
+    AC_CHECK_TOOL(WINDRES, [windres])
 
     AC_MSG_CHECKING([checking for makensis])
     if test -z "$MAKENSIS"; then
@@ -79,14 +79,6 @@ fi
 AC_SUBST([svn_deps])
 AM_CONDITIONAL(IS_SVN_BUILD, [test "$is_svn_build" = "yes"])
 AC_MSG_RESULT([$is_svn_build])
-
-dnl Checks for libraries needed for name services (Solaris needs
-dnl libnsl, might in the future also need libsocket)
-#  AC_SEARCH_LIBS (FUNCTION, SEARCH-LIBS, [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND], [OTHER-LIBRARIES])
-AC_SEARCH_LIBS(socket, socket)
-AC_SEARCH_LIBS(gethostbyname, nsl)
-AC_SEARCH_LIBS(getaddrinfo, nsl)
-AC_SEARCH_LIBS(getdomainname, nsl)
 
 # Note: On Linux, clock_gettime() requires -lrt which implies -lpthreads
 # Check ommitted for now, gettimeofday() provides reasonable precision
@@ -134,10 +126,6 @@ AM_CONDITIONAL(NEED_GETOPT_LONG, [test "$need_getopt_long" = "yes"])
 AC_CHECK_FUNCS([regcomp], [need_regex=no], [need_regex=yes])
 AM_CONDITIONAL(NEED_REGEX, [test "$need_regex" = "yes"])
 
-AC_CHECK_FUNCS([getdomainname])
-AC_CHECK_FUNCS([gethostname])
-AC_CHECK_FUNCS([getaddrinfo])
-AC_CHECK_FUNCS([gethostbyname])
 AC_CHECK_FUNCS([sigset])
 AC_CHECK_FUNCS([strtoull])
 AC_CHECK_FUNCS([uname])
@@ -347,7 +335,10 @@ AC_SUBST(smartmontools_release_time)
 # Set platform-specific modules and symbols
 os_libs=
 os_dltools='curl wget lynx'
-os_mailer=
+os_mailer=mail
+os_hostname="'hostname'"
+os_dnsdomainname=
+os_nisdomainname="'domainname'"
 os_darwin=no
 os_solaris=no
 os_win32=no
@@ -356,11 +347,13 @@ os_win64=no
 os_man_filter=
 case "${host}" in
   *-*-linux*)
-    os_deps='os_linux.o cciss.o'
+    os_deps='os_linux.o cciss.o dev_areca.o'
+    os_dnsdomainname="'dnsdomainname' 'hostname -d'"
+    os_nisdomainname="'nisdomainname' 'hostname -y' 'domainname'"
     os_man_filter=Linux
     ;;
   *-*-freebsd*|*-*-dragonfly*|*-*-kfreebsd*-gnu*)
-    os_deps='os_freebsd.o cciss.o'
+    os_deps='os_freebsd.o cciss.o dev_areca.o'
     os_libs='-lcam'
     os_dltools='curl wget lynx fetch'
     AC_CHECK_LIB(usb, libusb20_dev_get_device_desc)
@@ -390,19 +383,22 @@ case "${host}" in
     os_man_filter=OpenBSD
     ;;
   *-*-cygwin*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
+    os_hostname="'hostname' 'echo "'"${HOSTNAME?unset}"'"'"
+    os_dnsdomainname="'dnsdomainname' 'hostname -d' 'echo "'"${USERDNSDOMAIN?unset}"'"'"
+    os_nisdomainname=
     os_win32=yes
     os_man_filter=Cygwin
     ;;
   x86_64-*-mingw*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
     os_win32=yes
     os_win32_mingw=yes
     os_win64=yes
     os_man_filter=Windows
     ;;
   *-*-mingw*)
-    os_deps='os_win32.o'
+    os_deps='os_win32.o dev_areca.o'
     os_win32=yes
     os_win32_mingw=yes
     os_man_filter=Windows
@@ -439,10 +435,11 @@ AC_MSG_RESULT([$os_new_interface])
 AC_SUBST([os_deps])
 AC_SUBST([os_libs])
 AC_SUBST([os_dltools])
+AC_SUBST([os_mailer])
+AC_SUBST([os_hostname])
+AC_SUBST([os_dnsdomainname])
+AC_SUBST([os_nisdomainname])
 AC_SUBST([os_man_filter])
-if test -n "$os_mailer"; then
-  AC_DEFINE_UNQUOTED(DEFAULT_MAILER, "$os_mailer", [Default mailer if "mail" is unavailable])
-fi
 
 # Create drivedb.h update branch name from version: 5.41[.X] -> RELEASE_5_41_DRIVEDB
 DRIVEDB_BRANCH=`echo $VERSION | sed 's,^\([[0-9]]*\.[[0-9]]*\)\..*$,\1,' \
@@ -458,7 +455,6 @@ AM_CONDITIONAL(OS_SOLARIS, [test "$os_solaris" = "yes"])
 AM_CONDITIONAL(OS_WIN32, [test "$os_win32" = "yes"])
 AM_CONDITIONAL(OS_WIN32_MINGW, [test "$os_win32_mingw" = "yes"])
 AM_CONDITIONAL(OS_WIN32_NSIS, [test -n "$MAKENSIS"])
-AM_CONDITIONAL(OS_WIN32_WINDMC, [test -n "$WINDMC" && test "$WINDMC" != "no" && test -n "$WINDRES"])
 AM_CONDITIONAL(OS_WIN64, [test "$os_win64" = "yes"])
 
 dnl Add -Wall and -W if using g++ and its not already specified.
@@ -548,6 +544,7 @@ case "$host_os" in
     fi
     echo "local drive database:   `eval eval eval echo $sysconfdir`/smart_drivedb.h" >&AS_MESSAGE_FD
     echo "smartd config file:     `eval eval eval echo $sysconfdir`/smartd.conf${smartd_suffix}" >&AS_MESSAGE_FD
+    echo "smartd warning script:  `eval eval eval echo $sysconfdir`/smartd_warning.sh" >&AS_MESSAGE_FD
     if test -n "$initddir"; then
       echo "smartd initd script:    `eval eval eval echo $initddir`/smartd${smartd_suffix}" >&AS_MESSAGE_FD
     elif test -z "$systemdsystemunitdir"; then

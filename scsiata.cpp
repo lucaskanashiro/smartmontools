@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2006-12 Douglas Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2009-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2009-13 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -12,8 +12,8 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * The code in this file is based on the SCSI to ATA Translation (SAT)
  * draft found at http://www.t10.org . The original draft used for this
@@ -62,7 +62,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3519 2012-03-06 20:01:44Z chrfranke $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3741 2013-01-02 17:06:54Z chrfranke $";
 
 /* This is a slightly stretched SCSI sense "descriptor" format header.
    The addition is to allow the 0x70 and 0x71 response codes. The idea
@@ -91,12 +91,6 @@ struct sg_scsi_sense_hdr {
    codes 0x70 and 0x71 (fixed format). */
 static int sg_scsi_normalize_sense(const unsigned char * sensep, int sb_len,
                                    struct sg_scsi_sense_hdr * sshp);
-
-/* Attempt to find the first SCSI sense data descriptor that matches the
-   given 'desc_type'. If found return pointer to start of sense data
-   descriptor; otherwise (including fixed format sense data) returns NULL. */
-static const unsigned char * sg_scsi_sense_desc_find(const unsigned char * sensep,
-                                                     int sense_len, int desc_type);
 
 #define SAT_ATA_PASSTHROUGH_12LEN 12
 #define SAT_ATA_PASSTHROUGH_16LEN 16
@@ -147,6 +141,8 @@ sat_device::sat_device(smart_interface * intf, scsi_device * scsidev,
     hide_ata(); // Start as SCSI, switch to ATA in autodetect_open()
   else
     hide_scsi(); // ATA always
+  if (strcmp(scsidev->get_dev_type(), "scsi"))
+    set_info().dev_type += strprintf("+%s", scsidev->get_dev_type());
 
   set_info().info_name = strprintf("%s [%sSAT]", scsidev->get_info_name(),
                                    (enable_auto ? "SCSI/" : ""));
@@ -232,10 +228,12 @@ sat_device::~sat_device() throw()
 
 bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 {
-  if (!ata_cmd_is_ok(in,
-    true, // data_out_support
-    true, // multi_sector_support
-    true) // ata_48bit_support
+  if (!ata_cmd_is_supported(in,
+    ata_device::supports_data_out |
+    ata_device::supports_output_regs |
+    ata_device::supports_multi_sector |
+    ata_device::supports_48bit,
+    "SAT")
   )
     return false;
 
@@ -532,32 +530,6 @@ static int sg_scsi_normalize_sense(const unsigned char * sensep, int sb_len,
         }
     }
     return 1;
-}
-
-
-static const unsigned char * sg_scsi_sense_desc_find(const unsigned char * sensep,
-                                                     int sense_len, int desc_type)
-{
-    int add_sen_len, add_len, desc_len, k;
-    const unsigned char * descp;
-
-    if ((sense_len < 8) || (0 == (add_sen_len = sensep[7])))
-        return NULL;
-    if ((sensep[0] < 0x72) || (sensep[0] > 0x73))
-        return NULL;
-    add_sen_len = (add_sen_len < (sense_len - 8)) ?
-                         add_sen_len : (sense_len - 8);
-    descp = &sensep[8];
-    for (desc_len = 0, k = 0; k < add_sen_len; k += desc_len) {
-        descp += desc_len;
-        add_len = (k < (add_sen_len - 1)) ? descp[1]: -1;
-        desc_len = add_len + 2;
-        if (descp[0] == desc_type)
-            return descp;
-        if (add_len < 0) /* short descriptor ?? */
-            break;
-    }
-    return NULL;
 }
 
 
@@ -925,7 +897,8 @@ class usbjmicron_device
 {
 public:
   usbjmicron_device(smart_interface * intf, scsi_device * scsidev,
-                    const char * req_type, bool ata_48bit_support, int port);
+                    const char * req_type, bool prolific,
+                    bool ata_48bit_support, int port);
 
   virtual ~usbjmicron_device() throw();
 
@@ -936,16 +909,19 @@ public:
 private:
   bool get_registers(unsigned short addr, unsigned char * buf, unsigned short size);
 
+  bool m_prolific;
   bool m_ata_48bit_support;
   int m_port;
 };
 
 
 usbjmicron_device::usbjmicron_device(smart_interface * intf, scsi_device * scsidev,
-                                     const char * req_type, bool ata_48bit_support, int port)
+                                     const char * req_type, bool prolific,
+                                     bool ata_48bit_support, int port)
 : smart_device(intf, scsidev->get_dev_name(), "usbjmicron", req_type),
   tunnelled_device<ata_device, scsi_device>(scsidev),
-  m_ata_48bit_support(ata_48bit_support), m_port(port)
+  m_prolific(prolific), m_ata_48bit_support(ata_48bit_support),
+  m_port(port >= 0 || !prolific ? port : 0)
 {
   set_info().info_name = strprintf("%s [USB JMicron]", scsidev->get_info_name());
 }
@@ -989,23 +965,13 @@ bool usbjmicron_device::open()
 
 bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 {
-  if (!ata_cmd_is_ok(in,
-    true,  // data_out_support
-    false, // !multi_sector_support
-    m_ata_48bit_support) // limited, see below
+  if (!ata_cmd_is_supported(in,
+    ata_device::supports_data_out |
+    ata_device::supports_smart_status |
+    (m_ata_48bit_support ? ata_device::supports_48bit_hi_null : 0),
+    "JMicron")
   )
     return false;
-
-  bool is_smart_status = (   in.in_regs.command  == ATA_SMART_CMD
-                          && in.in_regs.features == ATA_SMART_STATUS);
-
-  // Support output registers for SMART STATUS
-  if (in.out_needed.is_set() && !is_smart_status)
-    return set_err(ENOSYS, "ATA output registers not supported");
-
-  // Support 48-bit commands with zero high bytes
-  if (in.in_regs.is_real_48bit_cmd())
-    return set_err(ENOSYS, "48-bit ATA commands not fully supported");
 
   if (m_port < 0)
     return set_err(EIO, "Unknown JMicron port");
@@ -1015,6 +981,9 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
 
   bool rwbit = true;
   unsigned char smart_status = 0;
+
+  bool is_smart_status = (   in.in_regs.command  == ATA_SMART_CMD
+                          && in.in_regs.features == ATA_SMART_STATUS);
 
   if (is_smart_status && in.out_needed.is_set()) {
     io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
@@ -1042,7 +1011,7 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
   }
 
   // Build pass through command
-  unsigned char cdb[12];
+  unsigned char cdb[14];
   cdb[ 0] = 0xdf;
   cdb[ 1] = (rwbit ? 0x10 : 0x00);
   cdb[ 2] = 0x00;
@@ -1055,9 +1024,12 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
   cdb[ 9] = in.in_regs.lba_high;
   cdb[10] = in.in_regs.device | (m_port == 0 ? 0xa0 : 0xb0);
   cdb[11] = in.in_regs.command;
+  // Prolific PL3507
+  cdb[12] = 0x06;
+  cdb[13] = 0x7b;
 
   io_hdr.cmnd = cdb;
-  io_hdr.cmnd_len = sizeof(cdb);
+  io_hdr.cmnd_len = (!m_prolific ? 12 : 14);
 
   scsi_device * scsidev = get_tunnel_dev();
   if (!scsi_pass_through_and_check(scsidev, &io_hdr,
@@ -1104,7 +1076,7 @@ bool usbjmicron_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
 bool usbjmicron_device::get_registers(unsigned short addr,
                                       unsigned char * buf, unsigned short size)
 {
-  unsigned char cdb[12];
+  unsigned char cdb[14];
   cdb[ 0] = 0xdf;
   cdb[ 1] = 0x10;
   cdb[ 2] = 0x00;
@@ -1117,6 +1089,9 @@ bool usbjmicron_device::get_registers(unsigned short addr,
   cdb[ 9] = 0x00;
   cdb[10] = 0x00;
   cdb[11] = 0xfd;
+  // Prolific PL3507
+  cdb[12] = 0x06;
+  cdb[13] = 0x7b;
 
   scsi_cmnd_io io_hdr;
   memset(&io_hdr, 0, sizeof(io_hdr));
@@ -1125,6 +1100,7 @@ bool usbjmicron_device::get_registers(unsigned short addr,
   io_hdr.dxferp = buf;
   io_hdr.cmnd = cdb;
   io_hdr.cmnd_len = sizeof(cdb);
+  io_hdr.cmnd_len = (!m_prolific ? 12 : 14);
 
   scsi_device * scsidev = get_tunnel_dev();
   if (!scsi_pass_through_and_check(scsidev, &io_hdr,
@@ -1169,10 +1145,11 @@ usbsunplus_device::~usbsunplus_device() throw()
 
 bool usbsunplus_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
 {
-  if (!ata_cmd_is_ok(in,
-    true,  // data_out_support
-    false, // !multi_sector_support
-    true)  // ata_48bit_support
+  if (!ata_cmd_is_supported(in,
+    ata_device::supports_data_out |
+    ata_device::supports_output_regs |
+    ata_device::supports_48bit,
+    "Sunplus")
   )
     return false;
 
@@ -1325,6 +1302,11 @@ ata_device * smart_interface::get_sat_device(const char * type, scsi_device * sc
 
   else if (!strncmp(type, "usbjmicron", 10)) {
     const char * t = type + 10;
+    bool prolific = false;
+    if (!strncmp(t, ",p", 2)) {
+      t += 2;
+      prolific = true;
+    }
     bool ata_48bit_support = false;
     if (!strncmp(t, ",x", 2)) {
       t += 2;
@@ -1333,10 +1315,10 @@ ata_device * smart_interface::get_sat_device(const char * type, scsi_device * sc
     int port = -1, n = -1;
     if (*t && !(  (sscanf(t, ",%d%n", &port, &n) == 1
                 && n == (int)strlen(t) && 0 <= port && port <= 1))) {
-      set_err(EINVAL, "Option '-d usbmicron[,x],<n>' requires <n> to be 0 or 1");
+      set_err(EINVAL, "Option '-d usbjmicron[,p][,x],<n>' requires <n> to be 0 or 1");
       return 0;
     }
-    return new usbjmicron_device(this, scsidev, type, ata_48bit_support, port);
+    return new usbjmicron_device(this, scsidev, type, prolific, ata_48bit_support, port);
   }
 
   else if (!strcmp(type, "usbsunplus")) {

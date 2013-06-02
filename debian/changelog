@@ -1,3 +1,28 @@
+smartmontools (6.1+svn3812-1) unstable; urgency=low
+
+  * [ee38a43] Imported Upstream version 6.1+svn3812 (Closes: #691646)
+    - Support for WD MyBook Essential 0x1058:0x0910 (Closes: #633724)
+    - Added  USB bridge to known IDs (Closes: #643928)
+    - Added support for Seagate Expansion Desk external (usb) disks
+      (Closes: #621411)
+  * [1855d63] Refreshed patches and removed patches applied upstream
+  * [d3fc9d1] Remove quilt from depends
+  * [841c1a8] CHANGELOG file has been renamed, install Changelog
+  * [3502e16] Updated VCS control fields
+  * [8f14e44] debian/rules: Provide build-arch and build-indep
+  * [0f1c16c] Harden smartmontools binaries
+  * [555346e] Bump to 3.9.4 standards version
+  * [5ae3fa9] Use /var/lib/smartmontools/drivedb for drivedb.h updates
+    (Closes: #706909)
+  * [c16ffdc] Create  /var/lib/smartmontools/drivedb dir
+  * [79a3dc2] Trigger the removal of /etc/init.d/smartd when upgrading
+    (Closes: #684617, #704081)
+  * [a0a5725] Also remove /etc/init.d/smartd in preinst script
+  * [a26a490] Added man page for update-smart-drivedb.
+    Thanks to Hannes von Haugwitz (Closes: #708433)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sun, 02 Jun 2013 11:14:02 +0200
+
 smartmontools (5.42+svn3561-3) unstable; urgency=high
 
   * [f10872d] Really fix FTBFS on kfreebsd.

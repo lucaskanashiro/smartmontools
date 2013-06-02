@@ -1,11 +1,73 @@
 smartmontools NEWS
 ------------------
-$Id: NEWS 3557 2012-06-04 19:50:21Z chrfranke $
+$Id: NEWS 3808 2013-04-18 17:30:12Z chrfranke $
 
 The most up-to-date version of this file is:
 http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/NEWS?view=markup
 
 Date <Not released yet, please try current SVN>
+Summary: smartmontools release 6.2
+-----------------------------------------------------------
+- Cygwin: 64-bit compile fixes.
+
+Date 2013-03-16
+Summary: smartmontools release 6.1
+-----------------------------------------------------------
+- smartctl '-l directory': improved output format.
+- smartctl: Fix parsing of '-l select,cont+SIZE' option.
+- smartctl prints ATA Additional Product Id (OEM Id).
+- smartctl '-s/-g wcache' for SCSI devices to control write cache.
+- smartctl '-s/-g rcache' for SCSI devices to control read cache.
+- smartctl prints more info for SCSI devices: media rotation rate,
+  form factor, physical block size, lowest LBA alignement,
+  logical block provisioning, disk protection type
+  and selftest progress status.
+- smartctl '--identify' updated for latest ATA ACS-3 spec.
+- smartd runs /etc/smartd_warning.sh to generate warning emails
+  (Windows: smartd_warning.cmd).
+- smartd '-w PATH' option to specify this executable.
+- smartd '-d ignore' directive.
+- smartd DEVICESCAN ignores devices already specified.
+- smartd: added support for state persistence ('-s') and attribute logging
+  ('-A') for SCSI devices.
+- smartd '-W' directive uses ATA attribute 190 if 194 is missing.
+- Support of larger SCSI defect lists via READ DEFECT(12).
+- Device type '-d usbjmicron,p' for Prolific USB bridges.
+- Many HDD, SSD and USB additions to drive database.
+- Linux: Support for SAS disks behind Areca controllers.
+- Linux: Improved support for SATA disks on LSI/Megaraid controllers
+- Linux: disks on MegaRaid controllers are automatically scanned
+- FreeBSD: Support for SAS disks behind Areca controllers.
+- FreeBSD: Enhanced ATA command support for 3ware.
+- FreeBSD: Support for 3ware 9750 (/dev/twsX).
+- FreeBSD: Fixed support for 48-bit ATA commands on legacy controllers
+  with ATACAM driver.
+- FreeBSD: Improved support for SAS/SCSI disks on LSI/Megaraid controllers.
+- Windows: smartd.conf '-M exec' supports path names with spaces.
+- Windows: Tool wtssendmsg.exe to handle smartd.conf '-m console'.
+- Windows: DEVICESCAN now supports up to 128 drives.
+- Windows: smartctl.exe and smartd.exe include VERSIONINFO resource.
+- Windows: smartd.exe includes MESSAGETABLE resource.
+- Windows: syslogevt.exe is no longer provided.
+
+Date 2012-10-10
+Summary: smartmontools release 6.0
+-----------------------------------------------------------
+- option/directive '-F nologdir' and '-F xerrorlba'.
+- smartctl '--identify' option.
+- smartctl prints nominal media rotation rate (ATA).
+- smartctl prints SATA version and speed.
+- smartctl '-l sataphy' works for CD/DVD drives also.
+- smartctl '-x' includes ATA Device Statistics.
+- smartd warning emails include device identify info.
+- smartd '-d' output is flushed to support redirection.
+- HDD, SSD and USB additions to drive database.
+- Windows smartd: smartd.conf directives '-m console',
+  '-m active', '-m connected'.
+- Windows: Support for SAS disks behind Areca controllers.
+- Windows: Win9x/ME and NT4 are no longer supported.
+
+Date 2012-06-30
 Summary: smartmontools release 5.43
 -----------------------------------------------------------
 - smartctl options '-g, --get' and '-s, --set' to get/set
@@ -21,7 +83,8 @@ Summary: smartmontools release 5.43
 - Controller-independent SAT detection: '-d sat,auto[+TYPE]'.
 - smartd.conf DEFAULT directive.
 - Many HDD, SSD and USB additions to drive database.
-- Linux and FreeBSD: Support for SATA disks behind Areca SAS controllers.
+- Linux and FreeBSD: Support for SATA disks behind Areca SAS
+  RAID controllers and HP Smart Array controllers.
 - Windows: Support for SATA disks behind Areca controllers.
 - Windows smartd: directives '-l offlinests,ns' and
   '-l selfteststs,ns'.

@@ -13,8 +13,7 @@
  * any later version.
  *
  * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free
- * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
  *
  * This code was originally developed as a Senior Thesis by Michael Cornwell
  * at the Concurrent Systems Laboratory (now part of the Storage Systems
@@ -41,10 +40,6 @@
 #include <sys/param.h>
 #endif
 
-#if defined(__QNXNTO__) 
-#include <new> // TODO: Why is this include necessary on QNX ?
-#endif
-
 #include "int64.h"
 #include "atacmds.h"
 #include "dev_interface.h"
@@ -55,7 +50,7 @@
 #include "smartctl.h"
 #include "utility.h"
 
-const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 3531 2012-03-27 20:02:25Z chrfranke $"
+const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 3726 2012-12-12 20:02:48Z chrfranke $"
   CONFIG_H_CVSID SMARTCTL_H_CVSID;
 
 // Globals to control printing
@@ -87,8 +82,10 @@ static void Usage()
 "         Print license, copyright, and version information and exit\n\n"
 "  -i, --info\n"
 "         Show identity information for device\n\n"
+"  --identify[=[w][nvb]]\n"
+"         Show words and bits from IDENTIFY DEVICE data                (ATA)\n\n"
 "  -g NAME, --get=NAME\n"
-"        Get device setting: all, aam, apm, lookahead, security, wcache\n\n"
+"        Get device setting: all, aam, apm, lookahead, security, wcache, rcache\n\n"
 "  -a, --all\n"
 "         Show all SMART information for device\n\n"
 "  -x, --xall\n"
@@ -124,7 +121,7 @@ static void Usage()
 "  -s NAME[,VALUE], --set=NAME[,VALUE]\n"
 "        Enable/disable/change device setting: aam,[N|off], apm,[N|off],\n"
 "        lookahead,[on|off], security-freeze, standby,[N|off|now],\n"
-"        wcache,[on|off]\n\n"
+"        wcache,[on|off], rcache,[on|off]\n\n"
   );
   printf(
 "======================================= READ AND DISPLAY DATA OPTIONS =====\n\n"
@@ -146,13 +143,14 @@ static void Usage()
 "  -v N,OPTION , --vendorattribute=N,OPTION                            (ATA)\n"
 "        Set display OPTION for vendor Attribute N (see man page)\n\n"
 "  -F TYPE, --firmwarebug=TYPE                                         (ATA)\n"
-"        Use firmware bug workaround: none, samsung, samsung2,\n"
-"                                     samsung3, swapid\n\n"
+"        Use firmware bug workaround:\n"
+"        %s, swapid\n\n"
 "  -P TYPE, --presets=TYPE                                             (ATA)\n"
 "        Drive-specific presets: use, ignore, show, showall\n\n"
 "  -B [+]FILE, --drivedb=[+]FILE                                       (ATA)\n"
 "        Read and replace [add] drive database from FILE\n"
 "        [default is +%s",
+    get_valid_firmwarebug_args(),
     get_drivedb_path_add()
   );
 #ifdef SMARTMONTOOLS_DRIVEDBDIR
@@ -179,7 +177,7 @@ static void Usage()
 }
 
 // Values for  --long only options, see parse_options()
-enum { opt_scan = 1000, opt_scan_open, opt_set, opt_smart };
+enum { opt_identify = 1000, opt_scan, opt_scan_open, opt_set, opt_smart };
 
 /* Returns a string containing a formatted list of the valid arguments
    to the option opt or empty on failure. Note 'v' case different */
@@ -214,18 +212,20 @@ static std::string getvalidarglist(int opt)
     return "offline, short, long, conveyance, force, vendor,N, select,M-N, "
            "pending,N, afterselect,[on|off]";
   case 'F':
-    return "none, samsung, samsung2, samsung3, swapid";
+    return std::string(get_valid_firmwarebug_args()) + ", swapid";
   case 'n':
     return "never, sleep, standby, idle";
   case 'f':
     return "old, brief, hex[,id|val]";
   case 'g':
-    return "aam, apm, lookahead, security, wcache";
+    return "aam, apm, lookahead, security, wcache, rcache";
   case opt_set:
     return "aam,[N|off], apm,[N|off], lookahead,[on|off], security-freeze, "
-           "standby,[N|off|now], wcache,[on|off]";
+           "standby,[N|off|now], wcache,[on|off], rcache,[on|off]";
   case 's':
     return getvalidarglist(opt_smart)+", "+getvalidarglist(opt_set);
+  case opt_identify:
+    return "n, wn, w, v, wv, wb";
   case 'v':
   default:
     return "";
@@ -300,6 +300,7 @@ static const char * parse_options(int argc, char** argv,
     { "drivedb",         required_argument, 0, 'B' },
     { "format",          required_argument, 0, 'f' },
     { "get",             required_argument, 0, 'g' },
+    { "identify",        optional_argument, 0, opt_identify },
     { "set",             required_argument, 0, opt_set },
     { "scan",            no_argument,       0, opt_scan      },
     { "scan-open",       no_argument,       0, opt_scan_open },
@@ -439,19 +440,10 @@ static const char * parse_options(int argc, char** argv,
       scsiopts.smart_ss_media_log = true;
       break;
     case 'F':
-      if (!strcmp(optarg,"none")) {
-        ataopts.fix_firmwarebug = FIX_NONE;
-      } else if (!strcmp(optarg,"samsung")) {
-        ataopts.fix_firmwarebug = FIX_SAMSUNG;
-      } else if (!strcmp(optarg,"samsung2")) {
-        ataopts.fix_firmwarebug = FIX_SAMSUNG2;
-      } else if (!strcmp(optarg,"samsung3")) {
-        ataopts.fix_firmwarebug = FIX_SAMSUNG3;
-      } else if (!strcmp(optarg,"swapid")) {
+      if (!strcmp(optarg, "swapid"))
         ataopts.fix_swapped_id = true;
-      } else {
+      else if (!parse_firmwarebug_def(optarg, ataopts.firmwarebugs))
         badarg = true;
-      }
       break;
     case 'c':
       ataopts.smart_general_values = true;
@@ -498,7 +490,7 @@ static const char * parse_options(int argc, char** argv,
         unsigned interval = 0; int n1 = -1, n2 = -1, len = strlen(optarg);
         if (!(   sscanf(optarg,"scttempint,%u%n,p%n", &interval, &n1, &n2) == 1
               && 0 < interval && interval <= 0xffff && (n1 == len || n2 == len))) {
-            strcpy(extraerror, "Option -l scttempint,N[,p] must have positive integer N\n");
+            snprintf(extraerror, sizeof(extraerror), "Option -l scttempint,N[,p] must have positive integer N\n");
             badarg = true;
         }
         ataopts.sct_temp_int = interval;
@@ -554,7 +546,7 @@ static const char * parse_options(int argc, char** argv,
           ataopts.sct_erc_writetime = wt;
         }
         else {
-          sprintf(extraerror, "Option -l scterc,[READTIME,WRITETIME] syntax error\n");
+          snprintf(extraerror, sizeof(extraerror), "Option -l scterc,[READTIME,WRITETIME] syntax error\n");
           badarg = true;
         }
       } else if (   !strncmp(optarg, "gplog,"   , sizeof("gplog,"   )-1)
@@ -570,14 +562,14 @@ static const char * parse_options(int argc, char** argv,
         const char * erropt = (gpl ? "gplog" : "smartlog");
         if (!(   n1 == len || n2 == len
               || (n3 == len && (sign == '+' || sign == '-')))) {
-          sprintf(extraerror, "Option -l %s,ADDR[,FIRST[-LAST|+SIZE]] syntax error\n", erropt);
+          snprintf(extraerror, sizeof(extraerror), "Option -l %s,ADDR[,FIRST[-LAST|+SIZE]] syntax error\n", erropt);
           badarg = true;
         }
         else if (!(    logaddr <= 0xff && page <= (gpl ? 0xffffU : 0x00ffU)
                    && 0 < nsectors
                    && (nsectors <= (gpl ? 0xffffU : 0xffU) || nsectors == ~0U)
                    && (sign != '-' || page <= nsectors)                       )) {
-          sprintf(extraerror, "Option -l %s,ADDR[,FIRST[-LAST|+SIZE]] parameter out of range\n", erropt);
+          snprintf(extraerror, sizeof(extraerror), "Option -l %s,ADDR[,FIRST[-LAST|+SIZE]] parameter out of range\n", erropt);
           badarg = true;
         }
         else {
@@ -593,6 +585,22 @@ static const char * parse_options(int argc, char** argv,
     case 'i':
       ataopts.drive_info = scsiopts.drive_info = true;
       break;
+
+    case opt_identify:
+      ataopts.identify_word_level = ataopts.identify_bit_level = 0;
+      if (optarg) {
+        for (int i = 0; optarg[i]; i++) {
+          switch (optarg[i]) {
+            case 'w': ataopts.identify_word_level = 1; break;
+            case 'n': ataopts.identify_bit_level = -1; break;
+            case 'v': ataopts.identify_bit_level = 1; break;
+            case 'b': ataopts.identify_bit_level = 2; break;
+            default: badarg = true;
+          }
+        }
+      }
+      break;
+
     case 'a':
       ataopts.drive_info           = scsiopts.drive_info          = true;
       ataopts.smart_check_status   = scsiopts.smart_check_status  = true;
@@ -618,11 +626,13 @@ static const char * parse_options(int argc, char** argv,
       ataopts.smart_logdir = ataopts.gp_logdir = true;
       ataopts.sct_temp_sts = ataopts.sct_temp_hist = true;
       ataopts.sct_erc_get = true;
+      ataopts.devstat_all_pages = true;
       ataopts.sataphy = true;
       ataopts.get_set_used = true;
       ataopts.get_aam = ataopts.get_apm = true;
       ataopts.get_security = true;
       ataopts.get_lookahead = ataopts.get_wcache = true;
+      scsiopts.get_rcd = scsiopts.get_wce = true;
       scsiopts.smart_background_log = true;
       scsiopts.smart_ss_media_log = true;
       scsiopts.sasphy = true;
@@ -680,6 +690,7 @@ static const char * parse_options(int argc, char** argv,
         ataopts.smart_selftest_type = CONVEYANCE_SELF_TEST;
       } else if (!strcmp(optarg,"force")) {
         ataopts.smart_selftest_force = true;
+        scsiopts.smart_selftest_force = true;
       } else if (!strcmp(optarg,"afterselect,on")) {
         // scan remainder of disk after doing selected segment
         ataopts.smart_selective_args.scan_after_select = 2;
@@ -693,10 +704,10 @@ static const char * parse_options(int argc, char** argv,
 	errno=0;
 	i=(int)strtol(optarg+strlen("pending,"), &tailptr, 10);
 	if (errno || *tailptr != '\0') {
-	  sprintf(extraerror, "Option -t pending,N requires N to be a non-negative integer\n");
+          snprintf(extraerror, sizeof(extraerror), "Option -t pending,N requires N to be a non-negative integer\n");
           badarg = true;
 	} else if (i<0 || i>65535) {
-	  sprintf(extraerror, "Option -t pending,N (N=%d) must have 0 <= N <= 65535\n", i);
+          snprintf(extraerror, sizeof(extraerror), "Option -t pending,N (N=%d) must have 0 <= N <= 65535\n", i);
           badarg = true;
 	} else {
           ataopts.smart_selective_args.pending_time = i+1;
@@ -707,15 +718,15 @@ static const char * parse_options(int argc, char** argv,
         // parse range of LBAs to test
         uint64_t start, stop; int mode;
         if (split_selective_arg(optarg, &start, &stop, &mode)) {
-	  sprintf(extraerror, "Option -t select,M-N must have non-negative integer M and N\n");
+          snprintf(extraerror, sizeof(extraerror), "Option -t select,M-N must have non-negative integer M and N\n");
           badarg = true;
         } else {
           if (ataopts.smart_selective_args.num_spans >= 5 || start > stop) {
             if (start > stop) {
-              sprintf(extraerror, "ERROR: Start LBA (%"PRIu64") > ending LBA (%"PRId64") in argument \"%s\"\n",
+              snprintf(extraerror, sizeof(extraerror), "ERROR: Start LBA (%"PRIu64") > ending LBA (%"PRId64") in argument \"%s\"\n",
                 start, stop, optarg);
             } else {
-              sprintf(extraerror,"ERROR: No more than five selective self-test spans may be"
+              snprintf(extraerror, sizeof(extraerror),"ERROR: No more than five selective self-test spans may be"
                 " defined\n");
             }
             badarg = true;
@@ -727,13 +738,13 @@ static const char * parse_options(int argc, char** argv,
           ataopts.smart_selftest_type = SELECTIVE_SELF_TEST;
         }
       } else if (!strncmp(optarg, "scttempint", sizeof("scstempint")-1)) {
-        strcpy(extraerror, "-t scttempint is no longer supported, use -l scttempint instead\n");
+        snprintf(extraerror, sizeof(extraerror), "-t scttempint is no longer supported, use -l scttempint instead\n");
         badarg = true;
       } else if (!strncmp(optarg, "vendor,", sizeof("vendor,")-1)) {
         unsigned subcmd = ~0U; int n = -1;
         if (!(   sscanf(optarg, "%*[a-z],0x%x%n", &subcmd, &n) == 1
               && subcmd <= 0xff && n == (int)strlen(optarg))) {
-          strcpy(extraerror, "Option -t vendor,0xNN syntax error\n");
+          snprintf(extraerror, sizeof(extraerror), "Option -t vendor,0xNN syntax error\n");
           badarg = true;
         }
         else
@@ -819,6 +830,7 @@ static const char * parse_options(int argc, char** argv,
             ataopts.get_aam = ataopts.get_apm = true;
             ataopts.get_security = true;
             ataopts.get_lookahead = ataopts.get_wcache = true;
+            scsiopts.get_rcd = scsiopts.get_wce = true;
           }
           else if (!strcmp(name, "aam")) {
             if (get)
@@ -828,7 +840,7 @@ static const char * parse_options(int argc, char** argv,
             else if (val <= 254)
               ataopts.set_aam = val + 1;
             else {
-              sprintf(extraerror, "Option -s aam,N must have 0 <= N <= 254\n");
+              snprintf(extraerror, sizeof(extraerror), "Option -s aam,N must have 0 <= N <= 254\n");
               badarg = true;
             }
           }
@@ -840,17 +852,28 @@ static const char * parse_options(int argc, char** argv,
             else if (1 <= val && val <= 254)
               ataopts.set_apm = val + 1;
             else {
-              sprintf(extraerror, "Option -s apm,N must have 1 <= N <= 254\n");
+              snprintf(extraerror, sizeof(extraerror), "Option -s apm,N must have 1 <= N <= 254\n");
               badarg = true;
             }
           }
           else if (!strcmp(name, "lookahead")) {
-            if (get)
+            if (get) {
               ataopts.get_lookahead = true;
+            }
             else if (off)
               ataopts.set_lookahead = -1;
             else if (on)
               ataopts.set_lookahead = 1;
+            else
+              badarg = true;
+          }
+          else if (!strcmp(name, "rcache")) {
+            if (get)
+              scsiopts.get_rcd = true;
+            else if (off)
+              scsiopts.set_rcd = -1;
+            else if (on)
+              scsiopts.set_rcd = 1;
             else
               badarg = true;
           }
@@ -869,17 +892,23 @@ static const char * parse_options(int argc, char** argv,
             else if (val <= 255)
               ataopts.set_standby = val + 1;
             else {
-              sprintf(extraerror, "Option -s standby,N must have 0 <= N <= 255\n");
+              snprintf(extraerror, sizeof(extraerror), "Option -s standby,N must have 0 <= N <= 255\n");
               badarg = true;
             }
           }
           else if (!strcmp(name, "wcache")) {
-            if (get)
+            if (get) {
               ataopts.get_wcache = true;
-            else if (off)
+              scsiopts.get_wce = true;
+            }
+            else if (off) {
               ataopts.set_wcache = -1;
-            else if (on)
+              scsiopts.set_wce = -1;
+            }
+            else if (on) {
               ataopts.set_wcache = 1;
+              scsiopts.set_wce = 1;
+            }
             else
               badarg = true;
           }
@@ -941,7 +970,8 @@ static const char * parse_options(int argc, char** argv,
       // a clean way to do it.
       char optstr[] = { (char)optchar, 0 };
       pout("=======> INVALID ARGUMENT TO -%s: %s\n",
-        (optchar == opt_set ? "-set" :
+        (optchar == opt_identify ? "-identify" :
+         optchar == opt_set ? "-set" :
          optchar == opt_smart ? "-smart" : optstr), optarg);
       printvalidarglistmessage(optchar);
       if (extraerror[0])
@@ -1190,7 +1220,7 @@ static int main_worker(int argc, char **argv)
   if (!strcmp(name,"-")) {
     // Parse "smartctl -r ataioctl,2 ..." output from stdin
     if (type || print_type_only) {
-      pout("Smartctl: -d option is not allowed in conjunction with device name \"-\".\n");
+      pout("-d option is not allowed in conjunction with device name \"-\".\n");
       UsageSummary();
       return FAILCMD;
     }
@@ -1205,7 +1235,7 @@ static int main_worker(int argc, char **argv)
     if (type)
       printvalidarglistmessage('d');
     else
-      pout("Smartctl: please specify device type with the -d option.\n");
+      pout("Please specify device type with the -d option.\n");
     UsageSummary();
     return FAILCMD;
   }

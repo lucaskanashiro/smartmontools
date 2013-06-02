@@ -1,9 +1,6 @@
-CHANGELOG for smartmontools
+CHANGELOG for smartmontools 5.0 to 6.0
 
-$Id: CHANGELOG 3561 2012-06-05 19:49:31Z chrfranke $
-
-The most recent version of this file is:
-http://smartmontools.svn.sourceforge.net/viewvc/smartmontools/trunk/smartmontools/CHANGELOG?view=markup
+$Id: ChangeLog-5.0-6.0 3645 2012-10-10 16:15:26Z chrfranke $
 
 Maintainers / Developers Key (alphabetic order):
 [AS]  Alex Samorukov
@@ -40,6 +37,224 @@ Maintainers / Developers Key (alphabetic order):
 [RZ]  Richard Zybert
 
 <DEVELOPERS: ADDITIONS TO THE CHANGE LOG GO JUST BELOW HERE, PLEASE>
+
+smartmontools 6.0 2012-10-10
+
+  [CF] do_release: Fix for minor rev number 0.
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: Corsair Force 115GB
+       - Hitachi Ultrastar 7K4000
+       - Seagate Barracuda 7200.7 and 7200.7 Plus: IBM OEM variants
+       - Western Digital Caviar Black (AF)
+
+  [CF] man pages: Update introduction. Update ATA standards.
+       Remove some outdated info.
+
+  [CF] man pages: Unify license headers.
+
+  [CF] smartctl: Do not abort SCT status output on unknown temperature
+       history format version.
+
+  [CF] smartctl: Remove duplicate note about selective self-test log
+       version.
+
+  [CF] smartctl: Add '-l devstat' to '-x, --xall' output.
+
+  [CF] smartctl: Rework ATA error messages and 'not supported' messages.
+       Avoid misleading warnings on unsupported features (ticket #182).
+       Avoid duplicate error messages.
+
+  [CF] atacmds.h: Remove nonexistent functions.
+
+  [CF] Windows installer: Add support for /S(ilent) install/uninstall.
+
+  [CF] Windows installer: Update examples.  Remove some doc shortcuts.
+
+  [CF] Prepare release 6.0.  Change Copyright output line.
+       Change AUTHORS sections on man pages.
+
+  [CF] smartctl: Rework "ATA Version" output.  Print major and minor
+       revision in one output line.  Remove "ATA Standard" line.
+
+  [CF] drivedb.h updates:
+       - Add firmware warnings for various Seagate series (ticket #239):
+         DiamondMax 23, Barracuda 7200.12, 7200.14 (AF), LP, Green (AF)
+       - Seagate Barracuda 7200.14 (AF): 2.5TB
+
+  [CF] drivedb.h updates:
+       - SandForce Driven SSDs: SanDisk Extreme
+       - Indilinx Everest/Martini based SSDs: OCZ-VERTEX4,
+         fix Attribute 232
+       - STEC Mach2 CompactFlash Cards
+       - Toshiba 2.5" HDD MK..55GSX: *55GSXF variants
+       - Western Digital VelociRaptor (AF)
+
+  [CF] Windows: Remove EXPERIMENTAL notes for 64-bit version.
+
+  [CF] autogen.sh: automake 1.11.6 and 1.12.3 are OK.
+
+  [CF] smartctl: Fix '--identify' for big-endian CPUs.
+
+  [CF] ataidentify.cpp: Document some older (now obsolete) features.
+
+  [CF] ataidentify.cpp: Add some recent ACS-3 features.
+
+  [CF] smartctl: Support '-l sataphy' also for Packet interface devices.
+
+  [CF] atacmds.cpp: Add new ATA ACS-3 minor revision.
+
+  [CF] smartctl: Print SATA version and speed in '-i' output.
+
+  [CF] drivedb.h: Minor reordering of Seagate entries.
+
+  [CF] drivedb.h: Use "AF" for Advanced Format (4KiB LPS).
+
+  [CF] drivedb.h updates:
+       - Seagate Barracuda SpinPoint F3
+       - SAMSUNG SpinPoint F3 RE
+       - Seagate Barracuda 7200.12: ST3750525AS
+       - Seagate Barracuda 7200.14 (AF): change name, add -v options
+       - Western Digital Red (AF)
+       - USB: Seagate Backup Plus USB 3.0 (0x0bc2:0xa013) (ticket #235)
+       - USB: Seagate Backup Plus Desktop USB 3.0 (0x0bc2:0xa0a4)
+
+  [CF] os_win32.cpp: Add support for SAS disks behind Areca SAS
+       controllers.  This includes SAS/SATA autodetection.
+
+       Patch was provided by Hank Wu from Areca.
+
+  [CF] ataidentify.cpp: Add some recent SATA features.
+
+  [CF] smartctl: Add '--identify[=wnvb]' option.
+       Add new source files ataidentify.h/cpp.
+
+  [CF] Makefile.am: Reformat lists of sources.
+
+  [CF] Do not print HDD/SSD specific default attribute names if identify
+       data reports SSD/HDD device.
+
+  [CF] drivedb.h updates:
+       - Intel 320 and 710 Series SSDs: Set '-F nologdir'
+       - Seagate Barracuda ES.2: Set '-F xerrorlba'
+
+  [CF] Create branches RELEASE_5_4[0-3]_DRIVEDB with last drivedb.h file
+       compatible with smartmontools 5.4[0-3].
+
+  [CF] drivedb.h updates:
+       - SAMSUNG SpinPoint M40/60/80: HM120IC
+       - USB: Oxford (0x0928:0x0010)
+       - USB: Seagate External Drive/Cypress (0x0bc2:0x0503)
+       - USB: 0x1f75:0x0888 is Innostor IS888
+
+  [CF] smartctl: Print nominal media rotation rate in '-i' output (ATA).
+
+  [CF] knowndrives.cpp: Fix missing '-F xerrorlba' in '-P show' output.
+
+  [CF] os_win32.cpp: Use WMI to get serial number if
+       IOCTL_STORAGE_QUERY_PROPERTY is used.
+
+  [CF] os_win32.cpp: Remove more Win9x/ME/NT4 specific code: ATA drive
+       number, GetDevicePowerState() handling.
+
+  [CF] Add '-F xerrorlba' option/directive.
+
+  [CF] Rework '-F' option handling.  Add support for multiple '-F' options
+       and directives.
+
+  [CF] Makefile.am: Fix typo in ACLOCAL_AMFLAGS.
+
+  [CF] smartd.cpp: MailWarning(): Move variable declarations, use sizeof()
+       instead of numbers.
+
+  [CF] smartd.cpp: Rework dnsname().  Print "[None]" instead of "[Unknown]"
+       if domain is not set.  Print NIS domain only if supported.
+
+  [CF] Windows smartd: Use gethostname/gethostbyname() from winsock.
+       Remove os_win32/hostname_win32.*.
+
+  [CF] smartd: Include device identify info in warning emails (ticket #185).
+       Add SMARTD_DEVICEINFO environment variable.
+
+  [CF] Add '-F nologdir' option/directive.
+       Prevents freeze of some Intel SSDs (ticket #214).
+
+  [CF] smartd: Don't log ignored -W directive as critical.
+
+  [CF] drivedb.h updates:
+       - Smart Storage Systems Xcel-10 SSDs: Move entry, change name
+       - Samsung: Remove very old and already commented out entries
+       - Seagate Momentus XT (Adv. Format)
+       - WD My Passport: 3 -> 2 entries, add 2TB
+       - USB: Imation (0x0718:0x1000) (ticket #231)
+       - USB: Initio (0x13fd:0x1040): unsupported
+       - USB: ASMedia USB 3.0 (0x174c:0x55aa): unsupported -> -d sat
+       - USB: PQI H560 (0x3538:0x0902) (ticket #232)
+
+  [CF] smartctl: Override SMART disabled state with '-T permissive'.
+
+  [CF] os_win32/daemon_win32.cpp: Drop remaining WinNT4 compatibility.
+
+  [CF] Windows smartd: Add smartd.conf directives '-m console',
+       '-m active', '-m connected'.  Send warning messages via
+       WTSSendMessage().  Remove use of MessageBox() which does no
+       longer work for services since Vista/2008.
+
+  [CF] Fix 'smartctl -P show'.  Regression from r3249.
+
+  [CF] smartd.cpp: Fix setting of temporary environment in MailWarning().
+       Stack space was passed to putenv() but variable was not unset
+       before return.  Very old bug introduced 2003 in r1114.
+
+  [CF] smartd.cpp: Add fflush() to support redirection of debug output
+       (Debian bug 681349).
+
+  [CF] os_generic.cpp: Add missing int64.h (Debian bug 619208)
+       This obsoletes Debian patch fix-generic.diff.
+
+  [CF] cciss.cpp: Fix build on GNU/kFreeBSD (Debian bug 676142).
+       This obsoletes Debian kfreebsd.patch.
+
+  [CF] Windows: Drop backward compatibility with WinNT4.
+
+  [CF] Windows: Drop backward compatibility with Win9x/ME.
+
+smartmontools 5.43 2012-06-30
+
+  [CF] drivedb.h USB updates:
+       - Toshiba Canvio Basics (0x0480:0xa006)
+       - A-DATA DashDrive (0x125f:0xa94a)
+
+  [CF] drivedb.h: Hitachi Travelstar 7K500: *A362/3 variants
+
+  [CF] Windows: Add Windows Server 2012 to get_os_version_str().
+
+  [CF] drivedb.h updates:
+       - Sandforce Driven SSDs: OWC Mercury Electra 3/6G SSD
+       - Seagate Momentus SpinPoint M8
+       - Hitachi Deskstar 5K4000
+       - Toshiba 2.5" HDD MK..61GSYN
+       - Seagate Barracuda (SATA 3Gb/s, 4K Sectors): 1TB, *DM003-* variant
+
+  [CF] smartctl.8.in: Note performance impact of self-tests.
+
+  [CF] os_win32.cpp: Add support for older Areca drivers which used a
+       different target id.  Patch was provided by Hank Wu from Areca.
+
+  [CF] smartctl.8.in: Add info about HP Smart Array controllers.
+       Original patch was provided by Don Brace from HP.
+
+  [CF] os_freebsd.cpp: add SAT autodetection to '-d cciss,N' device type
+       (ticket #202).
+       Add missing freebsd_areca_device::m_encnum (regression from r3542).
+       Patch was provided by Don Brace from HP.
+
+  [CF] os_linux.cpp: add SAT autodetection to '-d cciss,N' device type
+       (ticket #202).
+
+  [CF] Makefile.am: FIXHTML modified for newer man2html versions.
+
+  [CF] autogen.sh: automake 1.11.5 is OK.
 
   [CF] man pages: Minor updates and syntax fixes.
 
