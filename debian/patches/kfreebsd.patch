@@ -1,0 +1,13 @@
+Index: smartmontools/dev_areca.h
+===================================================================
+--- smartmontools.orig/dev_areca.h	2013-09-05 13:31:22.863972312 +0200
++++ smartmontools/dev_areca.h	2013-09-05 13:34:00.587972763 +0200
+@@ -58,7 +58,7 @@
+ #define ARCMSR_IOCTL_CLEAR_RQBUFFER          (ARECA_SATA_RAID | FUNCTION_CLEAR_RQBUFFER)
+ #define ARCMSR_IOCTL_CLEAR_WQBUFFER          (ARECA_SATA_RAID | FUNCTION_CLEAR_WQBUFFER)
+ #define ARCMSR_IOCTL_RETURN_CODE_3F          (ARECA_SATA_RAID | FUNCTION_RETURN_CODE_3F)
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__)  || defined(__FreeBSD_kernel__)
+ #include <sys/ioctl.h> // _IOWR
+ 
+ /*FunctionCode*/

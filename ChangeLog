@@ -1,4 +1,123 @@
-$Id: ChangeLog 3812 2013-04-20 18:59:19Z chrfranke $
+$Id: ChangeLog 3841 2013-07-26 17:38:57Z chrfranke $
+
+2013-07-26  Christian Franke  <franke@computer.org>
+
+	smartmontools 6.2
+
+2013-07-25  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- SandForce Driven SSDs: ADATA SP900
+	- Transcend CompactFlash Cards: *GCF150
+	- Hitachi/HGST Travelstar 5K750: Apple OEM
+	- Hitachi/HGST Travelstar Z7K500
+	- Hitachi/HGST Travelstar 7K750
+	- Hitachi Deskstar 5K3000: *BLE630 OEM
+	- Seagate Constellation ES.3
+	- Western Digital Caviar Blue (SATA): Rename, add WD1602ABKS
+	- Western Digital Caviar Blue (SATA 6Gb/s): Rename, add WD10EZEX
+	- USB: Toshiba Canvio 3.0 Portable Hard Drive (0x0480:0xa007)
+	- USB: Toshiba Canvio Desktop (0x0480:0xd010)
+	- USB: Seagate FreeAgent Desk (0x0bc2:0x3008)
+	- USB: Sharkoon 2-Bay RAID Box (0x6795:0x2756)
+
+2013-07-21  Christian Franke  <franke@computer.org>
+
+	utility.cpp: Add check for empty subexpressions in regular expressions.
+
+2013-07-21  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- Crucial/Micron RealSSD C300/M500: Rename, add M500
+	- SandForce Driven SSDs: Kingston KC300, MS200
+	- Intel 320 Series SSDs: *A variant
+	- Intel 330/335 Series SSDs: Rename, add 335 Series
+	- Toshiba 2.5" HDD MK..46GSX
+	- Toshiba 2.5" HDD MK..61GSY[N]: Rename, add *GSY variant
+	- Toshiba 2.5" HDD MK..65GSX: *GSXF variant
+	- Toshiba 3.5" HDD DT01ACA...
+	- Seagate Laptop SSHD
+	- Seagate Constellation ES.2: 2GB
+	- USB: Seagate Expansion External (0x0bc2:0x3320)
+	- USB: Seagate Backup Plus Desktop USB 3.0 (0x0bc2:0xa0a1)
+	- USB: WD Elements (0x1058:0x10a2)
+
+2013-07-20  Christian Franke  <franke@computer.org>
+
+	dev_areca.cpp: Fix possible segfault on empty port.
+
+2013-07-20  Christian Franke  <franke@computer.org>
+
+	os_win32/daemon_win32.cpp: Do not install the service as interactive.
+	This is no longer supported since Vista and produces misleading error
+	messages in event log.
+
+2013-07-20  Christian Franke  <franke@computer.org>
+
+	ataprint.cpp: Do not print 'SCT Commands not supported' if SCT is
+	not used (regression from r3825 r3826).
+	smartctl.8.in: Mark '-g/-s wcreorder' as EXPERIMENTAL.
+
+2013-07-18  Christian Franke  <franke@computer.org>
+
+	os_win32.cpp: Add Win-8.1 and 2012r2 to get_os_version_str(),
+	remove 9x/ME and NT4.
+
+2013-07-08  Alex Samorukov  <samm@os2.kiev.ua>
+
+	Add Automake 1.12.2 to the list of supported versions
+
+2013-07-07  Christian Franke  <franke@computer.org>
+
+	configure.ac: Support SVN 1.8 working copy format.
+
+2013-07-06  Alex Samorukov <samm@os2.kiev.ua>
+
+	smartctl: Added ATA Write Cache Reordering control using "-g wcreorder"
+	and "-s wcreorder[,on|off]" options (bug #221)
+	smartctl: minor formatting fixes
+
+2013-07-05  Alex Samorukov <samm@os2.kiev.ua>
+
+	HPT RAID support: maximum disk number now is 128 (#281)
+
+2013-06-28  Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h:
+	- Apacer SDM4 2Gb SSD
+
+2013-06-17  Alex Samorukov <samm@os2.kiev.ua>
+
+	scsicmds.cpp: fix build on RedHat 9
+	os_freebsd.cpp: skip port multipliers on FreeBSD
+	drivedb.h:
+	 - OWC Mercury EXTREME Pro 6G SSD (from #277)
+	 - USB: Fujitsu  SATA-to-USB3.0 bridge chip (#280)
+
+2013-06-12  Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h:
+	- JMicron SSD: P400e/P400m series
+
+2013-06-09  Christian Franke  <franke@computer.org>
+
+	INSTALL, NEWS, README, WARNINGS: Update SVN repository URLs.
+
+2013-06-09  Christian Franke  <franke@computer.org>
+
+	os_win32/smartd_warning.cmd: Using %DATE% in temp file names
+	breaks the script if localized date contains '/'
+	(This fix is already included in smartmontools-6.1-2.win32-setup.exe).
+
+2013-06-06  Christian Franke  <franke@computer.org>
+
+	os_win32/update-smart-drivedb.nsi: Use new SVN repository for
+	download.
+
+2013-06-04  Christian Franke  <franke@computer.org>
+
+	update-smart-drivedb.in: Use new sourceforge code browser for
+	download.
 
 2013-04-20  Christian Franke  <franke@computer.org>
 

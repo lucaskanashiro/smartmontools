@@ -1,3 +1,12 @@
+smartmontools (6.2+svn3841-1) unstable; urgency=low
+
+  * [3d17a85] Imported Upstream version 6.2+svn3841
+  * [8251afb] Fix  FTBFS[kfreebsd]
+    Thanks to Christoph Egger (Closes: #717567)
+  * [e57fafb] Refreshed patches
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Thu, 05 Sep 2013 14:53:36 +0200
+
 smartmontools (6.1+svn3812-1) unstable; urgency=low
 
   * [ee38a43] Imported Upstream version 6.1+svn3812 (Closes: #691646)

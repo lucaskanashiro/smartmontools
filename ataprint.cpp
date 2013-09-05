@@ -40,7 +40,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3786 2013-03-07 22:09:17Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3831 2013-07-20 14:25:56Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 
@@ -2457,6 +2457,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        || options.sct_temp_int
        || options.sct_erc_get
        || options.sct_erc_set
+       || options.sct_wcache_reorder_get
+       || options.sct_wcache_reorder_set
   );
 
   // Exit if no further options specified
@@ -2616,6 +2618,37 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   if (options.get_security)
     print_ata_security_status("ATA Security is:  ", drive.words088_255[128-88]);
 
+  // Check if SCT commands available
+  bool sct_ok = false;
+  if (need_sct_support) {
+    if (!isSCTCapable(&drive)) {
+      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+    }
+    else
+      sct_ok = true;
+  }
+
+  // Print write cache reordering status
+  if (sct_ok && options.sct_wcache_reorder_get) {
+    int wcache_reorder=ataGetSetSCTWriteCacheReordering(device,
+      false /* enable */, false /* persistent */, false /*set*/);
+      pout("Wt Cache Reorder: ");
+      switch(wcache_reorder) {
+        case 0: /* not defined in standard but returned on some drives if not set */
+        pout("Unknown"); break;
+        case 1:
+        pout("Enabled"); break;
+        case 2:
+        pout("Disabled"); break;
+        default: /* error? */
+        pout("N/A"); break;
+      }
+      pout("\n");
+  }
+  if (!sct_ok && options.sct_wcache_reorder_get) {
+    pout("Wt Cache Reorder: Unavailable\n");
+  }
+
   // Print remaining drive info
   if (options.drive_info) {
     // Print the (now possibly changed) power mode if available
@@ -2631,7 +2664,10 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // START OF THE ENABLE/DISABLE SECTION OF THE CODE
   if (   options.smart_disable           || options.smart_enable
       || options.smart_auto_save_disable || options.smart_auto_save_enable
-      || options.smart_auto_offl_disable || options.smart_auto_offl_enable)
+      || options.smart_auto_offl_disable || options.smart_auto_offl_enable
+      || options.set_aam || options.set_apm || options.set_lookahead
+      || options.set_wcache || options.set_security_freeze || options.set_standby
+      || options.sct_wcache_reorder_set)
     pout("=== START OF ENABLE/DISABLE COMMANDS SECTION ===\n");
   
   // Enable/Disable AAM
@@ -2694,6 +2730,21 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
     else
       pout("Write cache %sabled\n", (enable ? "en" : "dis"));
+  }
+
+  // Enable/Disable write cache reordering
+  if (sct_ok && options.sct_wcache_reorder_set) {
+    bool enable = (options.sct_wcache_reorder_set > 0);
+
+    int wcache_reorder=ataGetSetSCTWriteCacheReordering(device,
+      enable, false /* persistent */, true /*set*/);
+
+    if (wcache_reorder < 0) {
+        pout("Write cache reordering %sable failed: %s\n", (enable ? "en" : "dis"), device->get_errmsg());
+        returnval |= FAILSMART;
+    }
+    else
+      pout("Write cache reordering %sabled\n", (enable ? "en" : "dis"));
   }
 
   // Freeze ATA security
@@ -2826,7 +2877,10 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
   // all this for a newline!
   if (   options.smart_disable           || options.smart_enable
       || options.smart_auto_save_disable || options.smart_auto_save_enable
-      || options.smart_auto_offl_disable || options.smart_auto_offl_enable)
+      || options.smart_auto_offl_disable || options.smart_auto_offl_enable
+      || options.set_aam || options.set_apm || options.set_lookahead
+      || options.set_wcache || options.set_security_freeze || options.set_standby
+      || options.sct_wcache_reorder_set)
     pout("\n");
 
   // START OF READ-ONLY OPTIONS APART FROM -V and -i
@@ -3163,16 +3217,9 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
   }
 
-  // SCT commands
-  bool sct_ok = false;
-  if (need_sct_support) {
-    if (!isSCTCapable(&drive)) {
-      pout("SCT Commands not supported\n\n");
-      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
-    }
-    else
-      sct_ok = true;
-  }
+  if(!sct_ok && (options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int
+                 || options.sct_erc_get || options.sct_erc_set                        ))
+    pout("SCT Commands not supported\n\n");
 
   // Print SCT status and temperature history table
   if (sct_ok && (options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int)) {
