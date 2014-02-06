@@ -1,3 +1,10 @@
+smartmontools (6.2+svn3841-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Fix FTBFS on GNU/kFreeBSD. (Closes: #736660)
+
+ -- Robert Millan <rmh@debian.org>  Thu, 06 Feb 2014 13:48:48 +0100
+
 smartmontools (6.2+svn3841-1) unstable; urgency=low
 
   * [3d17a85] Imported Upstream version 6.2+svn3841
