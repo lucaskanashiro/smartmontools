@@ -40,6 +40,7 @@ get-orig-source:
 		mkdir get-orig-source
 		svn export -r $(SVN_REVISION) https://smartmontools.svn.sourceforge.net/svnroot/smartmontools/trunk/smartmontools/ \
 			get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig
+		rm -rf get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig/os_solaris_ata.s
 		GZIP=--best tar czf $(TARBALL) -C get-orig-source $(PACKAGE)-$(SRC_VERSION).orig
 		rm -rf get-orig-source
 		echo "  "$(TARBALL)" created; move it to the right destination to build the package"
@@ -60,6 +61,9 @@ configure-stamp:
 				--with-attributelog=/var/lib/smartmontools/attrlog. \
 				--with-exampledir=/usr/share/doc/smartmontools/examples/ \
 				--with-drivedbdir=/var/lib/smartmontools/drivedb \
+				--with-systemdsystemunitdir=/lib/systemd/system \
+				--with-smartdscriptdir=/usr/share/smartmontools \
+				--with-smartdplugindir=/etc/smartmontools/smartd_warning.d
 				${CONFIGURE_ARGS}
 	touch configure-stamp
 
@@ -88,8 +92,6 @@ install: build
 	dh_prep
 	dh_installdirs
 	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools install
-	install -D -m 755 debian/smartmontools-bug \
-		$(CURDIR)/debian/smartmontools/usr/share/bug/smartmontools
 
 # Build architecture-independent files here.
 binary-indep:
@@ -104,13 +106,15 @@ binary-arch: build install
 	dh_installmenu
 	dh_installlogrotate
 	dh_install
+	dh_link
+	dh_systemd_enable
 	dh_installinit -- start 20 2 3 4 5 . stop 20 1 .
+	dh_systemd_enable
 	dh_installcron
 	dh_installman debian/update-smart-drivedb.8
 	dh_installinfo
 	dh_lintian
 	dh_installchangelogs ChangeLog
-	dh_link
 	dh_strip
 	dh_compress
 	dh_fixperms
