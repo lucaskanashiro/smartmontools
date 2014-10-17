@@ -1,3 +1,14 @@
+smartmontools (6.3+svn4002-1) unstable; urgency=low
+
+  * [03a62f0] Set EnvironmentFile=-/etc/default/smartmontools in smartd.service
+    (Closes: #764136)
+  * [59c55ae] Remove /etc/smartd_warning.sh (Closes: #765519)
+  * [1d06b80] Imported Upstream version 6.3+svn4002
+  * [1aabc0a] Do not build-depends on hardening-wrapper,
+    instead use the new buildflags.mk file
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Fri, 17 Oct 2014 15:55:45 +0200
+
 smartmontools (6.3+svn3990-1) unstable; urgency=low
 
   * [d2e702c] Imported Upstream version 6.3+svn3990

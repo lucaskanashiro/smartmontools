@@ -40,7 +40,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3982 2014-08-16 21:07:19Z samm2 $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 3999 2014-10-06 15:57:52Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 
@@ -412,6 +412,24 @@ static inline std::string format_st_er_desc(
 }
 
 
+static const char * get_form_factor(unsigned short word168)
+{
+  // Table A.32 of T13/2161-D (ACS-3) Revision 4p, September 19, 2013
+  // Table 236 of T13/BSR INCITS 529 (ACS-4) Revision 04, August 25, 2014
+  switch (word168) {
+    case 0x1: return "5.25 inches";
+    case 0x2: return "3.5 inches";
+    case 0x3: return "2.5 inches";
+    case 0x4: return "1.8 inches";
+    case 0x5: return "< 1.8 inches";
+    case 0x6: return "mSATA"; // ACS-4
+    case 0x7: return "M.2"; // ACS-4
+    case 0x8: return "MicroSSD"; // ACS-4
+    case 0x9: return "CFast"; // ACS-4
+    default : return 0;
+  }
+}
+
 static int find_msb(unsigned short word)
 {
   for (int bit = 15; bit >= 0; bit--)
@@ -439,6 +457,10 @@ static const char * get_ata_major_version(const ata_identify_device * drive)
 
 static const char * get_ata_minor_version(const ata_identify_device * drive)
 {
+  // Table 10 of X3T13/2008D (ATA-3) Revision 7b, January 27, 1997
+  // Table 28 of T13/1410D (ATA/ATAPI-6) Revision 3b, February 26, 2002
+  // Table 31 of T13/1699-D (ATA8-ACS) Revision 6a, September 6, 2008
+  // Table 45 of T13/BSR INCITS 529 (ACS-4) Revision 04, August 25, 2014
   switch (drive->minor_rev_num) {
     case 0x0001: return "ATA-1 X3T9.2/781D prior to revision 4";
     case 0x0002: return "ATA-1 published, ANSI X3.221-1994";
@@ -489,9 +511,15 @@ static const char * get_ata_minor_version(const ata_identify_device * drive)
 
     case 0x0052: return "ATA8-ACS T13/1699-D revision 3b";
 
+    case 0x006d: return "ACS-3 T13/2161-D revision 5";
+
+    case 0x0082: return "ACS-2 published, ANSI INCITS 482-2012";
+
     case 0x0107: return "ATA8-ACS T13/1699-D revision 2d";
 
     case 0x0110: return "ACS-2 T13/2015-D revision 3";
+
+    case 0x011b: return "ACS-3 T13/2161-D revision 4";
 
     default:     return 0;
   }
@@ -503,7 +531,8 @@ static const char * get_sata_version(const ata_identify_device * drive)
   if ((word222 & 0xf000) != 0x1000)
     return 0;
   switch (find_msb(word222 & 0x0fff)) {
-    default: return "SATA >3.1";
+    default: return "SATA >3.2";
+    case 7:  return "SATA 3.2";
     case 6:  return "SATA 3.1";
     case 5:  return "SATA 3.0";
     case 4:  return "SATA 2.6";
@@ -610,17 +639,9 @@ static void print_drive_info(const ata_identify_device * drive,
   // Print form factor if reported
   unsigned short word168 = drive->words088_255[168-88];
   if (word168) {
-    const char * inches;
-    switch (word168) {
-      case 0x1: inches = "5.25"; break;
-      case 0x2: inches = "3.5"; break;
-      case 0x3: inches = "2.5"; break;
-      case 0x4: inches = "1.8"; break;
-      case 0x5: inches = "< 1.8"; break;
-      default : inches = 0;
-    }
-    if (inches)
-      pout("Form Factor:      %s inches\n", inches);
+    const char * form_factor = get_form_factor(word168);
+    if (form_factor)
+      pout("Form Factor:      %s\n", form_factor);
     else
       pout("Form Factor:      Unknown (0x%04x)\n", word168);
   }
@@ -1126,9 +1147,10 @@ static unsigned GetNumLogSectors(const ata_smart_log_directory * logdir, unsigne
 }
 
 // Get name of log.
-// Table A.2 of T13/2161-D (ACS-3) Revision 4, September 4, 2012
 static const char * GetLogName(unsigned logaddr)
 {
+    // Table 201 of T13/BSR INCITS 529 (ACS-4) Revision 04, August 25, 2014
+    // Table 112 of Serial ATA Revision 3.2, August 7, 2013
     switch (logaddr) {
       case 0x00: return "Log Directory";
       case 0x01: return "Summary SMART error log";
@@ -1145,12 +1167,13 @@ static const char * GetLogName(unsigned logaddr)
       case 0x0c: return "Pending Defects log"; // ACS-4
       case 0x0d: return "LPS Mis-alignment log"; // ACS-2
 
-      case 0x10: return "NCQ Command Error log";
-      case 0x11: return "SATA Phy Event Counters";
-      case 0x12: return "SATA NCQ Queue Management log"; // ACS-3
-      case 0x13: return "SATA NCQ Send and Receive log"; // ACS-3
-      case 0x14:
-      case 0x15:
+      case 0x10: return "SATA NCQ Queued Error log";
+      case 0x11: return "SATA Phy Event Counters log";
+    //case 0x12: return "SATA NCQ Queue Management log"; // SATA 3.0/3.1
+      case 0x12: return "SATA NCQ NON-DATA log"; // SATA 3.2
+      case 0x13: return "SATA NCQ Send and Receive log"; // SATA 3.1
+      case 0x14: return "SATA Hybrid Information log"; // SATA 3.2
+      case 0x15: return "SATA Rebuild Assist log"; // SATA 3.2
       case 0x16:
       case 0x17: return "Reserved for Serial ATA";
 
@@ -1182,13 +1205,14 @@ static const char * get_log_rw(unsigned logaddr)
 {
    if (   (                   logaddr <= 0x08)
        || (0x0c <= logaddr && logaddr <= 0x0d)
-       || (0x10 <= logaddr && logaddr <= 0x13)
+       || (0x10 <= logaddr && logaddr <= 0x14)
        || (0x19 == logaddr)
        || (0x20 <= logaddr && logaddr <= 0x25)
        || (0x30 == logaddr))
       return "R/O";
 
    if (   (0x09 <= logaddr && logaddr <= 0x0a)
+       || (0x15 == logaddr)
        || (0x80 <= logaddr && logaddr <= 0x9f)
        || (0xe0 <= logaddr && logaddr <= 0xe1))
       return "R/W";
@@ -1550,14 +1574,14 @@ static bool print_device_statistics(ata_device * device, unsigned nsectors,
     pout("Page Offset Size         Value  Description\n");
     bool need_trailer = false;
     int max_page = 0;
-    
+
     if (!use_gplog)
-    for (i = 0; i < pages.size(); i++) {
-      int page = pages[i];
-      if (max_page < page && page < 0xff)
-        max_page = page;
-    }
-    
+      for (i = 0; i < pages.size(); i++) {
+        int page = pages[i];
+        if (max_page < page && page < 0xff)
+          max_page = page;
+      }
+
     raw_buffer pages_buf((max_page+1) * 512);
 
      if (!use_gplog && !ataReadSmartLog(device, 0x04, pages_buf.data(), max_page+1)) {
@@ -1567,10 +1591,14 @@ static bool print_device_statistics(ata_device * device, unsigned nsectors,
 
     for (i = 0; i <  pages.size(); i++) {
       int page = pages[i];
-      if (use_gplog && !ataReadLogExt(device, 0x04, 0, page, pages_buf.data(), 1)) {
-        pout("Read Device Statistics page %d failed\n\n", page);
-        return false;
+      if (use_gplog) {
+        if (!ataReadLogExt(device, 0x04, 0, page, pages_buf.data(), 1)) {
+          pout("Read Device Statistics page %d failed\n\n", page);
+          return false;
+        }
       }
+      else if (page > max_page)
+        continue;
 
       int offset = (use_gplog ? 0 : page * 512);
       print_device_statistics_page(pages_buf.data() + offset, page, need_trailer);
@@ -2215,6 +2243,7 @@ static int ataPrintSCTStatus(const ata_sct_status_response * sts)
     // T13/e06152r0-3 (Additional SCT Temperature Statistics), August - October 2006
     // Table 60 of T13/1699-D (ATA8-ACS) Revision 3f, December 2006  (format version 2)
     // Table 80 of T13/1699-D (ATA8-ACS) Revision 6a, September 2008 (format version 3)
+    // Table 182 of T13/BSR INCITS 529 (ACS-4) Revision 02a, May 22, 2014 (smart_status field)
     pout("Current Temperature:                    %s Celsius\n",
       sct_ptemp(sts->hda_temp, buf1));
     pout("Power Cycle Min/Max Temperature:     %s/%s Celsius\n",
@@ -2226,6 +2255,17 @@ static int ataPrintSCTStatus(const ata_sct_status_response * sts)
       pout("Lifetime    Average Temperature:        %2d Celsius\n", avg);
     pout("Under/Over Temperature Limit Count:  %2u/%u\n",
       sts->under_limit_count, sts->over_limit_count);
+
+    if (sts->smart_status) // ACS-4
+      pout("SMART Status:                        0x%04x (%s)\n", sts->smart_status,
+           (sts->smart_status == 0x2cf4 ? "FAILED" :
+            sts->smart_status == 0xc24f ? "PASSED" : "Reserved"));
+
+    if (nonempty(sts->vendor_specific, sizeof(sts->vendor_specific))) {
+      pout("Vendor specific:\n");
+      for (unsigned i = 0; i < sizeof(sts->vendor_specific); i++)
+        pout("%02x%c", sts->vendor_specific[i], ((i & 0xf) != 0xf ? ' ' : '\n'));
+    }
   }
   return 0;
 }

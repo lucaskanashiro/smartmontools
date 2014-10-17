@@ -75,7 +75,7 @@
 /*
 const drive_settings builtin_knowndrives[] = {
  */
-  { "$Id: drivedb.h 3990 2014-09-29 17:59:37Z samm2 $",
+  { "$Id: drivedb.h 4002 2014-10-07 11:11:49Z samm2 $",
     "-", "-",
     "This is a dummy entry to hold the SVN-Id of drivedb.h",
     ""
@@ -1002,12 +1002,12 @@ const drive_settings builtin_knowndrives[] = {
     "-v 242,raw48,Total_Reads_GiB "
   //"-v 243,raw48,Unknown_Attribute "
   },
-  { "SanDisk based SSDs",
+  { "SanDisk based SSDs", // see also #463 for the vendor attribute description
     "SanDisk iSSD P4 [0-9]*GB|" // tested with SanDisk iSSD P4 16GB/SSD 9.14
     "SanDisk SDSSDP[0-9]*G|" // tested with SanDisk SDSSDP064G/1.0.0, SDSSDP128G/2.0.0
     "SanDisk SSD i100 [0-9]*GB|" // tested with SanDisk SSD i100 8GB/11.56.04, 24GB/11.56.04
     "SanDisk SSD U100 ([0-9]*GB|SMG2)|" // tested with SanDisk SSD U100 8GB/10.56.00, 256GB/10.01.02, SMG2/10.56.04
-    "SanDisk SD7[SU]B3Q(064|128|256|512)G.*", // tested with SD7SB3Q064G1122/SD7UB3Q256G1122/SD7SB3Q128G
+    "SanDisk SD7[SU]B[23]Q(064|128|256|512)G.*", // tested with SD7SB3Q064G1122/SD7UB3Q256G1122/SD7SB3Q128G/SD7UB2Q512G1122
     "", "",
   //"-v 5,raw16(raw16),Reallocated_Sector_Ct "
   //"-v 9,raw24(raw8),Power_On_Hours "
@@ -1017,11 +1017,13 @@ const drive_settings builtin_knowndrives[] = {
     "-v 173,raw48,Avg_Write_Erase_Ct "
     "-v 174,raw48,Unexpect_Power_Loss_Ct "
   //"-v 187,raw48,Reported_Uncorrect "
+    "-v 212,raw48,SATA_PHY_Error "
     "-v 230,raw48,Perc_Write_Erase_Count "
     "-v 232,raw48,Perc_Avail_Resrvd_Space "
     "-v 234,raw48,Perc_Write_Erase_Ct_BC "
   //"-v 241,raw48,Total_LBAs_Written "
   //"-v 242,raw48,Total_LBAs_Read "
+    "-v 244,raw48,Thermal_Throttle "
   },
   { "Smart Storage Systems Xcel-10 SSDs",  // based on http://www.smartm.com/files/salesLiterature/storage/xcel10.pdf
     "SMART A25FD-(32|64|128)GI32N", // tested with SMART A25FD-128GI32N/B9F23D4K
