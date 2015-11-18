@@ -62,7 +62,7 @@
 #include "dev_ata_cmd_set.h" // ata_device_with_command_set
 #include "dev_tunnelled.h" // tunnelled_device<>
 
-const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 3922 2014-06-23 19:17:18Z chrfranke $";
+const char * scsiata_cpp_cvsid = "$Id: scsiata.cpp 4041 2015-03-14 00:50:20Z dpgilbert $";
 
 /* This is a slightly stretched SCSI sense "descriptor" format header.
    The addition is to allow the 0x70 and 0x71 response codes. The idea
@@ -203,6 +203,25 @@ sat_device::~sat_device() throw()
 // des[11]: lba_high (7:0)
 // des[12]: device
 // des[13]: status
+//
+//
+// ATA registers returned via fixed format sense (allowed >= SAT-2)
+// fxs[0]: info_valid (bit 7); response_code (6:0)
+// fxs[1]: (obsolete)
+// fxs[2]: sense_key (3:0) --> recovered error (formerly 'no sense')
+// fxs[3]: information (31:24) --> ATA Error register
+// fxs[4]: information (23:16) --> ATA Status register
+// fxs[5]: information (15:8) --> ATA Device register
+// fxs[6]: information (7:0) --> ATA Count (7:0)
+// fxs[7]: additional sense length [should be >= 10]
+// fxs[8]: command specific info (31:24) --> Extend (7), count_upper_nonzero
+//         (6), lba_upper_nonzero(5), log_index (3:0)
+// fxs[9]: command specific info (23:16) --> ATA LBA (7:0)
+// fxs[10]: command specific info (15:8) --> ATA LBA (15:8)
+// fxs[11]: command specific info (7:0) --> ATA LBA (23:16)
+// fxs[12]: additional sense code (asc) --> 0x0
+// fxs[13]: additional sense code qualifier (ascq) --> 0x1d
+//          asc,ascq = 0x0,0x1d --> 'ATA pass through information available'
 
 
 
@@ -243,7 +262,7 @@ bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
     unsigned char cdb[SAT_ATA_PASSTHROUGH_16LEN];
     unsigned char sense[32];
     const unsigned char * ardp;
-    int status, ard_len, have_sense;
+    int ard_len, have_sense;
     int extend = 0;
     int ck_cond = 0;    /* set to 1 to read register(s) back */
     int protocol = 3;   /* non-data */
@@ -251,6 +270,7 @@ bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
     int byte_block = 1; /* 0 -> bytes, 1 -> 512 byte blocks */
     int t_length = 0;   /* 0 -> no data transferred */
     int passthru_size = DEF_SAT_ATA_PASSTHRU_SIZE;
+    bool sense_descriptor = true;
 
     memset(cdb, 0, sizeof(cdb));
     memset(sense, 0, sizeof(sense));
@@ -358,20 +378,23 @@ bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
     have_sense = sg_scsi_normalize_sense(io_hdr.sensep, io_hdr.resp_sense_len,
                                          &ssh);
     if (have_sense) {
-        /* look for SAT ATA Return Descriptor */
-        ardp = sg_scsi_sense_desc_find(io_hdr.sensep,
-                                       io_hdr.resp_sense_len,
-                                       ATA_RETURN_DESCRIPTOR);
-        if (ardp) {
-            ard_len = ardp[1] + 2;
-            if (ard_len < 12)
-                ard_len = 12;
-            else if (ard_len > 14)
-                ard_len = 14;
+        sense_descriptor = ssh.response_code >= 0x72;
+        if (sense_descriptor) {
+            /* look for SAT ATA Return Descriptor */
+            ardp = sg_scsi_sense_desc_find(io_hdr.sensep,
+                                           io_hdr.resp_sense_len,
+                                           ATA_RETURN_DESCRIPTOR);
+            if (ardp) {
+                ard_len = ardp[1] + 2;
+                if (ard_len < 12)
+                    ard_len = 12;
+                else if (ard_len > 14)
+                    ard_len = 14;
+            }
         }
         scsi_do_sense_disect(&io_hdr, &sinfo);
-        status = scsiSimpleSenseFilter(&sinfo);
-        if (0 != status) {
+        int status = scsiSimpleSenseFilter(&sinfo);
+        if (0 != status) {  /* other than no_sense and recovered_error */
             if (scsi_debugmode > 0) {
                 pout("sat_device::ata_pass_through: scsi error: %s\n",
                      scsiErrString(status));
@@ -408,26 +431,56 @@ bool sat_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
                     hi.lba_mid      = ardp[ 8];
                     hi.lba_high     = ardp[10];
                 }
+            } else if ((! sense_descriptor) &&
+                       (0 == ssh.asc) &&
+                       (SCSI_ASCQ_ATA_PASS_THROUGH == ssh.ascq)) {
+                /* in SAT-2 and later, ATA registers may be passed back via
+                 * fixed format sense data [ref: sat3r07 section 12.2.2.7] */
+                ata_out_regs & lo = out.out_regs;
+                lo.error        = io_hdr.sensep[ 3];
+                lo.status       = io_hdr.sensep[ 4];
+                lo.device       = io_hdr.sensep[ 5];
+                lo.sector_count = io_hdr.sensep[ 6];
+                lo.lba_low      = io_hdr.sensep[ 9];
+                lo.lba_mid      = io_hdr.sensep[10];
+                lo.lba_high     = io_hdr.sensep[11];
+                if (in.in_regs.is_48bit_cmd()) {
+                    if (0 == (0x60 & io_hdr.sensep[8])) {
+                        ata_out_regs & hi = out.out_regs.prev;
+                        hi.sector_count = 0;
+                        hi.lba_low      = 0;
+                        hi.lba_mid      = 0;
+                        hi.lba_high     = 0;
+                    } else {
+                        /* getting the "hi." values when either
+                         * count_upper_nonzero or lba_upper_nonzero are set
+                         * involves fetching the SCSI ATA PASS-THROUGH
+                         * Results log page and decoding the descriptor with
+                         * the matching log_index field. Painful. */ 
+                    }
+                }
             }
         }
-        if (ardp == NULL)
-            ck_cond = 0;       /* not the type of sense data expected */
-    }
-    if (0 == ck_cond) {
+    } else {    /* ck_cond == 0 */
         if (have_sense) {
-            if ((ssh.response_code >= 0x72) &&
-                ((SCSI_SK_NO_SENSE == ssh.sense_key) ||
+            if (((SCSI_SK_NO_SENSE == ssh.sense_key) ||
                  (SCSI_SK_RECOVERED_ERR == ssh.sense_key)) &&
                 (0 == ssh.asc) &&
                 (SCSI_ASCQ_ATA_PASS_THROUGH == ssh.ascq)) {
-                if (ardp) {
-                    if (scsi_debugmode > 0) {
+                if (scsi_debugmode > 0) {
+                    if (sense_descriptor && ardp) {
                         pout("Values from ATA Return Descriptor are:\n");
                         dStrHex((const char *)ardp, ard_len, 1);
+                    } else if (! sense_descriptor) {
+                        pout("Values from ATA fixed format sense are:\n");
+                        pout("  Error: 0x%x\n", io_hdr.sensep[3]);
+                        pout("  Status: 0x%x\n", io_hdr.sensep[4]);
+                        pout("  Device: 0x%x\n", io_hdr.sensep[5]);
+                        pout("  Count: 0x%x\n", io_hdr.sensep[6]);
                     }
-                    return set_err(EIO, "SAT command failed");
                 }
             }
+            return set_err(EIO, "SAT command failed");
         }
     }
     return true;
@@ -1120,6 +1173,148 @@ bool usbjmicron_device::get_registers(unsigned short addr,
 
 /////////////////////////////////////////////////////////////////////////////
 
+/// Prolific USB Bridge support. (PL2773) (Probably works on PL2771 also...)
+
+class usbprolific_device
+: public tunnelled_device<
+    /*implements*/ ata_device,
+    /*by tunnelling through a*/ scsi_device
+  >
+{
+public:
+  usbprolific_device(smart_interface * intf, scsi_device * scsidev,
+                    const char * req_type);
+
+  virtual ~usbprolific_device() throw();
+
+  virtual bool ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out);
+};
+
+
+usbprolific_device::usbprolific_device(smart_interface * intf, scsi_device * scsidev,
+                                     const char * req_type)
+: smart_device(intf, scsidev->get_dev_name(), "usbprolific", req_type),
+  tunnelled_device<ata_device, scsi_device>(scsidev)
+{
+  set_info().info_name = strprintf("%s [USB Prolific]", scsidev->get_info_name());
+}
+
+usbprolific_device::~usbprolific_device() throw()
+{
+}
+
+bool usbprolific_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
+{
+  if (!ata_cmd_is_supported(in,
+    ata_device::supports_data_out |
+    ata_device::supports_48bit_hi_null |
+    ata_device::supports_output_regs |
+    ata_device::supports_smart_status,
+    "Prolific" )
+  )
+    return false;
+
+  scsi_cmnd_io io_hdr;
+  memset(&io_hdr, 0, sizeof(io_hdr));
+  unsigned char cmd_rw = 0x10;  // Read
+
+  switch (in.direction) {
+    case ata_cmd_in::no_data:
+      io_hdr.dxfer_dir = DXFER_NONE;
+      break;
+    case ata_cmd_in::data_in:
+      io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
+      io_hdr.dxfer_len = in.size;
+      io_hdr.dxferp = (unsigned char *)in.buffer;
+      memset(in.buffer, 0, in.size);
+      break;
+    case ata_cmd_in::data_out:
+      io_hdr.dxfer_dir = DXFER_TO_DEVICE;
+      io_hdr.dxfer_len = in.size;
+      io_hdr.dxferp = (unsigned char *)in.buffer;
+      cmd_rw = 0x0; // Write
+      break;
+    default:
+      return set_err(EINVAL);
+  }
+
+  // Based on reverse engineering of iSmart.exe with API Monitor.
+  // Seen commands:
+  // D0  0 0  0 06 7B 0 0 0 0 0 0                 // Read Firmware info?, reads 16 bytes
+  // F4  0 0  0 06 7B                             // ??
+  // D8 15 0 D8 06 7B 0 0 0 0 1 1 4F C2 A0 B0     // SMART Enable
+  // D8 15 0 D0 06 7B 0 0 2 0 1 1 4F C2 A0 B0     // SMART Read values
+  // D8 15 0 D1 06 7B 0 0 2 0 1 1 4F C2 A0 B0     // SMART Read thresholds
+  // D8 15 0 D4 06 7B 0 0 0 0 0 1 4F C2 A0 B0     // SMART Execute self test
+  // D7  0 0  0 06 7B 0 0 0 0 0 0 0 0 0 0         // Read status registers, Reads 16 bytes of data
+  // Additional DATA OUT support based on document from Prolific
+
+  // Build pass through command
+  unsigned char cdb[16];
+  cdb[ 0] = 0xD8;         // Operation Code (D8 = Prolific ATA pass through)
+  cdb[ 1] = cmd_rw|0x5;   // Read(0x10)/Write(0x0) | NORMAL(0x5)/PREFIX(0x0)(?)
+  cdb[ 2] = 0x0;          // Reserved
+  cdb[ 3] = in.in_regs.features;        // Feature register (SMART command)
+  cdb[ 4] = 0x06;         // Check Word (VendorID magic, Prolific: 0x067B)
+  cdb[ 5] = 0x7B;         // Check Word (VendorID magic, Prolific: 0x067B)
+  cdb[ 6] = (unsigned char)(io_hdr.dxfer_len >> 24);  // Length MSB
+  cdb[ 7] = (unsigned char)(io_hdr.dxfer_len >> 16);  // Length ...
+  cdb[ 8] = (unsigned char)(io_hdr.dxfer_len >>  8);  // Length ...
+  cdb[ 9] = (unsigned char)(io_hdr.dxfer_len      );  // Length LSB
+  cdb[10] = in.in_regs.sector_count;    // Sector Count
+  cdb[11] = in.in_regs.lba_low;         // LBA Low (7:0)
+  cdb[12] = in.in_regs.lba_mid;         // LBA Mid (15:8)
+  cdb[13] = in.in_regs.lba_high;        // LBA High (23:16)
+  cdb[14] = in.in_regs.device | 0xA0;   // Device/Head
+  cdb[15] = in.in_regs.command;         // ATA Command Register (only PIO supported)
+  // Use '-r scsiioctl,1' to print CDB for debug purposes
+
+  io_hdr.cmnd = cdb;
+  io_hdr.cmnd_len = 16;
+
+  scsi_device * scsidev = get_tunnel_dev();
+  if (!scsi_pass_through_and_check(scsidev, &io_hdr,
+         "usbprolific_device::ata_pass_through: "))
+    return set_err(scsidev->get_err());
+
+  if (in.out_needed.is_set()) {
+    // Read ATA output registers
+    unsigned char regbuf[16] = {0, };
+    memset(&io_hdr, 0, sizeof(io_hdr));
+    io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
+    io_hdr.dxfer_len = sizeof(regbuf);
+    io_hdr.dxferp = regbuf;
+
+    memset(cdb, 0, sizeof(cdb));
+    cdb[ 0] = 0xD7;  // Prolific read registers
+    cdb[ 4] = 0x06;  // Check Word (VendorID magic, Prolific: 0x067B)
+    cdb[ 5] = 0x7B;  // Check Word (VendorID magic, Prolific: 0x067B)
+    io_hdr.cmnd = cdb;
+    io_hdr.cmnd_len = sizeof(cdb);
+
+    if (!scsi_pass_through_and_check(scsidev, &io_hdr,
+           "usbprolific_device::scsi_pass_through (get registers): "))
+      return set_err(scsidev->get_err());
+
+    // Use '-r scsiioctl,2' to print input registers for debug purposes
+    // Example: 50 00 00 00 00 01 4f 00  c2 00 a0 da 00 b0 00 50
+    out.out_regs.status       = regbuf[0];  // Status
+    out.out_regs.error        = regbuf[1];  // Error
+    out.out_regs.sector_count = regbuf[2];  // Sector Count (7:0)
+    out.out_regs.lba_low      = regbuf[4];  // LBA Low (7:0)
+    out.out_regs.lba_mid      = regbuf[6];  // LBA Mid (7:0)
+    out.out_regs.lba_high     = regbuf[8];  // LBA High (7:0)
+    out.out_regs.device       = regbuf[10]; // Device/Head
+    //                          = regbuf[11]; // ATA Feature (7:0)
+    //                          = regbuf[13]; // ATA Command
+  }
+
+  return true;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+
 /// SunplusIT USB Bridge support.
 
 class usbsunplus_device
@@ -1326,6 +1521,10 @@ ata_device * smart_interface::get_sat_device(const char * type, scsi_device * sc
       return 0;
     }
     return new usbjmicron_device(this, scsidev, type, prolific, ata_48bit_support, port);
+  }
+
+  else if (!strcmp(type, "usbprolific")) {
+    return new usbprolific_device(this, scsidev, type);
   }
 
   else if (!strcmp(type, "usbsunplus")) {

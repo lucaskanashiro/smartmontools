@@ -3,7 +3,7 @@
 ;
 ; Home page of code is: http://smartmontools.sourceforge.net
 ;
-; Copyright (C) 2006-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+; Copyright (C) 2006-15 Christian Franke
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 ; You should have received a copy of the GNU General Public License
 ; (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 ;
-; $Id: installer.nsi 3912 2014-06-18 19:03:30Z chrfranke $
+; $Id: installer.nsi 4072 2015-04-28 20:35:15Z chrfranke $
 ;
 
 
@@ -182,7 +182,6 @@ Section "!Documentation" DOC_SECTION
   File "${INPDIR}\doc\NEWS.txt"
   File "${INPDIR}\doc\README.txt"
   File "${INPDIR}\doc\TODO.txt"
-  File "${INPDIR}\doc\WARNINGS.txt"
 !ifdef INPDIR64
   StrCmp $X64 "" +3
     File "${INPDIR64}\doc\checksums64.txt"
@@ -444,7 +443,6 @@ Section "Uninstall"
   Delete "$INSTDIR\doc\NEWS.txt"
   Delete "$INSTDIR\doc\README.txt"
   Delete "$INSTDIR\doc\TODO.txt"
-  Delete "$INSTDIR\doc\WARNINGS.txt"
   Delete "$INSTDIR\doc\checksums*.txt"
   Delete "$INSTDIR\doc\smartctl.8.html"
   Delete "$INSTDIR\doc\smartctl.8.txt"
@@ -647,8 +645,31 @@ Function AddToPath
   Push $1
   Push $2
   Push $3
+  Push $4
 
-  ReadRegStr $1 ${Environ} "PATH"
+  ; NSIS ReadRegStr returns empty string on string overflow
+  ; Native calls are used here to check actual length of PATH
+
+  ; $4 = RegOpenKey(HKEY_CURRENT_USER, "Environment", &$3)
+  System::Call "advapi32::RegOpenKey(i 0x80000001, t'Environment', *i.r3) i.r4"
+  IntCmp $4 0 0 done done
+  ; $4 = RegQueryValueEx($3, "PATH", (DWORD*)0, (DWORD*)0, &$1, ($2=NSIS_MAX_STRLEN, &$2))
+  ; RegCloseKey($3)
+  System::Call "advapi32::RegQueryValueEx(i $3, t'PATH', i 0, i 0, t.r1, *i ${NSIS_MAX_STRLEN} r2) i.r4"
+  System::Call "advapi32::RegCloseKey(i $3)"
+
+  IntCmp $4 234 0 +4 +4 ; $4 == ERROR_MORE_DATA
+    DetailPrint "AddToPath: original length $2 > ${NSIS_MAX_STRLEN}"
+    MessageBox MB_OK "PATH not updated, original length $2 > ${NSIS_MAX_STRLEN}"
+    Goto done
+
+  IntCmp $4 0 +5 ; $4 != NO_ERROR
+    IntCmp $4 2 +3 ; $4 != ERROR_FILE_NOT_FOUND
+      DetailPrint "AddToPath: unexpected error code $4"
+      Goto done
+    StrCpy $1 ""
+
+  ; Check if already in PATH
   Push "$1;"
   Push "$0;"
   Call StrStr
@@ -660,6 +681,17 @@ Function AddToPath
   Pop $2
   StrCmp $2 "" 0 done
 
+  ; Prevent NSIS string overflow
+  StrLen $2 $0
+  StrLen $3 $1
+  IntOp $2 $2 + $3
+  IntOp $2 $2 + 2 ; $2 = strlen(dir) + strlen(PATH) + sizeof(";")
+  IntCmp $2 ${NSIS_MAX_STRLEN} +4 +4 0
+    DetailPrint "AddToPath: new length $2 > ${NSIS_MAX_STRLEN}"
+    MessageBox MB_OK "PATH not updated, new length $2 > ${NSIS_MAX_STRLEN}."
+    Goto done
+
+  ; Append dir to PATH
   DetailPrint "Add to PATH: $0"
   StrCpy $2 $1 1 -1
   StrCmp $2 ";" 0 +2
@@ -670,6 +702,7 @@ Function AddToPath
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
 done:
+  Pop $4
   Pop $3
   Pop $2
   Pop $1

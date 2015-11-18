@@ -1,8 +1,8 @@
 .ig
 Copyright (C) 2013 Hannes von Haugwitz <hannes@vonhaugwitz.com>
-Copyright (C) 2014 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2014-15 Christian Franke <smartmontools-support@lists.sourceforge.net>
 
-$Id: update-smart-drivedb.8.in 3961 2014-07-19 16:44:10Z chrfranke $
+$Id: update-smart-drivedb.8.in 4054 2015-04-15 19:04:49Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@ You should have received a copy of the GNU General Public License
 (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 
 ..
-.TH UPDATE-SMART-DRIVEDB 8 CURRENT_SVN_DATE CURRENT_SVN_VERSION CURRENT_SVN_DATE
+.TH UPDATE-SMART-DRIVEDB 8 "CURRENT_SVN_DATE" "CURRENT_SVN_VERSION" "SMART Monitoring Tools"
 .SH NAME
 update-smart-drivedb \- update smartmontools drive database
 
@@ -21,9 +21,6 @@ update-smart-drivedb \- update smartmontools drive database
 .B update-smart-drivedb
 .RB [ -v ]
 .RI [ DESTFILE ]
-
-.SH PACKAGE VERSION
-CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
 .SH "DESCRIPTION"
 .B update-smart-drivedb
@@ -88,17 +85,25 @@ new drive database rejected due to syntax errors.
 .B /usr/local/share/smartmontools/drivedb.h.lastcheck
 empty file created if downloaded file was identical.
 
-.SH "SEE ALSO"
-.BR smartctl (8),
-.BR smartd (8).
-
 .SH AUTHORS
-\fBChristian Franke\fP
-.br
-\fBsmartmontools\-support@lists.sourceforge.net\fP
+\fBChristian Franke\fP.
 .br
 This manual page was originally written by
 .BR "Hannes von Haugwitz <hannes@vonhaugwitz.com>" .
 
-.SH SVN ID OF THIS PAGE
-$Id: update-smart-drivedb.8.in 3961 2014-07-19 16:44:10Z chrfranke $
+.SH REPORTING BUGS
+To submit a bug report, create a ticket in smartmontools wiki:
+.br
+<\fBhttp://www.smartmontools.org/\fP>.
+.br
+Alternatively send the info to the smartmontools support mailing list:
+.br
+<\fBhttps://lists.sourceforge.net/lists/listinfo/smartmontools-support\fB>.
+
+.SH SEE ALSO
+\fBsmartctl\fP(8), \fBsmartd\fP(8).
+
+.SH PACKAGE VERSION
+CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
+.br
+$Id: update-smart-drivedb.8.in 4054 2015-04-15 19:04:49Z chrfranke $

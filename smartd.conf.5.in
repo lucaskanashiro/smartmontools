@@ -1,8 +1,8 @@
 .ig
-Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
-Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2002-10 Bruce Allen
+Copyright (C) 2004-15 Christian Franke
 
-$Id: smartd.conf.5.in 3965 2014-07-20 14:46:41Z chrfranke $
+$Id: smartd.conf.5.in 4103 2015-06-01 19:51:18Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,12 +18,9 @@ Research Center), Jack Baskin School of Engineering, University of
 California, Santa Cruz. http://ssrc.soe.ucsc.edu/
 
 ..
-.TH SMARTD.CONF 5 CURRENT_SVN_DATE CURRENT_SVN_VERSION CURRENT_SVN_DATE
+.TH SMARTD.CONF 5 "CURRENT_SVN_DATE" "CURRENT_SVN_VERSION" "SMART Monitoring Tools"
 .SH NAME
 \fBsmartd.conf\fP \- SMART Disk Monitoring Daemon Configuration File\fP
-
-.SH PACKAGE VERSION
-CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
 .SH DESCRIPTION
 .\" %IF NOT OS ALL
@@ -90,27 +87,17 @@ Section below!
 .nf
 .B ################################################
 .B # This is an example smartd startup config file
-.B # /usr/local/etc/smartd.conf for monitoring three
-.B # ATA disks, three SCSI disks, six ATA disks
-.B # behind two 3ware controllers, three SATA disks
-.B # directly connected to the HighPoint Rocket-
-.B # RAID controller, two SATA disks connected to
-.B # the HighPoint RocketRAID controller via a pmport
-.B # device, four SATA disks connected to an Areca
-.B # RAID controller, and one SATA disk.
+.B # /usr/local/etc/smartd.conf
 .B #
-.B # First ATA disk on two different interfaces. On
-.B # the second disk, start a long self-test every
+.B # On the second disk, start a long self-test every
 .B # Sunday between 3 and 4 am.
 .B #
-.B \ \ /dev/hda -a -m admin@example.com,root@localhost 
-.B \ \ /dev/hdc -a -I 194 -I 5 -i 12 -s L/../../7/03
+.B \ \ /dev/sda -a -m admin@example.com,root@localhost
+.B \ \ /dev/sdb -a -I 194 -I 5 -i 12 -s L/../../7/03
 .B #
-.B # SCSI disks.  Send a TEST warning email to admin on
-.B # startup.
+.B # Send a TEST warning email to admin on startup.
 .B #
-.B \ \ /dev/sda
-.B \ \ /dev/sdb -m admin@example.com -M test
+.B \ \ /dev/sdc -m admin@example.com -M test
 .B #
 .B # Strange device.  It\'s SCSI. Start a scheduled
 .B # long self test between 5 and 6 am Monday/Thursday
@@ -220,7 +207,7 @@ Section below!
 .B # and Usage Attributes, apart from Attributes
 .B # 9, 194, and 231, and shows  continued lines:
 .B #
-.B \ \ /dev/hdd\ -l\ error\ \e
+.B \ \ /dev/sdd\ -l\ error\ \e
 .B \ \ \ \ \ \ \ \ \ \ \ -l\ selftest\ \e
 .B \ \ \ \ \ \ \ \ \ \ \ -t\ \e\ \ \ \ \ \ # Attributes not tracked:
 .B \ \ \ \ \ \ \ \ \ \ \ -I\ 194\ \e\ \ # temperature
@@ -369,12 +356,16 @@ CAUTION: Specifying \',x\' for a device which does not support it results
 in I/O errors and may disconnect the drive.  The same applies if the specified
 PORT does not exist or is not connected to a disk.
 
-[NEW EXPERIMENTAL SMARTD FEATURE]
 The Prolific PL2507/3507 USB bridges with older firmware support a pass-through
 command similar to JMicron and work with \'\-d usbjmicron,0\'.
 Newer Prolific firmware requires a modified command which can be selected by
 \'\-d usbjmicron,p\'.
 Note that this does not yet support the SMART status command.
+
+.I usbprolific
+\- [NEW EXPERIMENTAL SMARTD FEATURE]
+this device type is for SATA disks that are behind a Prolific PL2571/2771/2773/2775
+USB to SATA bridge.
 
 .I usbsunplus
 \- this device type is for SATA disks that are behind a SunplusIT USB to SATA
@@ -397,15 +388,17 @@ It is possible to set RAID device name as /dev/bus/N, where N is a SCSI bus
 number.
 Please see the \fBsmartctl\fP(8) man page for further details.
 
+.\" %ENDIF OS Linux
+.\" %IF OS Linux Windows Cygwin
 .I aacraid,H,L,ID
-\- [Linux only] [NEW EXPERIMENTAL SMARTD FEATURE]
+\- [Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTD FEATURE]
 the device consists of one or more SCSI/SAS disks connected to an AacRaid controller.
 The non-negative integers H,L,ID (Host number, Lun, ID) denote which disk
 on the controller is monitored.
 In log files and email messages this disk will be identified as aacraid_disk_HH_LL_ID.
 Please see the \fBsmartctl\fP(8) man page for further details.
 
-.\" %ENDIF OS Linux
+.\" %ENDIF OS Linux Windows Cygwin
 .\" %IF OS FreeBSD Linux
 .I 3ware,N
 \- [FreeBSD and Linux only] the device consists of one or more ATA disks
@@ -432,8 +425,8 @@ areca_disk_XX with XX in the range from 01 to 24 inclusive.
 Please see the \fBsmartctl\fP(8) man page for further details.
 
 .I areca,N/E
-\- [FreeBSD, Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTD FEATURE] the
-device consists of one or more SATA or SAS disks connected to an Areca SAS RAID controller.
+\- [FreeBSD, Linux, Windows and Cygwin only] the device consists of one
+or more SATA or SAS disks connected to an Areca SAS RAID controller.
 The integer N (range 1 to 128) denotes the channel (slot) and E (range
 1 to 8) denotes the enclosure.
 Important: This requires Areca SAS controller firmware version 1.51 or later.
@@ -463,8 +456,7 @@ Please see the \fBsmartctl\fP(8) man page for further details.
 
 .\" %ENDIF OS FreeBSD Linux
 .I ignore
-\- [NEW EXPERIMENTAL SMARTD FEATURE]
-the device specified by this configuration entry should be ignored.
+\- the device specified by this configuration entry should be ignored.
 This allows to ignore specific devices which are detected by a following
 DEVICESCAN configuration line.
 It may also be used to temporary disable longer multi-line configuration entries.
@@ -574,8 +566,9 @@ Directive are \fIon\fP and \fIoff\fP.  Also affects SCSI devices.
 [Please see the \fBsmartctl \-S\fP command-line option.]
 .TP
 .B \-H
-[ATA only] Check the SMART health status of the disk.  If any Prefailure
-Attributes are less than or equal to their threshold values, then disk
+[ATA only] Check the health status of the disk with the SMART RETURN
+STATUS command.
+If this command reports a failing health status, then disk
 failure is predicted in less than 24 hours, and a message at loglevel
 .B \'LOG_CRIT\'
 will be logged to syslog.  [Please see the
@@ -868,7 +861,6 @@ below.
 .\" %IF ENABLE_SMARTDPLUGINDIR
 .\" %IF NOT OS Windows
 
-[NEW EXPERIMENTAL SMARTD FEATURE]
 If a word of the comma separated list has the form \'@plugin\', a custom
 script /usr/local/etc/smartd_warning.d/plugin is run and the word is
 removed from the list before sending mail. The string \'plugin\' may be any
@@ -881,9 +873,8 @@ This is handled by the script /usr/local/etc/smartd_warning.sh
 .\" %ENDIF ENABLE_SMARTDPLUGINDIR
 .\" %IF OS Windows
 
-[Windows only] [NEW EXPERIMENTAL SMARTD FEATURE]
-If one of the following words are used as the first address in the
-comma separated list, warning messages are sent via WTSSendMessage().
+[Windows only] If one of the following words are used as the first address
+in the comma separated list, warning messages are sent via WTSSendMessage().
 This displays message boxes on the desktops of the selected sessions.
 Address \'\fBconsole\fP\' specifies the console session only,
 \'\fBactive\fP\' specifies the console session and all active remote
@@ -978,7 +969,7 @@ exported by \fBsmartd\fP are:
 is set to the argument of \-M exec, if present or else to \'mail\'
 (examples: /usr/local/bin/mail, mail).
 .IP \fBSMARTD_DEVICE\fP 4
-is set to the device path (examples: /dev/hda, /dev/sdb).
+is set to the device path (example: /dev/sda).
 .IP \fBSMARTD_DEVICETYPE\fP 4
 is set to the device type specified by \'-d\' directive or
 \'auto\' if none.
@@ -1082,10 +1073,6 @@ It it set to empty on \'\-M once\' and set to \'1\' on \'\-M daily\'.
 .\" They define a non-existent option; useful because man2html can't correctly reset the margins.
 .TP
 .B \&
-The shell which is used to run PATH is system-dependent. For vanilla
-Linux/glibc it\'s bash. For other systems, the man page for
-\fBpopen\fP(3) should say what shell is used.
-
 If the \'\-m ADD\' Directive is given with a normal address argument,
 then the executable pointed to by PATH will be run in a shell with
 STDIN receiving the body of the email message, and with the same
@@ -1130,7 +1117,7 @@ Some sample scripts are also included in
 /usr/local/share/doc/smartmontools/examplescripts/.
 .\" %ENDIF NOT OS Windows
 
-[NEW EXPERIMENTAL SMARTD FEATURE] The executable is run by the script
+The executable is run by the script
 .\" %IF NOT OS Windows
 /usr/local/etc/smartd_warning.sh.
 .\" %ENDIF NOT OS Windows
@@ -1493,7 +1480,6 @@ will do the same, but only monitors the SMART health status of the
 devices, (rather than the default \-a, which monitors all SMART
 properties).
 
-[NEW EXPERIMENTAL SMARTD FEATURE]
 Configuration entries for specific devices may precede the \fBDEVICESCAN\fP entry.
 For example
 .nf
@@ -1581,5 +1567,7 @@ full path of this file.
 \fBsmartd\fP(8), \fBsmartctl\fP(8),
 \fBmail\fP(1), \fBregex\fP(7).
 
-.SH SVN ID OF THIS PAGE
-$Id: smartd.conf.5.in 3965 2014-07-20 14:46:41Z chrfranke $
+.SH PACKAGE VERSION
+CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
+.br
+$Id: smartd.conf.5.in 4103 2015-06-01 19:51:18Z chrfranke $

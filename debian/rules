@@ -36,11 +36,12 @@ PACKAGE = smartmontools
 SRC_VERSION := $(shell dpkg-parsechangelog | sed -ne 's/^Version: \(.*\)-.*/\1/p'| cut -d':' -f2)
 SVN_REVISION := $(shell echo $(SRC_VERSION) | awk -F"+" '{ print $$2 }' | sed 's/svn//' )
 TARBALL = $(PACKAGE)_$(SRC_VERSION).orig.tar.gz
+SVN_ROOT := 'https://svn.code.sf.net/p/smartmontools/code/trunk/smartmontools'
 
 get-orig-source:
 		rm -rf get-orig-source $(TARBALL)
 		mkdir get-orig-source
-		svn export -r $(SVN_REVISION) https://smartmontools.svn.sourceforge.net/svnroot/smartmontools/trunk/smartmontools/ \
+		svn export -r $(SVN_REVISION) $(SVN_ROOT) \
 			get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig
 		rm -rf get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig/os_solaris_ata.s
 		GZIP=--best tar czf $(TARBALL) -C get-orig-source $(PACKAGE)-$(SRC_VERSION).orig

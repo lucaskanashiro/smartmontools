@@ -4,7 +4,7 @@
  * Home page of code is: http://smartmontools.sourceforge.net
  *
  * Copyright (C) 2002-12 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-15 Christian Franke <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -52,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 3937 2014-07-05 17:51:21Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 4031 2015-01-01 10:47:48Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -90,7 +90,7 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
       "(build date " __DATE__ ")" // checkout without expansion of Id keywords
 #endif
       " [%s] " BUILD_INFO "\n"
-    "Copyright (C) 2002-14, Bruce Allen, Christian Franke, www.smartmontools.org\n",
+    "Copyright (C) 2002-15, Bruce Allen, Christian Franke, www.smartmontools.org\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -651,35 +651,15 @@ int64_t bytes = 0;
 // Helps debugging.  If the second argument is non-negative, then
 // decrement bytes by that amount.  Else decrement bytes by (one plus)
 // length of null terminated string.
-void *FreeNonZero1(void *address, int size, int line, const char* file){
+void *FreeNonZero(void *address, int size, int /*line*/, const char* /*file*/){
   if (address) {
     if (size<0)
       bytes-=1+strlen((char*)address);
     else
       bytes-=size;
-    return CheckFree1(address, line, file);
+    free(address);
   }
   return NULL;
-}
-
-// To help with memory checking.  Use when it is known that address is
-// NOT null.
-void *CheckFree1(void *address, int /*whatline*/, const char* /*file*/){
-  if (address){
-    free(address);
-    return NULL;
-  }
-  throw std::runtime_error("Internal error in CheckFree()");
-}
-
-// A custom version of calloc() that tracks memory use
-void *Calloc(size_t nmemb, size_t size) { 
-  void *ptr=calloc(nmemb, size);
-  
-  if (ptr)
-    bytes+=nmemb*size;
-
-  return ptr;
 }
 
 // A custom version of strdup() that keeps track of how much memory is

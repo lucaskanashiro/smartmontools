@@ -3,11 +3,11 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2002-8 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-8 Bruce Allen
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * Additional SCSI work:
- * Copyright (C) 2003-13 Douglas Gilbert <dgilbert@interlog.com>
+ * Copyright (C) 2003-15 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@
 #include "dev_interface.h"
 #include "utility.h"
 
-const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 3915 2014-06-19 18:24:57Z dpgilbert $"
+const char *scsicmds_c_cvsid="$Id: scsicmds.cpp 4081 2015-05-10 16:42:50Z chrfranke $"
   SCSICMDS_H_CVSID;
 
 // Print SCSI debug messages?
@@ -989,40 +989,6 @@ scsiSendDiagnostic(scsi_device * device, int functioncode, UINT8 *pBuf,
     return scsiSimpleSenseFilter(&sinfo);
 }
 
-/* RECEIVE DIAGNOSTIC command. Returns 0 if ok, 1 if NOT READY, 2 if
- * command not supported, 3 if field in command not supported or returns
- * negated errno. SPC-3 section 6.18 (rev 22a) */
-int
-scsiReceiveDiagnostic(scsi_device * device, int pcv, int pagenum, UINT8 *pBuf,
-                      int bufLen)
-{
-    struct scsi_cmnd_io io_hdr;
-    struct scsi_sense_disect sinfo;
-    UINT8 cdb[6];
-    UINT8 sense[32];
-
-    memset(&io_hdr, 0, sizeof(io_hdr));
-    memset(cdb, 0, sizeof(cdb));
-    io_hdr.dxfer_dir = DXFER_FROM_DEVICE;
-    io_hdr.dxfer_len = bufLen;
-    io_hdr.dxferp = pBuf;
-    cdb[0] = RECEIVE_DIAGNOSTIC;
-    cdb[1] = pcv;
-    cdb[2] = pagenum;
-    cdb[3] = (bufLen >> 8) & 0xff;
-    cdb[4] = bufLen & 0xff;
-    io_hdr.cmnd = cdb;
-    io_hdr.cmnd_len = sizeof(cdb);
-    io_hdr.sensep = sense;
-    io_hdr.max_sense_len = sizeof(sense);
-    io_hdr.timeout = SCSI_TIMEOUT_DEFAULT;
-
-    if (!device->scsi_pass_through(&io_hdr))
-      return -device->get_errno();
-    scsi_do_sense_disect(&io_hdr, &sinfo);
-    return scsiSimpleSenseFilter(&sinfo);
-}
-
 /* TEST UNIT READY command. SPC-3 section 6.33 (rev 22a) */
 static int
 _testunitready(scsi_device * device, struct scsi_sense_disect * sinfo)
@@ -1072,7 +1038,8 @@ scsiTestUnitReady(scsi_device * device)
 }
 
 /* READ DEFECT (10) command. Returns 0 if ok, 1 if NOT READY, 2 if
- * command not supported, 3 if field in command not supported or returns
+ * command not supported, 3 if field in command not supported, 101 if
+ * defect list not found (e.g. SSD may not have defect list) or returns
  * negated errno. SBC-2 section 5.12 (rev 16) */
 int
 scsiReadDefect10(scsi_device * device, int req_plist, int req_glist,
@@ -1102,11 +1069,15 @@ scsiReadDefect10(scsi_device * device, int req_plist, int req_glist,
     if (!device->scsi_pass_through(&io_hdr))
       return -device->get_errno();
     scsi_do_sense_disect(&io_hdr, &sinfo);
+    /* Look for "(Primary|Grown) defect list not found" */
+    if ((sinfo.resp_code >= 0x70) && (0x1c == sinfo.asc))
+        return 101;
     return scsiSimpleSenseFilter(&sinfo);
 }
 
 /* READ DEFECT (12) command. Returns 0 if ok, 1 if NOT READY, 2 if
- * command not supported, 3 if field in command not supported or returns
+ * command not supported, 3 if field in command not supported, 101 if
+ * defect list not found (e.g. SSD may not have defect list) or returns
  * negated errno. SBC-3 section 5.18 (rev 35; vale Mark Evans) */
 int
 scsiReadDefect12(scsi_device * device, int req_plist, int req_glist,
@@ -1142,6 +1113,9 @@ scsiReadDefect12(scsi_device * device, int req_plist, int req_glist,
     if (!device->scsi_pass_through(&io_hdr))
       return -device->get_errno();
     scsi_do_sense_disect(&io_hdr, &sinfo);
+    /* Look for "(Primary|Grown) defect list not found" */
+    if ((sinfo.resp_code >= 0x70) && (0x1c == sinfo.asc))
+        return 101;
     return scsiSimpleSenseFilter(&sinfo);
 }
 
@@ -2108,30 +2082,6 @@ scsiGetIEString(UINT8 asc, UINT8 ascq)
     return NULL;        /* not a IE additional sense code */
 }
 
-
-/* This is not documented in t10.org, page 0x80 is vendor specific */
-/* Some IBM disks do an offline read-scan when they get this command. */
-int
-scsiSmartIBMOfflineTest(scsi_device * device)
-{
-    UINT8 tBuf[256];
-    int res;
-
-    memset(tBuf, 0, sizeof(tBuf));
-    /* Build SMART Off-line Immediate Diag Header */
-    tBuf[0] = 0x80; /* Page Code */
-    tBuf[1] = 0x00; /* Reserved */
-    tBuf[2] = 0x00; /* Page Length MSB */
-    tBuf[3] = 0x04; /* Page Length LSB */
-    tBuf[4] = 0x03; /* SMART Revision */
-    tBuf[5] = 0x00; /* Reserved */
-    tBuf[6] = 0x00; /* Off-line Immediate Time MSB */
-    tBuf[7] = 0x00; /* Off-line Immediate Time LSB */
-    res = scsiSendDiagnostic(device, SCSI_DIAG_NO_SELF_TEST, tBuf, 8);
-    if (res)
-        pout("IBM offline test failed [%s]\n", scsiErrString(res));
-    return res;
-}
 
 int
 scsiSmartDefaultSelfTest(scsi_device * device)

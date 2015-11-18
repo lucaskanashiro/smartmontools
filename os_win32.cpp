@@ -3,8 +3,13 @@
  *
  * Home page of code is: http://smartmontools.sourceforge.net
  *
- * Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2012    Hank Wu <hank@areca.com.tw>
+ * Copyright (C) 2004-15 Christian Franke
+ *
+ * Original AACRaid code:
+ *  Copyright (C) 2015    Nidhi Malhotra <nidhi.malhotra@pmcs.com>
+ *
+ * Original Areca code:
+ *  Copyright (C) 2012    Hank Wu <hank@areca.com.tw>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -69,12 +74,16 @@
 #endif
 
 #ifndef _WIN32
-// csmisas.h requires _WIN32 but w32api-headers no longer define it on Cygwin
+// csmisas.h and aacraid.h require _WIN32 but w32api-headers no longer define it on Cygwin
+// (aacraid.h also checks for _WIN64 which is also set on Cygwin x64)
 #define _WIN32
 #endif
 
 // CSMI support
 #include "csmisas.h"
+
+// aacraid support
+#include "aacraid.h"
 
 // Silence -Wunused-local-typedefs warning from g++ >= 4.8
 #if __GNUC__ >= 4
@@ -95,7 +104,14 @@
 #define SELECT_WIN_32_64(x32, x64) (x64)
 #endif
 
-const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 3923 2014-06-25 17:10:46Z chrfranke $";
+// Cygwin does no longer provide strn?icmp() compatibility macros
+// MSVCRT does not provide strn?casecmp()
+#if defined(__CYGWIN__) && !defined(stricmp)
+#define stricmp strcasecmp
+#define strnicmp strncasecmp
+#endif
+
+const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 4098 2015-05-30 16:37:37Z chrfranke $";
 
 /////////////////////////////////////////////////////////////////////////////
 // Windows I/O-controls, some declarations are missing in the include files
@@ -306,6 +322,10 @@ ASSERT_SIZEOF(CSMI_SAS_DRIVER_INFO_BUFFER, 204);
 ASSERT_SIZEOF(CSMI_SAS_PHY_INFO_BUFFER, 2080);
 ASSERT_SIZEOF(CSMI_SAS_STP_PASSTHRU_BUFFER, 168);
 
+// aacraid struct
+
+ASSERT_SIZEOF(SCSI_REQUEST_BLOCK, SELECT_WIN_32_64(64, 88));
+
 } // extern "C"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -492,6 +512,34 @@ private:
   ata_smart_values m_smart_buf;
 };
 
+/////////////////////////////////////////////////////////////////////////////
+//// PMC aacraid Support
+
+class win_aacraid_device
+:public /*implements*/ scsi_device,
+public /*extends*/ win_smart_device
+{
+public:
+  win_aacraid_device(smart_interface *intf, const char *dev_name,unsigned int ctrnum, unsigned int target, unsigned int lun);
+
+  virtual ~win_aacraid_device() throw();
+
+  virtual bool open();
+
+  virtual bool scsi_pass_through(struct scsi_cmnd_io *iop);
+
+private:
+  //Device Host number
+  int m_ctrnum;
+
+  //Channel(Lun) of the device
+  int m_lun;
+
+  //Id of the device
+  int m_target;
+};
+
+
 
 /////////////////////////////////////////////////////////////////////////////
 /// Areca RAID support
@@ -647,6 +695,7 @@ std::string win_smart_interface::get_os_version_str()
         case 0x61: w = (ws ? "win7"  : "2008r2"); break;
         case 0x62: w = (ws ? "win8"  : "2012"  ); break;
         case 0x63: w = (ws ? "win8.1": "2012r2"); break;
+        case 0x64: w = (ws ? "win10" : "w10srv"); break;
       }
     }
   }
@@ -696,7 +745,7 @@ int64_t win_smart_interface::get_timer_usec()
 
 
 // Return value for device detection functions
-enum win_dev_type { DEV_UNKNOWN = 0, DEV_ATA, DEV_SCSI, DEV_USB };
+enum win_dev_type { DEV_UNKNOWN = 0, DEV_ATA, DEV_SCSI, DEV_SAT, DEV_USB };
 
 static win_dev_type get_phy_drive_type(int drive);
 static win_dev_type get_phy_drive_type(int drive, GETVERSIONINPARAMS_EX * ata_version_ex);
@@ -828,6 +877,55 @@ smart_device * win_smart_interface::get_custom_smart_device(const char * name, c
     }
     else
       set_err(EINVAL, "Option -d areca,N/E requires device name /dev/arcmsrX");
+    return 0;
+  }
+
+  // aacraid?
+  unsigned ctrnum, lun, target;
+  n1 = -1;
+
+  if (   sscanf(type, "aacraid,%u,%u,%u%n", &ctrnum, &lun, &target, &n1) >= 3
+      && n1 == (int)strlen(type)) {
+#define aacraid_MAX_CTLR_NUM  16
+    if (ctrnum >= aacraid_MAX_CTLR_NUM) {
+      set_err(EINVAL, "aacraid: invalid host number %u", ctrnum);
+      return 0;
+    }
+
+    /*
+    1. scan from "\\\\.\\scsi[0]:" up to "\\\\.\\scsi[AACRAID_MAX_CTLR_NUM]:" and
+    2. map ARCX into "\\\\.\\scsiX"
+    */
+    memset(devpath, 0, sizeof(devpath));
+    unsigned ctlrindex = 0;
+    for (int portNum = 0; portNum < aacraid_MAX_CTLR_NUM; portNum++){
+      char subKey[63];
+      snprintf(subKey, sizeof(subKey), "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port %d", portNum);
+      HKEY hScsiKey = 0;
+      long regStatus = RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hScsiKey);
+      if (regStatus == ERROR_SUCCESS){
+        char driverName[20];
+        DWORD driverNameSize = sizeof(driverName);
+        DWORD regType = 0;
+        regStatus = RegQueryValueExA(hScsiKey, "Driver", NULL, &regType, (LPBYTE) driverName, &driverNameSize);
+        if (regStatus == ERROR_SUCCESS){
+          if (regType == REG_SZ){
+            if (stricmp(driverName, "arcsas") == 0){
+              if(ctrnum == ctlrindex){
+                snprintf(devpath, sizeof(devpath), "\\\\.\\Scsi%d:", portNum);
+                return get_sat_device("sat,auto",
+                  new win_aacraid_device(this, devpath, ctrnum, target, lun));
+              }
+              ctlrindex++;
+            }
+          }
+        }
+        RegCloseKey(hScsiKey);
+      }
+    }
+
+    set_err(EINVAL, "aacraid: host %u not found", ctrnum);
+    return 0;
   }
 
   return 0;
@@ -835,7 +933,7 @@ smart_device * win_smart_interface::get_custom_smart_device(const char * name, c
 
 std::string win_smart_interface::get_valid_custom_dev_types_str()
 {
-  return "areca,N[/E]";
+  return "aacraid,H,L,ID, areca,N[/E]";
 }
 
 
@@ -856,8 +954,12 @@ smart_device * win_smart_interface::autodetect_smart_device(const char * name)
 
   if (type == DEV_ATA)
     return new win_ata_device(this, name, "");
+
   if (type == DEV_SCSI)
     return new win_scsi_device(this, name, "");
+
+  if (type == DEV_SAT)
+    return get_sat_device("sat", new win_scsi_device(this, name, ""));
 
   if (type == DEV_USB) {
     // Get USB bridge ID
@@ -905,29 +1007,33 @@ bool win_smart_interface::scan_smart_devices(smart_device_list & devlist,
   }
 
   // Set valid types
-  bool ata, scsi, usb, csmi;
+  bool ata, scsi, sat, usb, csmi;
   if (!type) {
-    ata = scsi = usb = csmi = true;
+    ata = scsi = usb = sat = csmi = true;
   }
   else {
-    ata = scsi = usb = csmi = false;
+    ata = scsi = usb = sat = csmi = false;
     if (!strcmp(type, "ata"))
       ata = true;
     else if (!strcmp(type, "scsi"))
       scsi = true;
+    else if (!strcmp(type, "sat"))
+      sat = true;
     else if (!strcmp(type, "usb"))
       usb = true;
     else if (!strcmp(type, "csmi"))
       csmi = true;
     else {
-      set_err(EINVAL, "Invalid type '%s', valid arguments are: ata[,pd], scsi[,pd], usb[,pd], csmi, pd", type);
+      set_err(EINVAL,
+              "Invalid type '%s', valid arguments are: ata[,pd], scsi[,pd], sat[,pd], usb[,pd], csmi, pd",
+              type);
       return false;
     }
   }
 
   char name[20];
 
-  if (ata || scsi || usb) {
+  if (ata || scsi || sat || usb) {
     // Scan up to 128 drives and 2 3ware controllers
     const int max_raid = 2;
     bool raid_seen[max_raid] = {false, false};
@@ -975,6 +1081,13 @@ bool win_smart_interface::scan_smart_devices(smart_device_list & devlist,
           if (!scsi)
             continue;
           devlist.push_back( new win_scsi_device(this, name, "scsi") );
+          break;
+
+        case DEV_SAT:
+          // STORAGE_QUERY_PROPERTY returned VendorId "ATA     "
+          if (!sat)
+            continue;
+          devlist.push_back( get_sat_device("sat", new win_scsi_device(this, name, "")) );
           break;
 
         case DEV_USB:
@@ -2015,6 +2128,16 @@ static int storage_predict_failure_ioctl(HANDLE hdevice, char * data = 0)
 
 /////////////////////////////////////////////////////////////////////////////
 
+// Return true if ATA drive behind a SAT layer
+static bool is_sat(const STORAGE_DEVICE_DESCRIPTOR_DATA * data)
+{
+  if (!data->desc.VendorIdOffset)
+    return false;
+  if (strcmp(data->raw + data->desc.VendorIdOffset, "ATA     "))
+    return false;
+  return true;
+}
+
 // Return true if Intel ICHxR RAID volume
 static bool is_intel_raid_volume(const STORAGE_DEVICE_DESCRIPTOR_DATA * data)
 {
@@ -2040,22 +2163,34 @@ static win_dev_type get_controller_type(HANDLE hdevice, bool admin, GETVERSIONIN
   switch ((int)data.desc.BusType) {
     case BusTypeAta:
     case 0x0b: // BusTypeSata
+      // Certain Intel AHCI drivers (C600+/C220+) have broken
+      // IOCTL_ATA_PASS_THROUGH support and a working SAT layer
+      if (is_sat(&data))
+        return DEV_SAT;
+
       if (ata_version_ex)
         memset(ata_version_ex, 0, sizeof(*ata_version_ex));
       return DEV_ATA;
 
     case BusTypeScsi:
     case BusTypeRAID:
+      if (is_sat(&data))
+        return DEV_SAT;
+
       // Intel ICHxR RAID volume: reports SMART_GET_VERSION but does not support SMART_*
       if (is_intel_raid_volume(&data))
         return DEV_SCSI;
       // LSI/3ware RAID volume: supports SMART_*
       if (admin && smart_get_version(hdevice, ata_version_ex) >= 0)
         return DEV_ATA;
+
       return DEV_SCSI;
 
     case 0x09: // BusTypeiScsi
     case 0x0a: // BusTypeSas
+      if (is_sat(&data))
+        return DEV_SAT;
+
       return DEV_SCSI;
 
     case BusTypeUsb:
@@ -3831,6 +3966,170 @@ bool win_areca_ata_device::arcmsr_unlock()
   return true;
 }
 
+// AACRAID
+win_aacraid_device::win_aacraid_device(smart_interface * intf,
+  const char *dev_name, unsigned ctrnum, unsigned target, unsigned lun)
+: smart_device(intf, dev_name, "aacraid", "aacraid"),
+  m_ctrnum(ctrnum), m_lun(lun), m_target(target)
+{
+  set_info().info_name = strprintf("%s [aacraid_disk_%02d_%02d_%d]", dev_name, m_ctrnum, m_lun, m_target);
+  set_info().dev_type  = strprintf("aacraid,%d,%d,%d", m_ctrnum, m_lun, m_target);
+}
+
+win_aacraid_device::~win_aacraid_device() throw()
+{
+}
+
+bool win_aacraid_device::open()
+{
+  if (is_open())
+    return true;
+
+  HANDLE hFh = CreateFile( get_dev_name(),
+          GENERIC_READ|GENERIC_WRITE,
+          FILE_SHARE_READ|FILE_SHARE_WRITE,
+          NULL,
+          OPEN_EXISTING,
+          0,
+          0);
+  if (hFh == INVALID_HANDLE_VALUE)
+    return set_err(ENODEV, "Open failed, Error=%u", (unsigned)GetLastError());
+
+  set_fh(hFh);
+  return true;
+}
+
+bool win_aacraid_device::scsi_pass_through(struct scsi_cmnd_io *iop)
+{
+  int report = scsi_debugmode;
+  if (report > 0)
+  {
+    int k, j;
+    const unsigned char * ucp = iop->cmnd;
+    const char * np;
+    char buff[256];
+    const int sz = (int)sizeof(buff);
+    np = scsi_get_opcode_name(ucp[0]);
+    j  = snprintf(buff, sz, " [%s: ", np ? np : "<unknown opcode>");
+    for (k = 0; k < (int)iop->cmnd_len; ++k)
+      j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "%02x ", ucp[k]);
+    if ((report > 1) &&
+      (DXFER_TO_DEVICE == iop->dxfer_dir) && (iop->dxferp)) {
+      int trunc = (iop->dxfer_len > 256) ? 1 : 0;
+
+      j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
+        "data, len=%d%s:\n", (int)iop->dxfer_len,
+        (trunc ? " [only first 256 bytes shown]" : ""));
+        dStrHex((const char *)iop->dxferp,
+        (trunc ? 256 : (int)iop->dxfer_len) , 1);
+      }
+    else
+      j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
+      pout("buff %s\n",buff);
+  }
+
+  char ioBuffer[1000];
+  SRB_IO_CONTROL * pSrbIO = (SRB_IO_CONTROL *) ioBuffer;
+  SCSI_REQUEST_BLOCK * pScsiIO = (SCSI_REQUEST_BLOCK *) (ioBuffer + sizeof(SRB_IO_CONTROL));
+  DWORD scsiRequestBlockSize = sizeof(SCSI_REQUEST_BLOCK);
+  char *pRequestSenseIO = (char *) (ioBuffer + sizeof(SRB_IO_CONTROL) + scsiRequestBlockSize);
+  DWORD dataOffset = (sizeof(SRB_IO_CONTROL) + scsiRequestBlockSize  + 7) & 0xfffffff8;
+  char *pDataIO = (char *) (ioBuffer + dataOffset);
+  memset(pScsiIO, 0, scsiRequestBlockSize);
+  pScsiIO->Length    = (USHORT) scsiRequestBlockSize;
+  pScsiIO->Function  = SRB_FUNCTION_EXECUTE_SCSI;
+  pScsiIO->PathId    = 0;
+  pScsiIO->TargetId  = m_target;
+  pScsiIO->Lun       = m_lun;
+  pScsiIO->CdbLength = (int)iop->cmnd_len;
+  switch(iop->dxfer_dir){
+    case DXFER_NONE:
+      pScsiIO->SrbFlags = SRB_NoDataXfer;
+      break;
+    case DXFER_FROM_DEVICE:
+      pScsiIO->SrbFlags |= SRB_DataIn;
+      break;
+    case DXFER_TO_DEVICE:
+      pScsiIO->SrbFlags |= SRB_DataOut;
+      break;
+    default:
+      pout("aacraid: bad dxfer_dir\n");
+      return set_err(EINVAL, "aacraid: bad dxfer_dir\n");
+  }
+  pScsiIO->DataTransferLength = (ULONG)iop->dxfer_len;
+  pScsiIO->TimeOutValue = iop->timeout;
+  UCHAR *pCdb = (UCHAR *) pScsiIO->Cdb;
+  memcpy(pCdb, iop->cmnd, 16);
+  if (iop->max_sense_len){
+    memset(pRequestSenseIO, 0, iop->max_sense_len);
+  }
+  if (pScsiIO->SrbFlags & SRB_FLAGS_DATA_OUT){
+    memcpy(pDataIO, iop->dxferp, iop->dxfer_len);
+  }
+  else if (pScsiIO->SrbFlags & SRB_FLAGS_DATA_IN){
+    memset(pDataIO, 0, iop->dxfer_len);
+  }
+
+  DWORD bytesReturned = 0;
+  memset(pSrbIO, 0, sizeof(SRB_IO_CONTROL));
+  pSrbIO->HeaderLength = sizeof(SRB_IO_CONTROL);
+  memcpy(pSrbIO->Signature, "AACAPI", 7);
+  pSrbIO->ControlCode = ARCIOCTL_SEND_RAW_SRB;
+  pSrbIO->Length = (dataOffset + iop->dxfer_len - sizeof(SRB_IO_CONTROL) + 7) & 0xfffffff8;
+  pSrbIO->Timeout = 3*60;
+
+  if (!DeviceIoControl(
+                   get_fh(),
+                   IOCTL_SCSI_MINIPORT,
+                   ioBuffer,
+                   sizeof(SRB_IO_CONTROL) + pSrbIO->Length,
+                   ioBuffer,
+                   sizeof(SRB_IO_CONTROL) + pSrbIO->Length,
+                   &bytesReturned,
+                   NULL)
+     ) {
+    return set_err(EIO, "ARCIOCTL_SEND_RAW_SRB failed, Error=%u", (unsigned)GetLastError());
+  }
+
+  iop->scsi_status = pScsiIO->ScsiStatus;
+  if (SCSI_STATUS_CHECK_CONDITION & iop->scsi_status) {
+    int slen = sizeof(pRequestSenseIO) + 8;
+    if (slen > (int)sizeof(pRequestSenseIO))
+      slen = sizeof(pRequestSenseIO);
+    if (slen > (int)iop->max_sense_len)
+      slen = (int)iop->max_sense_len;
+    memcpy(iop->sensep, pRequestSenseIO, slen);
+    iop->resp_sense_len = slen;
+    if (report) {
+      if (report > 1) {
+        pout("  >>> Sense buffer, len=%d:\n", slen);
+        dStrHex(iop->sensep, slen , 1);
+      }
+      if ((iop->sensep[0] & 0x7f) > 0x71)
+        pout("  status=%x: [desc] sense_key=%x asc=%x ascq=%x\n",
+          iop->scsi_status, iop->sensep[1] & 0xf,
+          iop->sensep[2], iop->sensep[3]);
+      else
+        pout("  status=%x: sense_key=%x asc=%x ascq=%x\n",
+          iop->scsi_status, iop->sensep[2] & 0xf,
+          iop->sensep[12], iop->sensep[13]);
+    }
+  }
+  else {
+    iop->resp_sense_len = 0;
+  }
+
+  if (iop->dxfer_dir == DXFER_FROM_DEVICE){
+     memcpy(iop->dxferp,pDataIO, iop->dxfer_len);
+  }
+  if((iop->dxfer_dir == DXFER_FROM_DEVICE) && (report > 1)){
+    int trunc = (iop->dxfer_len > 256) ? 1 : 0;
+    pout("  Incoming data, len=%d, resid=%d%s:\n", (int)iop->dxfer_len, iop->resid,
+      (trunc ? " [only first 256 bytes shown]" : ""));
+    dStrHex((CHAR*)pDataIO, (trunc ? 256 : (int)(iop->dxfer_len)) , 1);
+  }
+  return true;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 

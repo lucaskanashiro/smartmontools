@@ -6,9 +6,11 @@ file and adds some more cciss documentation to the manpages. I think this
 patch gets things to parity with the 3ware documentation with a couple
 minor exceptions
 
+diff --git a/smartd.conf b/smartd.conf
+index 715258e..d5d71ff 100644
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -92,6 +92,12 @@
+@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -21,25 +23,11 @@ minor exceptions
  
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
+diff --git a/smartd.conf.5.in b/smartd.conf.5.in
+index 21b031f..66a254b 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -92,10 +92,11 @@
- .B # This is an example smartd startup config file
- .B # /usr/local/etc/smartd.conf for monitoring three
- .B # ATA disks, three SCSI disks, six ATA disks
--.B # behind two 3ware controllers, three SATA disks
--.B # directly connected to the HighPoint Rocket-
--.B # RAID controller, two SATA disks connected to
--.B # the HighPoint RocketRAID controller via a pmport
-+.B # behind two 3ware controllers, two disks on a cciss
-+.B # controller, three SATA disks directly connected
-+.B # to the HighPoint Rocket-RAID controller,
-+.B # two SATA disks connected to the HighPoint
-+.B # RocketRAID controller via a pmport
- .B # device, four SATA disks connected to an Areca
- .B # RAID controller, and one SATA disk.
- .B #
-@@ -170,6 +171,12 @@
+@@ -157,6 +157,12 @@ Section below!
  .B \ \ /dev/tws0 -d 3ware,1 -a -s L/../../7/02
  .\" %ENDIF OS FreeBSD
  .B #
@@ -52,7 +40,7 @@ minor exceptions
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1-2, 2-3, and
  .B # 3-4 am.
-@@ -1463,6 +1470,9 @@
+@@ -1450,6 +1456,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
  .B -a.
  

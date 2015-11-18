@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 3957 2014-07-18 18:39:06Z chrfranke $
+# $Id: Makefile.am 4102 2015-06-01 19:25:47Z chrfranke $
 #
 
 @SET_MAKE@
@@ -78,8 +78,8 @@ smartctl_SOURCES = \
         utility.cpp \
         utility.h
 
-smartctl_LDADD = @os_deps@ @os_libs@
-smartctl_DEPENDENCIES = @os_deps@
+smartctl_LDADD = $(os_deps) $(os_libs)
+smartctl_DEPENDENCIES = $(os_deps)
 
 EXTRA_smartctl_SOURCES = \
         os_darwin.cpp \
@@ -138,8 +138,8 @@ smartd_SOURCES = \
         utility.cpp \
         utility.h
 
-smartd_LDADD = @os_deps@ @os_libs@ @CAPNG_LDADD@
-smartd_DEPENDENCIES = @os_deps@
+smartd_LDADD = $(os_deps) $(os_libs) $(CAPNG_LDADD)
+smartd_DEPENDENCIES = $(os_deps)
 
 EXTRA_smartd_SOURCES = \
         os_darwin.cpp \
@@ -255,8 +255,8 @@ endif
 all-local: $(extra_MANS)
 install-man: $(extra_MANS)
 	@$(NORMAL_INSTALL)
-	$(mkinstalldirs) $(DESTDIR)$(mandir)/man4
-	$(mkinstalldirs) $(DESTDIR)$(mandir)/man1m
+	$(mkinstalldirs) '$(DESTDIR)$(mandir)/man4'
+	$(mkinstalldirs) '$(DESTDIR)$(mandir)/man1m'
 	for i in $(extra_MANS); do \
 	  if test -f $(srcdir)/$$i; then file=$(srcdir)/$$i; \
 	  else file=$$i; fi; \
@@ -264,8 +264,8 @@ install-man: $(extra_MANS)
 	  inst=`echo $$i | sed -e 's/\\.[0-9a-z]*$$//'`; \
 	  inst=`echo $$inst | sed -e 's/^.*\///'`; \
 	  inst=`echo $$inst | sed '$(transform)'`.$$ext; \
-	  echo " $(INSTALL_DATA) $$file $(DESTDIR)$(mandir)/man$$ext/$$inst"; \
-	  $(INSTALL_DATA) $$file $(DESTDIR)$(mandir)/man$$ext/$$inst; \
+	  echo " $(INSTALL_DATA) '$$file' '$(DESTDIR)$(mandir)/man$$ext/$$inst'"; \
+	  $(INSTALL_DATA) "$$file" "$(DESTDIR)$(mandir)/man$$ext/$$inst"; \
 	done
 uninstall-man:
 	@$(NORMAL_UNINSTALL)
@@ -276,8 +276,8 @@ uninstall-man:
 	  inst=`echo $$i | sed -e 's/\\.[0-9a-z]*$$//'`; \
 	  inst=`echo $$inst | sed -e 's/^.*\///'`; \
 	  inst=`echo $$inst | sed '$(transform)'`.$$ext; \
-	  echo " rm -f $(DESTDIR)$(mandir)/man$$ext/$$inst"; \
-	  rm -f $(DESTDIR)$(mandir)/man$$ext/$$inst; \
+	  echo " rm -f '$(DESTDIR)$(mandir)/man$$ext/$$inst'"; \
+	  rm -f "$(DESTDIR)$(mandir)/man$$ext/$$inst"; \
 	done
 else
 # For systems that adopts traditional manner
@@ -302,7 +302,6 @@ docs_DATA = \
         NEWS \
         README \
         TODO \
-        WARNINGS \
         smartd.conf
 
 examplesdir=$(exampledir)
@@ -320,7 +319,7 @@ sysconf_DATA = smartd.conf
 
 # If modified smartd.conf exists install smartd.conf.sample instead
 install-sysconfDATA: $(sysconf_DATA)
-	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
+	$(mkinstalldirs) '$(DESTDIR)$(sysconfdir)'
 	@s="$(srcdir)/smartd.conf"; \
 	f="$(DESTDIR)$(sysconfdir)/smartd.conf$(smartd_suffix)"; \
 	if test -z "$(smartd_suffix)" && test -f "$$f"; then \
@@ -332,7 +331,7 @@ install-sysconfDATA: $(sysconf_DATA)
 	    f="$$f".sample; \
 	  fi; \
 	fi; \
-	echo " $(INSTALL_DATA) $$s $$f"; \
+	echo " $(INSTALL_DATA) '$$s' '$$f'"; \
 	$(INSTALL_DATA) "$$s" "$$f"
 
 # If smartd.conf.sample exists preserve smartd.conf
@@ -345,7 +344,7 @@ uninstall-sysconfDATA:
 	  echo "************************************************************"; \
 	  f="$$f".sample; \
 	fi; \
-	echo " rm -f $$f"; \
+	echo " rm -f '$$f'"; \
 	rm -f "$$f"
 
 smartdscript_SCRIPTS = smartd_warning.sh
@@ -491,10 +490,10 @@ uninstall-initdDATA-darwin:
 
 else
 
-initd_DATA = @initdfile@
+initd_DATA = $(initdfile)
 
-@initdfile@: $(srcdir)/@initdfile@.in Makefile
-	sed "s|/usr/local/sbin/|$(sbindir)/|g" $(srcdir)/@initdfile@.in > $@
+$(initdfile): $(srcdir)/$(initdfile).in Makefile
+	sed 's|/usr/local/sbin/|$(sbindir)/|g' $(srcdir)/$(initdfile).in > $@
 
 initd_install_name = smartd$(smartd_suffix)
 
@@ -502,12 +501,11 @@ initd_DATA_install = install-initdDATA-generic
 initd_DATA_uninstall = uninstall-initdDATA-generic
 
 install-initdDATA-generic: $(initd_DATA)
-	$(mkinstalldirs) $(DESTDIR)$(initddir)
-	$(INSTALL_SCRIPT) $(top_builddir)/@initdfile@ $(DESTDIR)$(initddir)/smartd$(smartd_suffix)
-
+	$(mkinstalldirs) '$(DESTDIR)$(initddir)'
+	$(INSTALL_SCRIPT) '$(top_builddir)/$(initdfile)' '$(DESTDIR)$(initddir)/smartd$(smartd_suffix)'
 
 uninstall-initdDATA-generic:
-	rm -rf $(DESTDIR)$(initddir)/$(initd_install_name)
+	rm -f '$(DESTDIR)$(initddir)/$(initd_install_name)'
 endif
 else
 
@@ -527,7 +525,8 @@ systemdsystemunit_DATA = smartd.service
 endif
 
 smartd.service: smartd.service.in Makefile
-	cat $(srcdir)/smartd.service.in | \
+	@echo '  cat $(srcdir)/smartd.service.in | $$(SMARTD_SERVICE_FILTER) > $@'
+	@cat $(srcdir)/smartd.service.in | \
 	sed 's|/usr/local/sbin/smartd|$(sbindir)/smartd|' | \
 	if test -n '$(systemdenvfile)'; then \
 	  sed 's|/usr/local/etc/sysconfig/smartmontools|$(systemdenvfile)|'; \
@@ -542,7 +541,7 @@ smartd.service: smartd.service.in Makefile
 installdirs-local:
 	@for d in '$(smartdplugindir)' '$(savestatesdir)' '$(attributelogdir)'; do \
 	  test -n "$$d" || continue; \
-	  echo "$(mkinstalldirs) $(DESTDIR)$$d"; \
+	  echo " $(mkinstalldirs) '$(DESTDIR)$$d'"; \
 	  $(mkinstalldirs) "$(DESTDIR)$$d" || exit 1; \
 	done
 
@@ -551,37 +550,12 @@ install-data-local: installdirs-local
 #
 # Build man pages
 #
-if ENABLE_CAPABILITIES
-MAN_CAPABILITIES = cat
-else
-MAN_CAPABILITIES = sed '/^\.\\" %IF ENABLE_CAPABILITIES/,/^\.\\" %ENDIF ENABLE_CAPABILITIES/ s,^,.\\"\# ,'
-endif
-
-if ENABLE_DRIVEDB
-MAN_DRIVEDB = sed "s|/usr/local/share/smartmontools/drivedb\\.h|$(drivedbdir)/drivedb.h|g"
-else
-MAN_DRIVEDB = sed '/^\.\\" %IF ENABLE_DRIVEDB/,/^\.\\" %ENDIF ENABLE_DRIVEDB/ s,^,.\\"\# ,'
-endif
-
-if ENABLE_SAVESTATES
-MAN_SAVESTATES = sed "s|/usr/local/var/lib/smartmontools/smartd\\.|$(savestates)|g"
-else
-MAN_SAVESTATES = sed '/^\.\\" %IF ENABLE_SAVESTATES/,/^\.\\" %ENDIF ENABLE_SAVESTATES/ s,^,.\\"\# ,'
-endif
-
-if ENABLE_ATTRIBUTELOG
-MAN_ATTRIBUTELOG = sed "s|/usr/local/var/lib/smartmontools/attrlog\\.|$(attributelog)|g"
-else
-MAN_ATTRIBUTELOG = sed '/^\.\\" %IF ENABLE_ATTRIBUTELOG/,/^\.\\" %ENDIF ENABLE_ATTRIBUTELOG/ s,^,.\\"\# ,'
-endif
-
 MAN_FILTER = \
     sed -e 's|CURRENT_SVN_VERSION|$(releaseversion)|g' \
         -e "s|CURRENT_SVN_DATE|`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h`|g" \
         -e "s|CURRENT_SVN_REV|`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h`|g" \
         -e 's|/usr/local/share/man/|$(mandir)/|g' \
         -e 's|/usr/local/sbin/|$(sbindir)/|g' \
-        -e 's|/usr/local/etc/rc\.d/init.d/|$(initddir)/|g' \
         -e 's|/usr/local/share/doc/smartmontools/examplescripts/|!exampledir!|g' \
         -e 's|/usr/local/share/doc/smartmontools/|$(docsdir)/|g' \
         -e 's|!exampledir!|$(exampledir)/|g' \
@@ -591,16 +565,37 @@ MAN_FILTER = \
         -e 's|\\fBmail\\fP|\\fB$(os_mailer)\\fP|g' \
         -e 's|\\'\''mail\\'\''|\\'\''$(os_mailer)\\'\''|g' \
         -e 's|/usr/bin/mail|/usr/bin/$(os_mailer)|g' \
-        -e 's|RELEASE_6_0_DRIVEDB|@DRIVEDB_BRANCH@|g' | \
+        -e 's|RELEASE_6_0_DRIVEDB|$(DRIVEDB_BRANCH)|g' | \
+    if test -n '$(drivedbdir)'; then \
+      sed 's|/usr/local/share/smartmontools/drivedb\.h|$(drivedbdir)/drivedb.h|g' ; \
+    else \
+      sed '/^\.\\" %IF ENABLE_DRIVEDB/,/^\.\\" %ENDIF ENABLE_DRIVEDB/ s,^,.\\"\# ,' ; \
+    fi | \
+    if test -n '$(initddir)'; then \
+      sed 's|/usr/local/etc/rc\.d/init\.d/|$(initddir)/|g' ; \
+    else \
+      sed '/^\.\\" %IF ENABLE_INITSCRIPT/,/^\.\\" %ENDIF ENABLE_INITSCRIPT/ s,^,.\\"\# ,' ; \
+    fi | \
+    if test -n '$(savestates)'; then \
+      sed 's|/usr/local/var/lib/smartmontools/smartd\.|$(savestates)|g' ; \
+    else \
+      sed '/^\.\\" %IF ENABLE_SAVESTATES/,/^\.\\" %ENDIF ENABLE_SAVESTATES/ s,^,.\\"\# ,' ; \
+    fi | \
+    if test -n '$(attributelog)'; then \
+      sed 's|/usr/local/var/lib/smartmontools/attrlog\.|$(attributelog)|g' ; \
+    else \
+      sed '/^\.\\" %IF ENABLE_ATTRIBUTELOG/,/^\.\\" %ENDIF ENABLE_ATTRIBUTELOG/ s,^,.\\"\# ,' ; \
+    fi | \
     if test -n '$(smartdplugindir)'; then \
       sed 's|/usr/local/etc/smartd_warning\.d|$(smartdplugindir)|g' ; \
     else \
       sed '/^\.\\" %IF ENABLE_SMARTDPLUGINDIR/,/^\.\\" %ENDIF ENABLE_SMARTDPLUGINDIR/ s,^,.\\"\# ,' ; \
     fi | \
-    $(MAN_ATTRIBUTELOG) | \
-    $(MAN_CAPABILITIES) | \
-    $(MAN_DRIVEDB) | \
-    $(MAN_SAVESTATES) | \
+    if test -n '$(CAPNG_LDADD)'; then \
+      cat; \
+    else \
+      sed '/^\.\\" %IF ENABLE_CAPABILITIES/,/^\.\\" %ENDIF ENABLE_CAPABILITIES/ s,^,.\\"\# ,' ; \
+    fi | \
     if test -n '$(os_man_filter)'; then \
       sed -e 's,OS_MAN_FILTER,$(os_man_filter),g' \
           -e '/^\.\\" %IF NOT OS .*$(os_man_filter)/,/^.\\" %ENDIF NOT OS .*$(os_man_filter)/ s,^,.\\"\# ,' \
@@ -773,7 +768,6 @@ FILES_WIN32 = \
         $(docdir_win32)/NEWS.txt \
         $(docdir_win32)/README.txt \
         $(docdir_win32)/TODO.txt \
-        $(docdir_win32)/WARNINGS.txt \
         $(docdir_win32)/checksums$(win_bits).txt \
         $(docdir_win32)/smartd.conf \
         $(docdir_win32)/smartctl.8.html \

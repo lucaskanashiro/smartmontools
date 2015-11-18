@@ -1,8 +1,8 @@
 .ig
-Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
-Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2002-10 Bruce Allen
+Copyright (C) 2004-15 Christian Franke
 
-$Id: smartd.8.in 3965 2014-07-20 14:46:41Z chrfranke $
+$Id: smartd.8.in 4102 2015-06-01 19:25:47Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,15 +18,12 @@ Research Center), Jack Baskin School of Engineering, University of
 California, Santa Cruz. http://ssrc.soe.ucsc.edu/
 
 ..
-.TH SMARTD 8 CURRENT_SVN_DATE CURRENT_SVN_VERSION CURRENT_SVN_DATE
+.TH SMARTD 8 "CURRENT_SVN_DATE" "CURRENT_SVN_VERSION" "SMART Monitoring Tools"
 .SH NAME
 \fBsmartd\fP \- SMART Disk Monitoring Daemon
 
 .SH SYNOPSIS
 .B smartd [options]
-
-.SH PACKAGE VERSION
-CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
 .SH DESCRIPTION
 .\" %IF NOT OS ALL
@@ -101,7 +98,7 @@ devices that support SMART.  The scanning is done as follows:
 .IP \fBLINUX:\fP 9
 Examine all entries \fB"/dev/hd[a-t]"\fP for IDE/ATA
 devices, and \fB"/dev/sd[a-z]"\fP, \fB"/dev/sd[a-c][a-z]"\fP
-for SCSI or SATA devices.
+for ATA/SATA or SCSI/SAS devices.
 Disks behind RAID controllers are not included.
 .\" %ENDIF OS Linux
 .\" %IF OS FreeBSD
@@ -186,13 +183,14 @@ can be used to verify the existence of the default configuration file.
 By using \'\-\' for FILE, the configuration is read from standard
 input. This is useful for commands like:
 .nf
-.B echo /dev/hdb \-m user@home \-M test | smartd \-c \- \-q onecheck
+.B echo /dev/sdb \-m user@home \-M test | smartd \-c \- \-q onecheck
 .fi
 to perform quick and simple checks without a configuration file.
 .\" %IF ENABLE_CAPABILITIES
 .TP
 .B \-C, \-\-capabilities
-Use \fBcapabilities\fP(7).
+[Linux only] Use libcap-ng to drop unneeded Linux process \fBcapabilities\fP(7).
+The following capabilities are kept: CAP_SYS_ADMIN, CAP_SYS_RAWIO, CAP_MKNOD.
 
 Warning: Mail notification does not work when used.
 .\" %ENDIF ENABLE_CAPABILITIES
@@ -283,7 +281,7 @@ log output is redirected as follows:
 .TP
 .B \-n, \-\-no\-fork
 Do not fork into background; this is useful when executed from modern
-init methods like initng, minit or supervise.
+init methods like initng, minit, supervise or systemd.
 .\" %IF OS Cygwin
 
 On Cygwin, this allows running \fBsmartd\fP as service via cygrunsrv,
@@ -416,7 +414,6 @@ forced by SIGUSR1. After a normal check cycle, a file is only rewritten if
 an important change (which usually results in a SYSLOG output) occurred.
 .TP
 .B \-w PATH, \-\-warnexec=PATH
-[NEW EXPERIMENTAL SMARTD FEATURE]
 Run the executable PATH instead of the default script when smartd
 needs to send warning messages.  PATH must point to an executable binary
 file or script.
@@ -464,6 +461,7 @@ once. The exit status (the shell
 variable) will be zero if all went well, and nonzero if no devices
 were detected or some other problem was encountered.
 
+.\" %IF ENABLE_INITSCRIPT
 Note that \fBsmartmontools\fP provides a start-up script in
 \fB/usr/local/etc/rc.d/init.d/smartd\fP which is responsible for starting and
 stopping the daemon via the normal init interface.  Using this script,
@@ -476,6 +474,7 @@ and stop it by using the command:
 .B /usr/local/etc/rc.d/init.d/smartd stop
 .fi
 
+.\" %ENDIF ENABLE_INITSCRIPT
 .SH CONFIGURATION
 The syntax of the \fBsmartd.conf\fP(5) file is discussed separately.
 
@@ -489,7 +488,7 @@ or
 .B \'\-u\'
 Directives. For example:
 .nf
-.B \'Device: /dev/hda, SMART Attribute: 194 Temperature_Celsius changed from 94 to 93\'
+.B \'Device: /dev/sda, SMART Attribute: 194 Temperature_Celsius changed from 94 to 93\'
 .fi
 Note that in this message, the value given is the \'Normalized\' not the \'Raw\' 
 Attribute value (the disk temperature in this case is about 22
@@ -500,7 +499,7 @@ and
 Directives modify this behavior, so that the information is printed
 with the Raw values as well, for example:
 .nf
-.B \'Device: /dev/hda, SMART Attribute: 194 Temperature_Celsius changed from 94 [Raw 22] to 93 [Raw 23]\'
+.B \'Device: /dev/sda, SMART Attribute: 194 Temperature_Celsius changed from 94 [Raw 22] to 93 [Raw 23]\'
 .fi
 Here the Raw values are the actual disk temperatures in Celsius.  The
 way in which the Raw values are printed, and the names under which the
@@ -518,7 +517,7 @@ will make log entries at loglevel
 .B LOG_CRIT
 if a SMART Attribute has failed, for example:
 .nf
-.B \'Device: /dev/hdc, Failed SMART Attribute: 5 Reallocated_Sector_Ct\'
+.B \'Device: /dev/sdc, Failed SMART Attribute: 5 Reallocated_Sector_Ct\'
 .fi
  This loglevel is used for reporting enabled by the
 .B \'\-H\', \-f\', \'\-l\ selftest\',
@@ -549,14 +548,17 @@ see the \fBsmartd\fP '\-l' command-line option described above.
 .\" %ENDIF OS Solaris
 .\" %IF OS Cygwin
 The Cygwin Version of \fBsmartd\fP can be run as a service via the
-cygrunsrv tool. The start-up script provides Cygwin-specific commands
-to install and remove the service:
+cygrunsrv tool.
+.\" %IF ENABLE_INITSCRIPT
+The start-up script provides Cygwin-specific commands to install and
+remove the service:
 .nf
 .B /usr/local/etc/rc.d/init.d/smartd install [options]
 .B /usr/local/etc/rc.d/init.d/smartd remove
 .fi
 The service can be started and stopped by the start-up script as usual
 (see \fBEXAMPLES\fP above).
+.\" %ENDIF ENABLE_INITSCRIPT
 
 .\" %ENDIF OS Cygwin
 .\" %IF OS Windows
@@ -624,10 +626,8 @@ set using \fB/etc/localtime\fP. The work-around \fIfails\fP if the
 time-zone is set using the \'\fBTZ\fP\' variable (or a file that it
 points to).
 
-.SH RETURN VALUES
-The return value (exit status) of 
-\fBsmartd\fP
-can have the following values:
+.SH EXIT STATUS
+The exit status (return value) of \fBsmartd\fP can have the following values:
 .TP
 .B 0:
 Daemon startup successful, or \fBsmartd\fP was killed by a SIGTERM (or in debug mode, a SIGQUIT).
@@ -654,16 +654,11 @@ Config file exists, but cannot be read.
 \fBsmartd\fP
 ran out of memory during startup.
 .TP
-.B 9:
-A compile time constant of\fB smartd\fP was too small.  This can be caused by an
-excessive number of disks, or by lines in \fB /usr/local/etc/smartd.conf\fP that are too long.
-Please report this problem to \fB smartmontools-support@lists.sourceforge.net\fP.
-.TP
 .B 10:
 An inconsistency was found in \fBsmartd\fP\'s internal data
 structures. This should never happen.  It must be due to either a
 coding or compiler bug.  \fIPlease\fP report such failures to
-smartmontools-support@lists.sourceforge.net.
+smartmontools developers, see REPORTING BUGS below.
 .TP
 .B 16:
 A device explicitly listed in
@@ -718,52 +713,32 @@ optional local drive database (see \'\-B\' option).
 
 .\" %ENDIF NOT OS Windows
 .SH AUTHORS
-\fBBruce Allen\fP
+\fBBruce Allen\fP (project initiator),
 .br
-University of Wisconsin \- Milwaukee Physics Department
+\fBChristian Franke\fP (project manager, Windows port and all sort of things),
 .br
-\fBChristian Franke\fP (Windows interface, C++ redesign, most enhancements
-since 2009)
+\fBDouglas Gilbert\fP (SCSI subsystem),
 .br
-\fBsmartmontools\-support@lists.sourceforge.net\fP
+\fBVolker Kuhlmann\fP (moderator of support and database mailing list),
+.br
+\fBGabriele Pohl\fP (wiki & development team support),
+.br
+\fBAlex Samorukov\fP (FreeBSD port and more, new Trac wiki).
 
-The following have made large contributions to smartmontools:
-.br
-\fBCasper Dik\fP (Solaris SCSI interface)
-.br
-\fBDouglas Gilbert\fP (SCSI subsystem)
-.br
-\fBGuido Guenther\fP (Autoconf/Automake packaging)
-.br
-\fBGeoffrey Keating\fP (Darwin ATA interface)
-.br
-\fBEduard Martinescu\fP (FreeBSD interface)
-.br
-\fBFr\['e]d\['e]ric L. W. Meunier\fP (Web site and Mailing list)
-.br
-\fBGabriele Pohl\fP (Web site and Wiki, conversion from CVS to SVN)
-.br
-\fBKeiji Sawada\fP (Solaris ATA interface)
-.br
-\fBManfred Schwarb\fP (Drive database)
-.br
-\fBSergey Svishchev\fP (NetBSD interface)
-.br
-\fBDavid Snyder and Sergey Svishchev\fP (OpenBSD interface)
-.br
-\fBPhil Williams\fP (User interface and drive database)
-.br
-\fBShengfeng Zhou\fP (Linux/FreeBSD HighPoint RocketRAID interface)
-.br
-Many other individuals have made smaller contributions and corrections.
+Many other individuals have made contributions and corrections,
+see AUTHORS, ChangeLog and repository files.
 
 The first smartmontools code was derived from the smartsuite package,
-written by Michael Cornwell, and from the previous UCSC smartsuite package.
-This code was originally developed as a
-Senior Thesis by Michael Cornwell at the Concurrent Systems Laboratory
-(now part of the Storage Systems Research Center), Jack Baskin School
-of Engineering, University of California, Santa
-Cruz. \fBhttp://ssrc.soe.ucsc.edu/\fP .
+written by Michael Cornwell and Andre Hedrick.
+
+.SH REPORTING BUGS
+To submit a bug report, create a ticket in smartmontools wiki:
+.br
+<\fBhttp://www.smartmontools.org/\fP>.
+.br
+Alternatively send the info to the smartmontools support mailing list:
+.br
+<\fBhttps://lists.sourceforge.net/lists/listinfo/smartmontools-support\fB>.
 
 .SH SEE ALSO
 \fBsmartd.conf\fP(5), \fBsmartctl\fP(8), \fBupdate-smart-drivedb\fP(8).
@@ -790,5 +765,7 @@ publications of the Small Form Factors (SFF) Committee.
 Links to these and other documents may be found on the Links page of the
 \fBsmartmontools\fP Wiki at \fBhttp://www.smartmontools.org/wiki/Links\fP .
 
-.SH SVN ID OF THIS PAGE
-$Id: smartd.8.in 3965 2014-07-20 14:46:41Z chrfranke $
+.SH PACKAGE VERSION
+CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
+.br
+$Id: smartd.8.in 4102 2015-06-01 19:25:47Z chrfranke $

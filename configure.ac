@@ -1,14 +1,14 @@
 #
-# $Id: configure.ac 3977 2014-07-26 11:03:24Z chrfranke $
+# $Id: configure.ac 4109 2015-06-04 16:30:15Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.50)
 AC_INIT(smartmontools, 6.4, smartmontools-support@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(smartctl.cpp)
 
-smartmontools_cvs_tag=`echo '$Id: configure.ac 3977 2014-07-26 11:03:24Z chrfranke $'`
-smartmontools_release_date=2014-07-26
-smartmontools_release_time="09:49:11 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.ac 4109 2015-06-04 16:30:15Z chrfranke $'`
+smartmontools_release_date=2015-06-04
+smartmontools_release_time="16:29:41 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",   [smartmontools Release Date])
@@ -149,16 +149,9 @@ AC_SUBST(CPPFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(ASFLAGS)
 
-AC_ARG_WITH(systemdenvfile,
-  [AS_HELP_STRING([--with-systemdenvfile=@<:@FILE|no@:>@],
-    [Path of systemd EnvironmentFile (implies --with-systemdsystemunitdir=yes) [SYSCONFDIR/sysconfig/smartmontools]])],
-  [systemdenvfile=; test "$withval" != "no" && systemdenvfile="$withval"; systemd_default=yes],
-  [systemdenvfile='${sysconfdir}/sysconfig/smartmontools'; systemd_default=auto])
-AC_SUBST(systemdenvfile)
-
 AC_ARG_WITH(systemdsystemunitdir,
   [AS_HELP_STRING([--with-systemdsystemunitdir@<:@=DIR|auto|yes|no@:>@], [Location of systemd service files [auto]])],
-  [], [with_systemdsystemunitdir=$systemd_default])
+  [], [with_systemdsystemunitdir=auto])
 
 systemdsystemunitdir=
 case "$with_systemdsystemunitdir" in
@@ -178,6 +171,30 @@ case "$with_systemdsystemunitdir" in
 esac
 AC_SUBST(systemdsystemunitdir)
 AM_CONDITIONAL(INSTALL_SYSTEMDUNIT, [test -n "$systemdsystemunitdir"])
+
+AC_ARG_WITH(systemdenvfile,
+  [AS_HELP_STRING([--with-systemdenvfile@<:@=FILE|auto|yes|no@:>@], [Path of systemd EnvironmentFile [auto]])],
+  [], [with_systemdenvfile=auto])
+
+systemdenvfile=
+case "$with_systemdenvfile:$cross_compiling:$systemdsystemunitdir" in
+  auto:no:?*|yes:*:?*)
+    AC_MSG_CHECKING([for path of systemd EnvironmentFile])
+    for dir in sysconfig default; do
+      if test -d /etc/$dir; then
+        systemdenvfile='${sysconfdir}'/$dir/smartmontools
+        break
+      fi
+    done
+    AC_MSG_RESULT([${systemdenvfile:-no}])
+    case "$with_systemdenvfile:$systemdenvfile" in
+      yes:) AC_MSG_ERROR([Path of systemd EnvironmentFile not found]) ;;
+    esac ;;
+  auto:*|no:*) ;;
+  *:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
+  *) systemdenvfile="$with_systemdenvfile"
+esac
+AC_SUBST(systemdenvfile)
 
 AC_ARG_WITH(initscriptdir,
   [AS_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
@@ -214,8 +231,9 @@ case "${host}" in
 esac
 AC_SUBST(initdfile)
 
+autoconf_25x=${docdir:-yes}
 AC_ARG_WITH(docdir,
-  [AS_HELP_STRING([--with-docdir=DIR], [Location of documentation [DATADIR/doc/smartmontools]])],
+  [AS_HELP_STRING([--with-docdir=DIR], [Deprecated (use --docdir=DIR instead)])],
   [docdir="$withval"],
   [ if test -z "$docdir"; then
       # autoconf 2.5x without '--docdir' support
@@ -229,16 +247,18 @@ AC_ARG_WITH(exampledir,
   [exampledir="$withval"], [exampledir='${docdir}/examplescripts'])
 AC_SUBST(exampledir)
 
+used_deprecated_option=no
 AC_ARG_ENABLE(drivedb,
-  [AS_HELP_STRING([--disable-drivedb], [Disables drive database file])],
-  [], [enable_drivedb=yes])
+  [AS_HELP_STRING([--disable-drivedb], [Deprecated (use --without-drivedbdir instead)])],
+  [used_deprecated_option=yes], [enable_drivedb=yes])
 
+drivedbdir=
 AC_ARG_WITH(drivedbdir,
-  [AS_HELP_STRING([--with-drivedbdir=DIR], [Location of drive database file [DATADIR/smartmontools]])],
-  [drivedbdir="$withval"; enable_drivedb=yes],
-  [drivedbdir=; test "$enable_drivedb" = "yes" && drivedbdir='${datadir}/${PACKAGE}'])
+  [AS_HELP_STRING([--with-drivedbdir=@<:@DIR|no@:>@], [Location of drive database file [DATADIR/smartmontools]])],
+  [test "$withval" != "no" && drivedbdir="$withval"],
+  [test "$enable_drivedb" != "no" && drivedbdir='${datadir}/${PACKAGE}'])
 AC_SUBST(drivedbdir)
-AM_CONDITIONAL(ENABLE_DRIVEDB, [test "$enable_drivedb" = "yes"])
+AM_CONDITIONAL(ENABLE_DRIVEDB, [test -n "$drivedbdir"])
 
 AC_ARG_WITH(smartdscriptdir,
   [AS_HELP_STRING([--with-smartdscriptdir=DIR], [Location of smartd_warning.sh script [SYSCONFDIR]])],
@@ -252,29 +272,35 @@ AC_ARG_WITH(smartdplugindir,
   [smartdplugindir='${smartdscriptdir}/smartd_warning.d'])
 AC_SUBST(smartdplugindir)
 
-AC_ARG_ENABLE(savestates, [AS_HELP_STRING([--enable-savestates], [Enables default smartd state files])])
+AC_ARG_ENABLE(savestates,
+  [AS_HELP_STRING([--enable-savestates], [Deprecated (use --with-savestates@<:@=yes@:>@ instead)])],
+  [used_deprecated_option=yes], [enable_savestates=no])
 
+savestates='${localstatedir}/lib/${PACKAGE}/smartd.'
 AC_ARG_WITH(savestates,
-  [AS_HELP_STRING([--with-savestates=PREFIX],
-    [Prefix for default smartd state files (implies --enable-savestates) [LOCALSTATEDIR/lib/smartmontools/smartd.]])],
-  [savestates="$withval"; enable_savestates="yes"],
-  [savestates=; test "$enable_savestates" = "yes" && savestates='${localstatedir}/lib/${PACKAGE}/smartd.'])
+  [AS_HELP_STRING([--with-savestates@<:@=PREFIX|yes|no@:>@],
+    [Enable default smartd state files [no] (yes=LOCALSTATEDIR/lib/smartmontools/smartd.)])],
+  [case "$withval" in yes) ;; no) savestates= ;; *) savestates="$withval" ;; esac],
+  [test "$enable_savestates" != "yes" && savestates=])
 savestatesdir="${savestates%/*}"
 AC_SUBST(savestates)
 AC_SUBST(savestatesdir)
-AM_CONDITIONAL(ENABLE_SAVESTATES, [test "$enable_savestates" = "yes"])
+AM_CONDITIONAL(ENABLE_SAVESTATES, [test -n "$savestates"])
 
-AC_ARG_ENABLE(attributelog, [AS_HELP_STRING([--enable-attributelog], [Enables default smartd attribute log files])])
+AC_ARG_ENABLE(attributelog,
+  [AS_HELP_STRING([--enable-attributelog], [Deprecated (use --with-attributelog@<:@=yes@:>@ instead)])],
+  [used_deprecated_option=yes], [enable_attributelog=no])
 
+attributelog='${localstatedir}/lib/${PACKAGE}/attrlog.'
 AC_ARG_WITH(attributelog,
-  [AS_HELP_STRING([--with-attributelog=PREFIX],
-    [Prefix for default smartd attribute log files (implies --enable-attributelog) [LOCALSTATEDIR/lib/smartmontools/attrlog.]])],
-  [attributelog="$withval"; enable_attributelog="yes"],
-  [attributelog=; test "$enable_attributelog" = "yes" && attributelog='${localstatedir}/lib/${PACKAGE}/attrlog.'])
+  [AS_HELP_STRING([--with-attributelog@<:@=PREFIX|yes|no@:>@],
+    [Enable default smartd attribute log files [no] (yes=LOCALSTATEDIR/lib/smartmontools/attrlog.)])],
+  [case "$withval" in yes) ;; no) attributelog= ;; *) attributelog="$withval" ;; esac],
+  [test "$enable_attributelog" != "yes" && attributelog=])
 attributelogdir="${attributelog%/*}"
 AC_SUBST(attributelog)
 AC_SUBST(attributelogdir)
-AM_CONDITIONAL(ENABLE_ATTRIBUTELOG, [test "$enable_attributelog" = "yes"])
+AM_CONDITIONAL(ENABLE_ATTRIBUTELOG, [test -n "$attributelog"])
 
 AC_ARG_ENABLE(sample,
   [AS_HELP_STRING([--enable-sample], [Enables appending .sample to the installed smartd rc script and configuration file])],
@@ -311,7 +337,7 @@ AC_ARG_WITH(libcap-ng,
 use_libcap_ng=no
 if test "$with_libcap_ng" != "no"; then
   AC_CHECK_LIB(cap-ng, capng_clear,
-    [AC_DEFINE(HAVE_LIBCAP_NG, 1, [Define to 1 if you have the `cap-ng' library (-lcap-ng).])
+    [AC_DEFINE(HAVE_LIBCAP_NG, 1, [Define to 1 if you have the `cap-ng' library (-lcap-ng).]) dnl `vim syntax
      CAPNG_LDADD="-lcap-ng"; use_libcap_ng=yes])
 
   if test "$use_libcap_ng" = "yes"; then
@@ -323,7 +349,6 @@ fi
 
 AC_MSG_CHECKING([whether to use libcap-ng])
 AC_SUBST(CAPNG_LDADD)
-AM_CONDITIONAL(ENABLE_CAPABILITIES, [test "$use_libcap_ng" = "yes"])
 AC_MSG_RESULT([$use_libcap_ng])
 
 # Assume broken snprintf only on Windows with MSVCRT (MinGW without ANSI stdio support)
@@ -357,11 +382,11 @@ AC_ARG_WITH(working-snprintf,
   [libc_have_working_snprintf=$withval])
 
 if test "$libc_have_working_snprintf" = "yes"; then
-  AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane])
+  AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane.]) dnl `vim syntax
 fi
 
 if test "$prefix" = "NONE"; then
-    dnl no prefix and no mandir, so use ${prefix}/share/man as default
+    # Fix mandir default set by autoconf 2.5x
     if test "$mandir" = '${prefix}/man'; then
     	AC_SUBST([mandir], ['${prefix}/share/man'])
     fi
@@ -620,3 +645,20 @@ case "$host_os" in
     ;;
 esac
 echo "-----------------------------------------------------------------------------" >&AS_MESSAGE_FD
+
+if test "$autoconf_25x" = "yes"; then
+ echo "WARNING:" >&AS_MESSAGE_FD
+ echo "Support for old autoconf 2.5x versions will be removed in a future" >&AS_MESSAGE_FD
+ echo "release of smartmontools." >&AS_MESSAGE_FD
+elif test "${with_docdir+set}" = "set"; then
+ echo "WARNING:" >&AS_MESSAGE_FD
+ echo "Option --with-docdir is deprecated and will be removed in a future" >&AS_MESSAGE_FD
+ echo "release of smartmontools.  Use --docdir instead." >&AS_MESSAGE_FD
+fi
+
+if test "$used_deprecated_option" = "yes"; then
+  echo "WARNING:" >&AS_MESSAGE_FD
+  echo "Options --disable-drivedb, --enable-savestates, --enable-attributelog are" >&AS_MESSAGE_FD
+  echo "deprecated and will be removed in a future release of smartmontools." >&AS_MESSAGE_FD
+  echo "Use --without-drivedb, --with-savestates, --with-attributelog instead." >&AS_MESSAGE_FD
+fi

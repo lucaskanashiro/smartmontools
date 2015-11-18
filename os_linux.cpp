@@ -5,7 +5,7 @@
  *
  * Copyright (C) 2003-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
  * Copyright (C) 2003-11 Doug Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2008-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-15 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * Original AACRaid code:
  *  Copyright (C) 2014    Raghava Aditya <raghava.aditya@pmcs.com>
@@ -99,7 +99,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 3900 2014-05-01 17:08:59Z chrfranke $"
+const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 4047 2015-03-22 16:16:24Z chrfranke $"
   OS_LINUX_H_CVSID;
 extern unsigned char failuretest_permissive;
 
@@ -194,11 +194,11 @@ bool linux_smart_device::close()
 // examples for smartctl
 static const char  smartctl_examples[] =
 		  "=================================================== SMARTCTL EXAMPLES =====\n\n"
-		  "  smartctl --all /dev/hda                    (Prints all SMART information)\n\n"
-		  "  smartctl --smart=on --offlineauto=on --saveauto=on /dev/hda\n"
+		  "  smartctl --all /dev/sda                    (Prints all SMART information)\n\n"
+		  "  smartctl --smart=on --offlineauto=on --saveauto=on /dev/sda\n"
 		  "                                              (Enables SMART on first disk)\n\n"
-		  "  smartctl --test=long /dev/hda          (Executes extended disk self-test)\n\n"
-		  "  smartctl --attributes --log=selftest --quietmode=errorsonly /dev/hda\n"
+		  "  smartctl --test=long /dev/sda          (Executes extended disk self-test)\n\n"
+		  "  smartctl --attributes --log=selftest --quietmode=errorsonly /dev/sda\n"
 		  "                                      (Prints Self-Test & Attribute errors)\n"
 		  "  smartctl --all --device=3ware,2 /dev/sda\n"
 		  "  smartctl --all --device=3ware,2 /dev/twe0\n"
@@ -378,7 +378,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     memcpy(task+sizeof(ide_task_request_t), data, 512);
 
     if ((retval=ioctl(get_fd(), HDIO_DRIVE_TASKFILE, task))) {
-      if (retval==-EINVAL)
+      if (errno==-EINVAL)
         pout("Kernel lacks HDIO_DRIVE_TASKFILE support; compile kernel with CONFIG_IDE_TASKFILE_IO set\n");
       return -1;
     }
@@ -406,7 +406,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     buff[5]=normal_hi;
 
     if ((retval=ioctl(get_fd(), HDIO_DRIVE_TASK, buff))) {
-      if (retval==-EINVAL) {
+      if (errno==-EINVAL) {
         pout("Error SMART Status command via HDIO_DRIVE_TASK failed");
         pout("Rebuild older linux 2.2 kernels with HDIO_DRIVE_TASK support added\n");
       }
@@ -1002,7 +1002,7 @@ bool linux_aacraid_device::scsi_pass_through(scsi_cmnd_io *iop)
     uint8_t aBuff[sizeof(user_aac_srb64) + sizeof(user_aac_reply)] = {0,};
 
     pSrb    = (user_aac_srb64*)aBuff;
-    pReply  = (user_aac_reply*)(aBuff+sizeof(user_aac_srb64));
+    pSrb->count = sizeof(user_aac_srb64) - sizeof(user_sgentry64);
 
  #elif defined(ENVIRONMENT32)
     //Create user 32 bit request
@@ -1010,8 +1010,7 @@ bool linux_aacraid_device::scsi_pass_through(scsi_cmnd_io *iop)
     uint8_t aBuff[sizeof(user_aac_srb32) + sizeof(user_aac_reply)] = {0,};
 
     pSrb    = (user_aac_srb32*)aBuff;
-    pReply  = (user_aac_reply*)(aBuff+sizeof(user_aac_srb32));
-
+    pSrb->count = sizeof(user_aac_srb32) - sizeof(user_sgentry32);
  #endif
 
   pSrb->function = SRB_FUNCTION_EXECUTE_SCSI;
@@ -1048,33 +1047,60 @@ bool linux_aacraid_device::scsi_pass_through(scsi_cmnd_io *iop)
       pSrb->sg64.sg64[0].addr64.hi32 = ((intptr_t)iop->dxferp) >> 32;
 
       pSrb->sg64.sg64[0].length = (uint32_t)iop->dxfer_len;
-      pSrb->count = sizeof(user_aac_srb64) +
-                          (sizeof(user_sgentry64)*(pSrb->sg64.count-1));
+      pSrb->count += pSrb->sg64.count * sizeof(user_sgentry64);
     #elif defined(ENVIRONMENT32)
       pSrb->sg32.count = 1;
       pSrb->sg32.sg32[0].addr32 = (intptr_t)iop->dxferp;
 
       pSrb->sg32.sg32[0].length = (uint32_t)iop->dxfer_len;
-      pSrb->count = sizeof(user_aac_srb32) +
-                          (sizeof(user_sgentry32)*(pSrb->sg32.count-1));
+      pSrb->count += pSrb->sg32.count * sizeof(user_sgentry32);
     #endif
 
   }
+
+  pReply  = (user_aac_reply*)(aBuff+pSrb->count);
 
   memcpy(pSrb->cdb,iop->cmnd,iop->cmnd_len);
 
   int rc = 0;
   errno = 0;
   rc = ioctl(get_fd(),FSACTL_SEND_RAW_SRB,pSrb);
-  if(rc!= 0 || pReply->srb_status != 0x01) {
-    if(pReply->srb_status == 0x08) {
-      return set_err(EIO, "aacraid: Device %d %d does not exist\n" ,aLun,aId );
-    }
-  return set_err((errno ? errno : EIO), "aacraid result: %d.%d = %d/%d",
-                            aLun, aId, errno,
-                            pReply->srb_status);
+
+  if (rc != 0)
+    return set_err(errno, "aacraid send_raw_srb: %d.%d = %s",
+		   aLun, aId, strerror(errno));
+
+/* see kernel aacraid.h and MSDN SCSI_REQUEST_BLOCK documentation */
+#define SRB_STATUS_SUCCESS            0x1
+#define SRB_STATUS_ERROR              0x4
+#define SRB_STATUS_NO_DEVICE         0x08
+#define SRB_STATUS_SELECTION_TIMEOUT 0x0a
+#define SRB_STATUS_AUTOSENSE_VALID   0x80
+
+  iop->scsi_status = pReply->scsi_status;
+
+  if (pReply->srb_status == (SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR)
+      && iop->scsi_status == SCSI_STATUS_CHECK_CONDITION) {
+    memcpy(iop->sensep, pReply->sense_data, pReply->sense_data_size);
+    iop->resp_sense_len = pReply->sense_data_size;
+    return true; /* request completed with sense data */
   }
-  return true;
+
+  switch (pReply->srb_status & 0x3f) {
+
+    case SRB_STATUS_SUCCESS:
+      return true; /* request completed successfully */
+
+    case SRB_STATUS_NO_DEVICE:
+      return set_err(EIO, "aacraid: Device %d %d does not exist", aLun, aId);
+
+    case SRB_STATUS_SELECTION_TIMEOUT:
+      return set_err(EIO, "aacraid: Device %d %d not responding", aLun, aId);
+
+    default:
+      return set_err(EIO, "aacraid result: %d.%d = 0x%x",
+		     aLun, aId, pReply->srb_status);
+  }
 }
 
 
@@ -2675,8 +2701,7 @@ std::string linux_smart_interface::get_app_examples(const char * appname)
 }
 
 // we are going to take advantage of the fact that Linux's devfs will only
-// have device entries for devices that exist.  So if we get the equivalent of
-// ls /dev/hd[a-t], we have all the ATA devices on the system
+// have device entries for devices that exist.
 bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
   const char * pattern, bool scan_ata, bool scan_scsi,
   const char * req_type, bool autodetect)
@@ -2922,6 +2947,7 @@ linux_smart_interface::megasas_dcmd_cmd(int bus_no, uint32_t opcode, void *buf,
   }
 
   int r = ioctl(fd, MEGASAS_IOC_FIRMWARE, &ioc);
+  ::close(fd);
   if (r < 0) {
     return (r);
   }

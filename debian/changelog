@@ -1,3 +1,11 @@
+smartmontools (6.4+svn4109-1) unstable; urgency=medium
+
+  * New upstream version. Closes: #789721.
+  * Add myself to uploaders.
+  * refresh 54_remove-Id-from-smartd.conf.diff and 61_cciss-doc.patch
+
+ -- Jonathan Dowland <jmtd@debian.org>  Wed, 18 Nov 2015 19:52:41 +0000
+
 smartmontools (6.3+svn4002-1) unstable; urgency=low
 
   * [03a62f0] Set EnvironmentFile=-/etc/default/smartmontools in smartd.service

@@ -1,10 +1,12 @@
+diff --git a/smartd.conf b/smartd.conf
+index 40fa10e..d4c9333 100644
 --- a/smartd.conf
 +++ b/smartd.conf
 @@ -2,8 +2,6 @@
  
  # Home page is: http://smartmontools.sourceforge.net
  
--# $Id: smartd.conf 3651 2012-10-18 15:11:36Z samm2 $
+-# $Id: smartd.conf 4047 2015-03-22 16:16:24Z chrfranke $
 -
  # smartd will re-read the configuration file if it receives a HUP
  # signal

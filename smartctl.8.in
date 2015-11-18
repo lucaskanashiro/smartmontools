@@ -1,8 +1,8 @@
 .ig
-Copyright (C) 2002-10 Bruce Allen <smartmontools-support@lists.sourceforge.net>
-Copyright (C) 2004-14 Christian Franke <smartmontools-support@lists.sourceforge.net>
+Copyright (C) 2002-10 Bruce Allen
+Copyright (C) 2004-15 Christian Franke
 
-$Id: smartctl.8.in 3965 2014-07-20 14:46:41Z chrfranke $
+$Id: smartctl.8.in 4099 2015-05-30 17:32:13Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,15 +18,12 @@ Research Center), Jack Baskin School of Engineering, University of
 California, Santa Cruz. http://ssrc.soe.ucsc.edu/
 
 ..
-.TH SMARTCTL 8 CURRENT_SVN_DATE CURRENT_SVN_VERSION CURRENT_SVN_DATE
+.TH SMARTCTL 8 "CURRENT_SVN_DATE" "CURRENT_SVN_VERSION" "SMART Monitoring Tools"
 .SH NAME
 \fBsmartctl\fP \- Control and Monitor Utility for SMART Disks
 
 .SH SYNOPSIS
 .B smartctl [options] device
-
-.SH PACKAGE VERSION
-CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 
 .SH DESCRIPTION
 .\" %IF NOT OS ALL
@@ -55,11 +52,9 @@ option (for more information see the section on "ATA, SCSI command sets
 and SAT" below). Device paths are as follows:
 .\" %IF OS Linux
 .IP \fBLINUX\fP: 9
-Use the forms \fB"/dev/hd[a\-t]"\fP for IDE/ATA devices, and
-\fB"/dev/sd[a\-z]"\fP for SCSI devices. For SCSI Tape Drives and
-Changers with TapeAlert support use the devices \fB"/dev/nst*"\fP and
-\fB"/dev/sg*"\fP.  For SATA disks accessed with libata, use
-\fB"/dev/sd[a\-z]"\fP and append \fB"\-d ata"\fP. For disks behind
+Use the forms \fB"/dev/sd[a\-z]"\fP for ATA/SATA and SCSI/SAS devices.
+For SCSI Tape Drives and Changers with TapeAlert support use the
+devices \fB"/dev/nst*"\fP and \fB"/dev/sg*"\fP.  For disks behind
 3ware controllers you may need \fB"/dev/sd[a\-z]"\fP or
 \fB"/dev/twe[0\-9]"\fP, \fB"/dev/twa[0\-9]"\fP or \fB"/dev/twl[0\-9]"\fP: see details
 below. For disks behind HighPoint RocketRAID controllers you may need
@@ -135,8 +130,8 @@ For disks behind an Intel ICHxR controller with RST driver use
 \fB"/dev/csmi[0\-9],N"\fP where N specifies the port behind the logical
 scsi controller "\\\\.\\Scsi[0\-9]:".
 
-[NEW EXPERIMENTAL SMARTCTL FEATURE] For SATA or SAS disks behind an Areca
-controller use \fB"/dev/arcmsr[0\-9]"\fP, see \'\-d areca,N[/E]\' below.
+For SATA or SAS disks behind an Areca controller use
+\fB"/dev/arcmsr[0\-9]"\fP, see \'\-d areca,N[/E]\' below.
 
 The prefix \fB"/dev/"\fP is optional.
 .\" %ENDIF OS Windows Cygwin
@@ -266,7 +261,7 @@ which failed either now or in the past.
 
 .I silent
 \- print no output.  The only way to learn about what was found is to
-use the exit status of \fBsmartctl\fP (see RETURN VALUES below).
+use the exit status of \fBsmartctl\fP (see EXIT STATUS below).
 
 .I noserial
 \- Do not print the serial number of the device.
@@ -331,12 +326,16 @@ CAUTION: Specifying \',x\' for a device which does not support it results
 in I/O errors and may disconnect the drive.  The same applies if the specified
 PORT does not exist or is not connected to a disk.
 
-[NEW EXPERIMENTAL SMARTCTL FEATURE]
 The Prolific PL2507/3507 USB bridges with older firmware support a pass-through
 command similar to JMicron and work with \'\-d usbjmicron,0\'.
 Newer Prolific firmware requires a modified command which can be selected by
 \'\-d usbjmicron,p\'.
 Note that this does not yet support the SMART status command.
+
+.I usbprolific
+\- [NEW EXPERIMENTAL SMARTCTL FEATURE]
+this device type is for SATA disks that are behind a Prolific PL2571/2771/2773/2775
+USB to SATA bridge.
 
 .I usbsunplus
 \- this device type is for SATA disks that are behind a SunplusIT USB to SATA
@@ -372,24 +371,32 @@ For PERC2/3/4 controllers: \fBmegadevN\fP
 .br
 For PERC5/6 controllers: \fBmegaraid_sas_ioctlN\fP
 
+.\" %ENDIF OS Linux
+.\" %IF OS Linux Windows Cygwin
 .I aacraid,H,L,ID
-\- [Linux only] [NEW EXPERIMENTAL SMARTCTL FEATURE]
+\- [Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTCTL FEATURE]
 the device consists of one or more SCSI/SAS disks connected to an AacRaid controller.
 The non-negative integers H,L,ID (Host number, Lun, ID) denote which disk
 on the controller is monitored.
 Use syntax such as:
 .nf
-\fBsmartctl \-a \-d aacraid,0,0,66 /dev/sda\fP
+\fBsmartctl \-a \-d aacraid,0,0,2 /dev/sda\fP
 .fi
 .nf
-\fBsmartctl \-a \-d aacraid,0,0,66 /dev/sdb\fP
+\fBsmartctl \-a \-d aacraid,1,0,4 /dev/sdb\fP
 .fi
-The L and ID numbers of a disk can be found in /proc/scsi/scsi
 
-The following entry in /proc/devices must exist: \fBaac\fP.
+.\" %ENDIF OS Linux Windows Cygwin
+.\" %IF OS Linux
+On Linux, the following entry in /proc/devices must exist: \fBaac\fP.
 Character device nodes /dev/aacH (H=Host number) are created if required.
 
 .\" %ENDIF OS Linux
+.\" %IF OS Windows Cygwin
+On Windows, the device name parameter /dev/sdX is ignored if \'-d aacraid\'
+is specified.
+
+.\" %ENDIF OS Windows Cygwin
 .\" %IF OS FreeBSD Linux
 .I 3ware,N
 \- [FreeBSD and Linux only] the device consists of one or more ATA disks
@@ -495,7 +502,7 @@ On FreeBSD use syntax such as:
 .fi
 .\" %ENDIF OS FreeBSD
 .\" %IF OS Windows Cygwin
-[NEW EXPERIMENTAL SMARTCTL FEATURE] On Windows and Cygwin use syntax such as:
+On Windows and Cygwin use syntax such as:
 .nf
 \fBsmartctl \-a \-d areca,2 /dev/arcmsr0\fP
 .fi
@@ -526,8 +533,8 @@ later.  Lower-numbered firmware versions will give (harmless) SCSI
 error messages and no SMART information.
 
 .I areca,N/E
-\- [FreeBSD, Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTCTL FEATURE] the
-device consists of one or more SATA or SAS disks connected to an Areca SAS RAID controller.
+\- [FreeBSD, Linux, Windows and Cygwin only] the device consists of one
+or more SATA or SAS disks connected to an Areca SAS RAID controller.
 The integer N (range 1 to 128) denotes the channel (slot) and E (range
 1 to 8) denotes the enclosure.
 Important: This requires Areca SAS controller firmware version 1.51 or later.
@@ -689,7 +696,7 @@ behaviour. This is does not work for SCSI devices yet.
 checks when the device is in a low-power mode. It may be used to prevent
 a disk from being spun-up by \fBsmartctl\fP. The power mode is ignored by
 default.  A nonzero exit status is returned if the device is in one of the
-specified low-power modes (see RETURN VALUES below).
+specified low-power modes (see EXIT STATUS below).
 
 Note: If this option is used it may also be necessary to specify the device
 type with the \'\-d\' option.  Otherwise the device may spin up due to
@@ -885,13 +892,11 @@ the drive.  The setting of the standby timer is not affected.
 The write cache is usually enabled by default.
 
 .I wcache[,on|off]
-\- [SCSI] [NEW EXPERIMENTAL SMARTCTL FEATURE]
-Gets/sets the \'Write Cache Enable\' (WCE) bit (if supported).
+\- [SCSI] Gets/sets the \'Write Cache Enable\' (WCE) bit (if supported).
 The write cache is usually enabled by default.
 
 .I wcreorder[,on|off]
-\- [ATA only] [NEW EXPERIMENTAL SMARTCTL FEATURE]
-Gets/sets Write Cache Reordering.
+\- [ATA only] Gets/sets Write Cache Reordering.
 If it is disabled (off), disk write scheduling is executed on a 
 first-in-first-out (FIFO) basis. If Write Cache Reordering is enabled (on),
 then disk write scheduling may be reordered by the drive. If write cache is
@@ -901,21 +906,15 @@ The state of Write Cache Reordering has no effect on either NCQ or LCQ queued
 commands.
 
 .I rcache[,on|off]
-\- [SCSI only] [NEW EXPERIMENTAL SMARTCTL FEATURE]
-Gets/sets the \'Read Cache Disable\' (RCE) bit. \'Off\' value disables read cache
-(if supported).
+\- [SCSI only] Gets/sets the \'Read Cache Disable\' (RCE) bit.
+\'Off\' value disables read cache (if supported).
 The read cache is usually enabled by default.
 
 .TP
 .B SMART READ AND DISPLAY DATA OPTIONS:
 .TP
 .B \-H, \-\-health
-Check: Ask the device to report its SMART health status or pending
-TapeAlert messages.  SMART status is based on
-information that it has gathered from online and offline
-tests, which were used to determine/update its
-SMART vendor-specific Attribute values. TapeAlert status is obtained
-by reading the TapeAlert log page.
+Prints the health status of the device or pending TapeAlert messages.
 
 If the device reports failing health status, this means
 .B either
@@ -924,6 +923,26 @@ that the device has already failed,
 that it is predicting its own failure within the next 24 hours.  If
 this happens, use the \'\-a\' option to get more information, and
 .B get your data off the disk and to someplace safe as soon as you can.
+
+[ATA] Health status is obtained by checking the (boolean) result returned
+by the SMART RETURN STATUS command.
+The return value of this ATA command may be unknown due to limitations or
+bugs in some layer (e.g. RAID controller or USB bridge firmware) between
+disk and operating system.
+In this case, \fBsmartctl\fP prints a warning and checks whether any
+Prefailure SMART Attribute value is less than or equal to its threshold
+(see \'\-A\' below).
+
+[SCSI] Health status is obtained by checking the Additional Sense Code
+(ASC) and Additional Sense Code Qualifier (ASCQ) from Informal Exceptions
+(IE) log page (if supported) and/or from SCSI sense data.
+
+[SCSI tape drive or changer] TapeAlert status is obtained by reading the
+TapeAlert log page.
+Please note that the TapeAlert log page flags are cleared for the initiator
+when the page is read.
+This means that each alert condition is reported only once by \fBsmartctl\fP
+for each initiator for each activation of the condition.
 .TP
 .B \-c, \-\-capabilities
 [ATA only] Prints only the generic SMART capabilities.  These
@@ -1791,25 +1810,25 @@ a disk can be specified by N\-\fBmax\fP.
 
 For example the commands:
 .nf
-  smartctl \-t select,10\-20 /dev/hda
-  smartctl \-t select,10+11 /dev/hda
+  smartctl \-t select,10\-20 /dev/sda
+  smartctl \-t select,10+11 /dev/sda
 .fi
 both runs a self test on one span consisting of LBAs ten to twenty
 (inclusive). The command:
 .nf
-  smartctl \-t select,100000000\-max /dev/hda
+  smartctl \-t select,100000000\-max /dev/sda
 .fi
 run a self test from LBA 100000000 up to the end of the disk.
 The \'\-t\' option can be given up to five times, to test
 up to five spans.  For example the command:
 .nf
-  smartctl \-t select,0\-100 \-t select,1000\-2000 /dev/hda
+  smartctl \-t select,0\-100 \-t select,1000\-2000 /dev/sda
 .fi
 runs a self test on two spans.  The first span consists of 101 LBAs
 and the second span consists of 1001 LBAs.  Note that the spans can
 overlap partially or completely, for example:
 .nf
-  smartctl \-t select,0\-10 \-t select,5\-15 \-t select,10\-20 /dev/hda
+  smartctl \-t select,0\-10 \-t select,5\-15 \-t select,10\-20 /dev/sda
 .fi
 The results of the selective self-test can be obtained (both during
 and after the test) by printing the SMART self-test log, using the
@@ -1836,15 +1855,15 @@ argument.
 
 For example the commands:
 .nf
-  smartctl \-t select,10\-20 /dev/hda
-  smartctl \-t select,redo /dev/hda
-  smartctl \-t select,redo+20 /dev/hda
+  smartctl \-t select,10\-20 /dev/sda
+  smartctl \-t select,redo /dev/sda
+  smartctl \-t select,redo+20 /dev/sda
 .fi
 have the same effect as:
 .nf
-  smartctl \-t select,10\-20 /dev/hda
-  smartctl \-t select,10\-20 /dev/hda
-  smartctl \-t select,10\-29 /dev/hda
+  smartctl \-t select,10\-20 /dev/sda
+  smartctl \-t select,10\-20 /dev/sda
+  smartctl \-t select,10\-29 /dev/sda
 .fi
 
 .I select,next[+SIZE]
@@ -1855,15 +1874,15 @@ optional +SIZE argument.
 
 For example the commands:
 .nf
-  smartctl \-t select,0\-999 /dev/hda
-  smartctl \-t select,next /dev/hda
-  smartctl \-t select,next+2000 /dev/hda
+  smartctl \-t select,0\-999 /dev/sda
+  smartctl \-t select,next /dev/sda
+  smartctl \-t select,next+2000 /dev/sda
 .fi
 have the same effect as:
 .nf
-  smartctl \-t select,0\-999 /dev/hda
-  smartctl \-t select,1000\-1999 /dev/hda
-  smartctl \-t select,2000\-3999 /dev/hda
+  smartctl \-t select,0\-999 /dev/sda
+  smartctl \-t select,1000\-1999 /dev/sda
+  smartctl \-t select,2000\-3999 /dev/sda
 .fi
 
 If the last test ended at the last LBA of the disk, the new range starts
@@ -1986,62 +2005,55 @@ browser.
 
 .SH EXAMPLES
 .nf
-.B smartctl \-a /dev/hda
+.B smartctl \-a /dev/sda
 .fi
-Print a large amount of SMART information for drive /dev/hda which is
-typically an ATA (IDE) or SATA disk in Linux.
+Print a large amount of SMART information for drive /dev/sda .
 .PP
 .nf
-.B smartctl \-a /dev/sdb
+.B smartctl \-s off /dev/sdd
 .fi
-Print a large amount of SMART information for drive /dev/sdb . This may
-be a SCSI disk or an ATA (SATA) disk.
+Disable SMART monitoring and data log collection on drive /dev/sdd .
 .PP
 .nf
-.B smartctl \-s off /dev/hdd
+.B smartctl \-\-smart=on \-\-offlineauto=on \-\-saveauto=on /dev/sda
 .fi
-Disable SMART monitoring and data log collection on drive /dev/hdd .
-.PP
-.nf
-.B smartctl \-\-smart=on \-\-offlineauto=on \-\-saveauto=on /dev/hda
-.fi
-Enable SMART on drive /dev/hda, enable automatic offline
+Enable SMART on drive /dev/sda, enable automatic offline
 testing every four hours, and enable autosaving of
 SMART Attributes.  This is a good start-up line for your system\'s
 init files.  You can issue this command on a running system.
 .PP
 .nf
-.B smartctl \-t long /dev/hdc
+.B smartctl \-t long /dev/sdc
 .fi
-Begin an extended self-test of drive /dev/hdc.  You can issue this
+Begin an extended self-test of drive /dev/sdc.  You can issue this
 command on a running system.  The results can be seen in the self-test
 log visible with the \'\-l selftest\' option after it has completed.
 .PP
 .nf
-.B smartctl \-s on \-t offline /dev/hda
+.B smartctl \-s on \-t offline /dev/sda
 .fi
 Enable SMART on the disk, and begin an immediate offline test of
-drive /dev/hda.  You can issue this command on a running system.  The
+drive /dev/sda.  You can issue this command on a running system.  The
 results are only used to update the SMART Attributes, visible
 with the \'\-A\' option.  If any device errors occur, they are logged to
 the SMART error log, which can be seen with the \'\-l error\' option.
 .PP
 .nf
-.B smartctl \-A \-v 9,minutes /dev/hda
+.B smartctl \-A \-v 9,minutes /dev/sda
 .fi
 Shows the vendor Attributes, when the disk stores its power-on time
 internally in minutes rather than hours.
 .PP
 .nf
-.B smartctl \-q errorsonly \-H \-l selftest /dev/hda
+.B smartctl \-q errorsonly \-H \-l selftest /dev/sda
 .fi
 Produces output only if the device returns failing SMART status,
 or if some of the logged self-tests ended with errors.
 .PP
 .nf
-.B smartctl \-q silent \-a /dev/hda
+.B smartctl \-q silent \-a /dev/sda
 .fi
-Examine all SMART data for device /dev/hda, but produce no
+Examine all SMART data for device /dev/sda, but produce no
 printed output.  You must use the exit status (the
 .B $?
 shell variable) to learn if any Attributes are out of bound, if the
@@ -2100,7 +2112,7 @@ Start a short self-test on the (S)ATA disk connected to second pmport on the
 first channel of the first HighPoint RocketRAID controller card.
 .PP
 .nf
-.B smartctl \-t select,10\-100 \-t select,30\-300 \-t afterselect,on \-t pending,45 /dev/hda
+.B smartctl \-t select,10\-100 \-t select,30\-300 \-t afterselect,on \-t pending,45 /dev/sda
 .fi
 Run a selective self-test on LBAs 10 to 100 and 30 to 300.  After the
 these LBAs have been tested, read-scan the remainder of the disk.  If the disk is
@@ -2113,13 +2125,13 @@ device is restored.
 Examine all SMART data for the first SCSI disk connected to a cciss
 RAID controller card.
 
-.SH RETURN VALUES
-The return values of \fBsmartctl\fP are defined by a bitmask.  If all
-is well with the disk, the return value (exit status) of
+.SH EXIT STATUS
+The exit statuses of \fBsmartctl\fP are defined by a bitmask.
+If all is well with the disk, the exit status (return value) of
 \fBsmartctl\fP is 0 (all bits turned off).  If a problem occurs, or an
 error, potential error, or fault is detected, then a non-zero status
-is returned.  In this case, the eight different bits in the return
-value have the following meanings for ATA disks; some of these values
+is returned.  In this case, the eight different bits in the exit status
+have the following meanings for ATA disks; some of these values
 may also be returned for SCSI disks.
 .TP
 .B Bit 0:
@@ -2188,61 +2200,33 @@ drive database (see \'\-B\' option).
 optional local drive database (see \'\-B\' option).
 
 .\" %ENDIF NOT OS Windows
-.SH NOTES
-The TapeAlert log page flags are cleared for the initiator when the
-page is read. This means that each alert condition is reported only
-once by \fBsmartctl\fP for each initiator for each activation of the
-condition.
-
 .SH AUTHORS
-\fBBruce Allen\fP
+\fBBruce Allen\fP (project initiator),
 .br
-University of Wisconsin \- Milwaukee Physics Department
+\fBChristian Franke\fP (project manager, Windows port and all sort of things),
 .br
-\fBChristian Franke\fP (Windows interface, C++ redesign, most enhancements
-since 2009)
+\fBDouglas Gilbert\fP (SCSI subsystem),
 .br
-\fBsmartmontools\-support@lists.sourceforge.net\fP
+\fBVolker Kuhlmann\fP (moderator of support and database mailing list),
+.br
+\fBGabriele Pohl\fP (wiki & development team support),
+.br
+\fBAlex Samorukov\fP (FreeBSD port and more, new Trac wiki).
 
-The following have made large contributions to smartmontools:
-.br
-\fBCasper Dik\fP (Solaris SCSI interface)
-.br
-\fBDouglas Gilbert\fP (SCSI subsystem)
-.br
-\fBGuido Guenther\fP (Autoconf/Automake packaging)
-.br
-\fBGeoffrey Keating\fP (Darwin ATA interface)
-.br
-\fBEduard Martinescu\fP (FreeBSD interface)
-.br
-\fBFr\['e]d\['e]ric L. W. Meunier\fP (Web site and Mailing list)
-.br
-\fBGabriele Pohl\fP (Web site and Wiki, conversion from CVS to SVN)
-.br
-\fBKeiji Sawada\fP (Solaris ATA interface)
-.br
-\fBManfred Schwarb\fP (Drive database)
-.br
-\fBSergey Svishchev\fP (NetBSD interface)
-.br
-\fBDavid Snyder and Sergey Svishchev\fP (OpenBSD interface)
-.br
-\fBPhil Williams\fP (User interface and drive database)
-.br
-\fBYuri Dario\fP (OS/2, eComStation interface)
-.br
-\fBShengfeng Zhou\fP (Linux/FreeBSD HighPoint RocketRAID interface)
-.br
-Many other individuals have made smaller contributions and corrections.
+Many other individuals have made contributions and corrections,
+see AUTHORS, ChangeLog and repository files.
 
 The first smartmontools code was derived from the smartsuite package,
-written by Michael Cornwell, and from the previous UCSC smartsuite package.
-This code was originally developed as a
-Senior Thesis by Michael Cornwell at the Concurrent Systems Laboratory
-(now part of the Storage Systems Research Center), Jack Baskin School
-of Engineering, University of California, Santa
-Cruz. \fBhttp://ssrc.soe.ucsc.edu/\fP .
+written by Michael Cornwell and Andre Hedrick.
+
+.SH REPORTING BUGS
+To submit a bug report, create a ticket in smartmontools wiki:
+.br
+<\fBhttp://www.smartmontools.org/\fP>.
+.br
+Alternatively send the info to the smartmontools support mailing list:
+.br
+<\fBhttps://lists.sourceforge.net/lists/listinfo/smartmontools-support\fB>.
 
 .SH SEE ALSO
 \fBsmartd\fP(8), \fBupdate-smart-drivedb\fP(8).
@@ -2269,5 +2253,7 @@ publications of the Small Form Factors (SFF) Committee.
 Links to these and other documents may be found on the Links page of the
 \fBsmartmontools\fP Wiki at \fBhttp://www.smartmontools.org/wiki/Links\fP .
 
-.SH SVN ID OF THIS PAGE
-$Id: smartctl.8.in 3965 2014-07-20 14:46:41Z chrfranke $
+.SH PACKAGE VERSION
+CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
+.br
+$Id: smartctl.8.in 4099 2015-05-30 17:32:13Z chrfranke $
