@@ -1,11 +1,10 @@
 /*
  * knowndrives.h
  *
- * Home page of code is: http://smartmontools.sourceforge.net
- * Address of support mailing list: smartmontools-support@lists.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2003-11 Philip Williams, Bruce Allen
- * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-15 Christian Franke
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +19,7 @@
 #ifndef KNOWNDRIVES_H_
 #define KNOWNDRIVES_H_
 
-#define KNOWNDRIVES_H_CVSID "$Id: knowndrives.h 3597 2012-09-04 21:10:37Z chrfranke $\n"
+#define KNOWNDRIVES_H_CVSID "$Id: knowndrives.h 4162 2015-10-31 16:36:16Z chrfranke $\n"
 
 // Structure to store drive database entries, see drivedb.h for a description.
 struct drive_settings {
@@ -73,7 +72,10 @@ const char * get_drivedb_path_default();
 // Read drive database from file.
 bool read_drive_database(const char * path);
 
-// Read drive databases from standard places.
-bool read_default_drive_databases();
+// Init default db entry and optionally read drive databases from standard places.
+bool init_drive_database(bool use_default_db);
+
+// Get vendor attribute options from default db entry.
+const ata_vendor_attr_defs & get_default_attr_defs();
 
 #endif

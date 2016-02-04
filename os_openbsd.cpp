@@ -1,7 +1,7 @@
 /*
  * os_openbsd.c
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2004-10 David Snyder <smartmontools-support@lists.sourceforge.net>
  *
@@ -27,14 +27,14 @@
 
 #include <errno.h>
 
-const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 3727 2012-12-13 17:23:06Z samm2 $"
+const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 4205 2016-01-22 15:22:53Z samm2 $"
   OS_OPENBSD_H_CVSID;
 
 /* global variable holding byte count of allocated memory */
 extern long long bytes;
 
 enum warnings {
-  BAD_SMART, NO_3WARE, NO_ARECA, MAX_MSG
+  BAD_SMART, MAX_MSG
 };
 
 /* Utility function for printing warnings */
@@ -136,7 +136,14 @@ get_dev_names(char ***names, const char *prefix)
     n++;
   }
 
-  mp = (char **)realloc(mp, n * (sizeof(char *)));
+  void * tmp = (char **)realloc(mp, n * (sizeof(char *)));
+  if (NULL == tmp) {
+    pout("Out of memory constructing scan device list\n");
+    free(mp);
+    return -1;
+  }
+  else
+    mp = tmp;
   bytes += (n) * (sizeof(char *));
   *names = mp;
   return n;
@@ -316,7 +323,8 @@ ata_command_interface(int fd, smart_command_set command, int select, char *data)
 
     unsigned const short normal = WDSMART_CYL, failed = 0x2cf4;
 
-    if ((retval = ioctl(fd, ATAIOCCOMMAND, &req))) {
+    retval = ioctl(fd, ATAIOCCOMMAND, &req);
+    if (retval < 0) {
       perror("Failed command");
       return -1;
     }

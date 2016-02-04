@@ -1,3 +1,33 @@
+smartmontools (6.4+svn4214-1) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS. (Closes: #794035)
+    + Pass --build and --host to configure
+
+  [ Tobias Frost ]
+  * Import patch from Helmut (see above)
+  * Remove '/var/lib/smartmontools' on purge (Closes: #766145)
+  * Fixed postinst script: Version is only valid when configuring.
+    (Closes: #766146)
+
+  [ Jonathan Dowland ]
+  * Portability improvements, thanks Robert Millan. Closes: #634506.
+  * Update debian/copyright to Format 1.0., resolve GPL-2/GPL-2+
+    ambiguity. Closes: #777583.
+  * Get rid of update-smart-drivedb. Closes: #783317, #804299, #706909.
+  * Bump standards version (no further changes required)
+  * Enhance rules clean target to make repeated builds easier
+  * Stop installing duplicate/irrelevant docs (COPYING, changelog, INSTALL)
+  * add 'set -e' to postrm.
+  * Switch to xz for orig.tar compression and update get-orig-source rule.
+  * Stop passing explicit runlevels to dh_installinit. Closes: #732045.
+  * Remove duplicate use of dh_systemd_enable: The second one should have
+    been dh_systemd_start. Closes: #813102.
+  * Various manpage improvements. Thanks Bjarni Ingi Gislason.
+    Closes: #669053.
+
+ -- Jonathan Dowland <jmtd@debian.org>  Thu, 04 Feb 2016 23:21:58 +0000
+
 smartmontools (6.4+svn4109-1) unstable; urgency=medium
 
   * New upstream version. Closes: #789721.
@@ -5,6 +35,12 @@ smartmontools (6.4+svn4109-1) unstable; urgency=medium
   * refresh 54_remove-Id-from-smartd.conf.diff and 61_cciss-doc.patch
 
  -- Jonathan Dowland <jmtd@debian.org>  Wed, 18 Nov 2015 19:52:41 +0000
+
+smartmontools (6.3+svn4002-2) unstable; urgency=low
+
+  * [12d5f9d] Correct maintscript syntax (Closes: #766178)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Tue, 21 Oct 2014 13:30:40 +0200
 
 smartmontools (6.3+svn4002-1) unstable; urgency=low
 

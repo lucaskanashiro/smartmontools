@@ -1,9 +1,9 @@
 /*
  * os_freebsd.c
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2003-10 Eduard Martinescu <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2003-10 Eduard Martinescu
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,8 @@
 
 #include "config.h"
 #include "int64.h"
+// set by /usr/include/sys/ata.h, suppress warning
+#undef ATA_READ_LOG_EXT
 #include "atacmds.h"
 #include "scsicmds.h"
 #include "cciss.h"
@@ -75,7 +77,7 @@
 #define PATHINQ_SETTINGS_SIZE   128
 #endif
 
-const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 3902 2014-05-23 19:14:15Z samm2 $" \
+const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 4211 2016-01-24 07:56:06Z samm2 $" \
 ATACMDS_H_CVSID CCISS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_FREEBSD_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 #define NO_RETURN 0
@@ -86,19 +88,21 @@ ATACMDS_H_CVSID CCISS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_FREEBSD_H_CVSID SC
 
 // Utility function for printing warnings
 void printwarning(int msgNo, const char* extra) {
-  static int printed[] = {0,0,0,0};
-  static const char* message[]={
-    "The SMART RETURN STATUS return value (smartmontools -H option/Directive)\n can not be retrieved with this version of ATAng, please do not rely on this value\nYou should update to at least 5.2\n",
-
-    "Error SMART Status command failed\nPlease get assistance from \n" PACKAGE_HOMEPAGE "\nRegister values returned from SMART Status command are:\n",
-
-    "You must specify a DISK # for 3ware drives with -d 3ware,<n> where <n> begins with 1 for first disk drive\n",
-
-    "ATA support is not provided for this kernel version. Please ugrade to a recent 5-CURRENT kernel (post 09/01/2003 or so)\n"
-  };
 
   if (msgNo >= 0 && msgNo <= MAX_MSG) {
+    static int printed[] = {0,0,0,0};
     if (!printed[msgNo]) {
+
+      static const char* message[]={
+        "The SMART RETURN STATUS return value (smartmontools -H option/Directive)\n can not be retrieved with this version of ATAng, please do not rely on this value\nYou should update to at least 5.2\n",
+
+        "Error SMART Status command failed\nPlease get assistance from \n" PACKAGE_HOMEPAGE "\nRegister values returned from SMART Status command are:\n",
+
+        "You must specify a DISK # for 3ware drives with -d 3ware,<n> where <n> begins with 1 for first disk drive\n",
+
+        "ATA support is not provided for this kernel version. Please ugrade to a recent 5-CURRENT kernel (post 09/01/2003 or so)\n"
+      };
+
       printed[msgNo] = 1;
       pout("%s", message[msgNo]);
       if (extra)
@@ -917,7 +921,8 @@ bool freebsd_scsi_device::close(){
 freebsd_scsi_device::freebsd_scsi_device(smart_interface * intf,
   const char * dev_name, const char * req_type)
 : smart_device(intf, dev_name, "scsi", req_type),
-  freebsd_smart_device()
+  freebsd_smart_device(),
+  m_camdev(0)
 {
 }
 
@@ -1122,10 +1127,8 @@ freebsd_areca_ata_device::freebsd_areca_ata_device(smart_interface * intf, const
 
 smart_device * freebsd_areca_ata_device::autodetect_open()
 {
-  int is_ata = 1;
-
   // autodetect device type
-  is_ata = arcmsr_get_dev_type();
+  int is_ata = arcmsr_get_dev_type();
   if(is_ata < 0)
   {
     set_err(EIO);
@@ -1476,11 +1479,12 @@ bool get_dev_names_cam(std::vector<std::string> & names, bool show_all)
     }
 
     for (unsigned i = 0; i < ccb.cdm.num_matches; i++) {
-      struct bus_match_result *bus_result;
       struct device_match_result *dev_result;
       struct periph_match_result *periph_result;
 
       if (ccb.cdm.matches[i].type == DEV_MATCH_BUS) {
+        struct bus_match_result *bus_result;
+
         bus_result = &ccb.cdm.matches[i].result.bus_result;
 
         if (strcmp(bus_result->dev_name,"xpt") == 0) /* skip XPT bus at all */
@@ -1592,9 +1596,11 @@ int get_dev_names_ata(char*** names) {
         n++;
       };
     };
-  };  
+  };
+  if (n <= 0)
+    goto end;
   mp = (char **)reallocf(mp,n*(sizeof (char*))); // shrink to correct size
-  if (mp == NULL && n > 0 ) { // reallocf never fail for size=0, but may return NULL
+  if (mp == NULL) {
     serrno=errno;
     pout("Out of memory constructing scan device list (on line %d)\n", __LINE__);
     n = -1;
@@ -1779,13 +1785,13 @@ static int usbdevlist(int busno,unsigned short & vendor_id,
   return false;
 #else // freebsd < 8.0 USB stack, ioctl interface
 
-  int  i, f, a, rc;
+  int  i, a, rc;
   char buf[50];
   int ncont;
 
   for (ncont = 0, i = 0; i < 10; i++) {
     snprintf(buf, sizeof(buf), "%s%d", USBDEV, i);
-    f = open(buf, O_RDONLY);
+    int f = open(buf, O_RDONLY);
     if (f >= 0) {
       memset(done, 0, sizeof done);
       for (a = 1; a < USB_MAX_DEVICES; a++) {
@@ -1813,12 +1819,11 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   struct cam_device *cam_dev;
   union ccb ccb;
   int bus=-1;
-  int i,c;
-  int len;
+  int i;
   const char * test_name = name;
 
   // if dev_name null, or string length zero
-  if (!name || !(len = strlen(name)))
+  if (!name || !*name)
     return 0;
 
   // Dereference symlinks
@@ -1840,7 +1845,7 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
     // check ATA/ATAPI devices
     for (i = 0; i < numata; i++) {
       if(!strcmp(atanames[i],test_name)) {
-        for (c = i; c < numata; c++) free(atanames[c]);
+        for (int c = i; c < numata; c++) free(atanames[c]);
         free(atanames);
         return new freebsd_ata_device(this, test_name, "");
       }
@@ -1917,13 +1922,15 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
 
 smart_device * freebsd_smart_interface::get_custom_smart_device(const char * name, const char * type)
 {
-  // 3Ware ?
-  static const char * fbsd_dev_twe_ctrl = "/dev/twe";
-  static const char * fbsd_dev_twa_ctrl = "/dev/twa";
-  static const char * fbsd_dev_tws_ctrl = "/dev/tws";
-  int disknum = -1, n1 = -1, n2 = -1, contr = -1;
+  int disknum = -1, n1 = -1, n2 = -1;
 
   if (sscanf(type, "3ware,%n%d%n", &n1, &disknum, &n2) == 1 || n1 == 6) {
+    // 3Ware ?
+    static const char * fbsd_dev_twe_ctrl = "/dev/twe";
+    static const char * fbsd_dev_twa_ctrl = "/dev/twa";
+    static const char * fbsd_dev_tws_ctrl = "/dev/tws";
+    int contr = -1;
+
     if (n2 != (int)strlen(type)) {
       set_err(EINVAL, "Option -d 3ware,N requires N to be a non-negative integer");
       return 0;

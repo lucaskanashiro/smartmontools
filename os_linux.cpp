@@ -1,11 +1,11 @@
 /*
  *  os_linux.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2003-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2003-11 Bruce Allen
  * Copyright (C) 2003-11 Doug Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2008-15 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2008-15 Christian Franke
  *
  * Original AACRaid code:
  *  Copyright (C) 2014    Raghava Aditya <raghava.aditya@pmcs.com>
@@ -99,7 +99,7 @@
 
 #define ARGUSED(x) ((void)(x))
 
-const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 4047 2015-03-22 16:16:24Z chrfranke $"
+const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 4157 2015-10-20 16:03:57Z chrfranke $"
   OS_LINUX_H_CVSID;
 extern unsigned char failuretest_permissive;
 
@@ -356,7 +356,6 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     unsigned char task[sizeof(ide_task_request_t)+512];
     ide_task_request_t *reqtask=(ide_task_request_t *) task;
     task_struct_t      *taskfile=(task_struct_t *) reqtask->io_ports;
-    int retval;
 
     memset(task,      0, sizeof(task));
 
@@ -377,7 +376,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     // copy user data into the task request structure
     memcpy(task+sizeof(ide_task_request_t), data, 512);
 
-    if ((retval=ioctl(get_fd(), HDIO_DRIVE_TASKFILE, task))) {
+    if (ioctl(get_fd(), HDIO_DRIVE_TASKFILE, task)) {
       if (errno==-EINVAL)
         pout("Kernel lacks HDIO_DRIVE_TASKFILE support; compile kernel with CONFIG_IDE_TASKFILE_IO set\n");
       return -1;
@@ -388,8 +387,6 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
   // There are two different types of ioctls().  The HDIO_DRIVE_TASK
   // one is this:
   if (command==STATUS_CHECK || command==AUTOSAVE || command==AUTO_OFFLINE){
-    int retval;
-
     // NOT DOCUMENTED in /usr/src/linux/include/linux/hdreg.h. You
     // have to read the IDE driver source code.  Sigh.
     // buff[0]: ATA COMMAND CODE REGISTER
@@ -405,7 +402,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     buff[4]=normal_lo;
     buff[5]=normal_hi;
 
-    if ((retval=ioctl(get_fd(), HDIO_DRIVE_TASK, buff))) {
+    if (ioctl(get_fd(), HDIO_DRIVE_TASK, buff)) {
       if (errno==-EINVAL) {
         pout("Error SMART Status command via HDIO_DRIVE_TASK failed");
         pout("Rebuild older linux 2.2 kernels with HDIO_DRIVE_TASK support added\n");
@@ -1202,7 +1199,7 @@ bool linux_megaraid_device::open()
   int   mjr;
   int report = scsi_debugmode;
 
-  if(sscanf(get_dev_name(),"/dev/bus/%d", &m_hba) == 0) {
+  if (sscanf(get_dev_name(), "/dev/bus/%u", &m_hba) == 0) {
     if (!linux_smart_device::open())
       return false;
     /* Get device HBA */
@@ -1325,7 +1322,6 @@ bool linux_megaraid_device::megasas_cmd(int cdbLen, void *cdb,
 {
   struct megasas_pthru_frame	*pthru;
   struct megasas_iocpacket	uio;
-  int rc;
 
   memset(&uio, 0, sizeof(uio));
   pthru = &uio.frame.pthru;
@@ -1367,9 +1363,8 @@ bool linux_megaraid_device::megasas_cmd(int cdbLen, void *cdb,
     uio.sgl[0].iov_len = dataLen;
   }
 
-  rc = 0;
   errno = 0;
-  rc = ioctl(m_fd, MEGASAS_IOC_FIRMWARE, &uio);
+  int rc = ioctl(m_fd, MEGASAS_IOC_FIRMWARE, &uio);
   if (pthru->cmd_status || rc != 0) {
     if (pthru->cmd_status == 12) {
       return set_err(EIO, "megasas_cmd: Device %d does not exist\n", m_disknum);
@@ -1991,10 +1986,8 @@ linux_areca_ata_device::linux_areca_ata_device(smart_interface * intf, const cha
 
 smart_device * linux_areca_ata_device::autodetect_open()
 {
-  int is_ata = 1;
-
   // autodetect device type
-  is_ata = arcmsr_get_dev_type();
+  int is_ata = arcmsr_get_dev_type();
   if(is_ata < 0)
   {
     set_err(EIO);
@@ -2824,20 +2817,19 @@ bool linux_smart_interface::get_dev_megasas(smart_device_list & devlist)
     return false;
 
   // getting bus numbers with megasas devices
-  struct dirent *ep;
-  unsigned int host_no = 0;
-  char sysfsdir[256];
-
-  /* we are using sysfs to get list of all scsi hosts */
+  // we are using sysfs to get list of all scsi hosts
   DIR * dp = opendir ("/sys/class/scsi_host/");
   if (dp != NULL)
   {
+    struct dirent *ep;
     while ((ep = readdir (dp)) != NULL) {
-      if (!sscanf(ep->d_name, "host%d", &host_no)) 
+      unsigned int host_no = 0;
+      if (!sscanf(ep->d_name, "host%u", &host_no))
         continue;
       /* proc_name should be megaraid_sas */
+      char sysfsdir[256];
       snprintf(sysfsdir, sizeof(sysfsdir) - 1,
-        "/sys/class/scsi_host/host%d/proc_name", host_no);
+        "/sys/class/scsi_host/host%u/proc_name", host_no);
       if((fp = fopen(sysfsdir, "r")) == NULL)
         continue;
       if(fgets(line, sizeof(line), fp) != NULL && !strncmp(line,"megaraid_sas",12)) {
@@ -2972,7 +2964,7 @@ linux_smart_interface::megasas_pd_add_list(int bus_no, smart_device_list & devli
   */
   megasas_pd_list * list = 0;
   for (unsigned list_size = 1024; ; ) {
-    list = (megasas_pd_list *)realloc(list, list_size);
+    list = reinterpret_cast<megasas_pd_list *>(realloc(list, list_size));
     if (!list)
       throw std::bad_alloc();
     bzero(list, list_size);
@@ -3186,12 +3178,11 @@ smart_device * linux_smart_interface::get_custom_smart_device(const char * name,
   }
 
   //aacraid?
-  unsigned int device;
-  unsigned int host;
-  if(sscanf(type, "aacraid,%d,%d,%d", &host, &channel, &device)==3) {
+  unsigned host, chan, device;
+  if (sscanf(type, "aacraid,%u,%u,%u", &host, &chan, &device) == 3) {
     //return new linux_aacraid_device(this,name,channel,device);
     return get_sat_device("sat,auto",
-      new linux_aacraid_device(this, name, host, channel, device));
+      new linux_aacraid_device(this, name, host, chan, device));
 
   }
 

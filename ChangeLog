@@ -1,4 +1,297 @@
-$Id: ChangeLog 4109 2015-06-04 16:30:15Z chrfranke $
+$Id: ChangeLog 4214 2016-01-24 22:53:37Z samm2 $
+
+2016-01-24  Alex Samorukov  <samm@os2.kiev.ua>
+
+	os_freebsd.cpp: fix possible reallocf with 0 bytes arg (ticket #640)
+	drivedb.h: add Corsair Extreme SSD (ticket #642)
+	os_darwin.cpp: fix error reporting if open fails
+
+2016-01-23  Alex Samorukov  <samm@os2.kiev.ua>
+
+	os_darwin.cpp: do not print bogus memory allocation error message if
+	  there are no devices found
+
+2016-01-22  Christian Franke  <franke@computer.org>
+
+	Various fixes suggested by clang analyser (ticket #640):
+	dev_areca.cpp: Fix check of ARCMSR_READ_RQBUFFER result.
+	knowndrives.cpp: Add missing member initialization.
+	smartd.cpp: Fix crash on missing argument to '-s' directive.
+	Add missing variable initialization.  Remove redundant assignment.
+
+2016-01-21  Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h: Added ADATA SP550 SSD (ticket #638)
+	os_freebsd.cpp: Reduce variable scope where possible (cppcheck: variableScope)
+	os_openbsd/os_netbsd - removed never used warning code defines (cppcheck)
+
+2016-01-21  Christian Franke  <franke@computer.org>
+
+	ataprint.cpp, smartd.cpp: Don't issue SCT commands if ATA Security
+	is locked (ticket #637).
+
+2016-01-19  Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h:
+	 - Samsung PM871 SSD family (ticket #636)
+	 - Fixed detection for Samsung SSD 850 EVO mSATA 120GB (ticket #635)
+	 - Fixed Western Digital Caviar Black regexp, extended WD Black (ticket #631)
+
+2016-01-06  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- SandForce Driven SSDs: Extra warning entry for buggy Corsair Force LS
+	  (ticket #628)
+	- Innodisk 3MG2-P SSDs: 1.8" variant
+	- Innodisk 3ME3 SSDs
+	- USB: Seagate Expansion Portable (0x0bc2:0x2322) (ticket #627)
+	- USB: Jess-Link (0x0dbf:0x9001)
+
+2016-01-01  Christian Franke  <franke@computer.org>
+
+	Happy New Year! Update copyright year in version info.
+
+2015-12-19  Christian Franke  <franke@computer.org>
+
+	Makefile.am: Fix path of 'smart-pkg-uninstall' (Regression from r4190).
+
+	update-smart-drivedb.8.in: Fix platform specific formatting.
+
+2015-12-18  Alex Samorukov <samm@os2.kiev.ua>
+
+	os_netbsd.cpp, os_openbsd.cpp: fix ioctl returtn value check
+	os_darwin.cpp: fix error handling
+	os_darwin: use /usr/local/ prefix to install on 10.11 (El Capitan)
+
+2015-12-16  Douglas Gilbert  <dgilbert@interlog.com>
+
+	scsiprint.cpp: stop tape drive looking for Solid State media
+	log page (ticket #314).
+
+2015-12-14  Douglas Gilbert  <dgilbert@interlog.com>
+
+	scsiprint.cpp: fix compiler warning for is_tape. Clean code around
+	handling of tape drives.
+
+2015-12-14  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- Intel 320 Series SSDs: 1.8" microSATA
+	- Intel 53x and Pro 2500 Series SSDs: Rename, add 535 (ticket #625),
+	  add Pro 2500
+	- Intel 730 and DC S35x0/3610/3700 Series SSDs: Rename,
+	  add S3510/3610, 1.2TB, 1.6TB
+	- USB: LaCie (0x059f:0x106f) (ticket #624)
+	- USB: WD My Passport (0x1058:0x071a, 0x1058:0x0816)
+	- USB: Initio (0x13fd:0x1650)
+	- USB: Unknown (0xabcd:0x6103)
+
+	update-smart-drivedb.in: Add '-s SMARTCTL' option.
+	update-smart-drivedb.8.in: Document it.
+
+2015-12-07  Christian Franke  <franke@computer.org>
+
+	configure.ac: Append 'svn' to list of download tools.
+
+	update-smart-drivedb.in: Use HTTPS download by default.
+	Add options '-t TOOL', '-u LOCATION', '--cacert FILE',
+	'--capath DIR', '--insecure' and '--dryrun'.
+	Add 'svn' as new download tool.
+	Ignore differences in SVN Id string (re-added).
+	Remove usage of 'which' command.
+
+	update-smart-drivedb.8.in: Document the new options.
+
+2015-11-23  Christian Franke  <franke@computer.org>
+
+	atacmds.cpp: parse_attribute_def(): Init buffers before sscanf() call
+	(cppcheck-1.71: uninitvar).
+
+	scsiprint.cpp: Fix GLTSD bit set/cleared info messages (ticket #621).
+
+2015-11-22  Christian Franke  <franke@computer.org>
+
+	Makefile.am: Add NEWS file to svnversion.h target.
+
+	os_win32/installer.nsi: Select 64-bit version on 64-bit Windows.
+	Fix installation of runcmda.exe.  Update links.
+
+2015-11-15  Christian Franke  <franke@computer.org>
+
+	configure.ac: Check whether MinGW adds an application manifest.
+
+	Makefile.am: Add default manifest for MinGW builds.
+
+	os_win32/default.manifest: New default application manifest.
+	Remove external application manifests.
+
+	os_win32/installer.nsi: Use macros from 'LogicLib.nsh' where possible.
+	Add missing MessageBox /SD options.
+	Remove external application manifests.
+
+2015-11-07  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- Micron M500DC/M510DC Enterprise SSDs: Rename, add M510DC
+	- SandForce Driven SSDs: Mushkin Chronos 7mm/MX/G2, Enhanced ECO2
+	- Innodisk 3MG2-P SSDs
+	- SiliconMotion based SSDs: Crucial BX100 (ticket #597)
+
+2015-10-31  Christian Franke  <franke@computer.org>
+
+	atacmds.cpp, atacmds.h, knowndrives.cpp, knowndrives.h:
+	Read default SMART attribute settings from drivedb.h (ticket #465).
+	Remove hard-coded attribute names and format settings.
+
+	drivedb.h: Uncomment default settings to create the "DEFAULT" entry.
+	Add ",HDD" or ",SSD" to HDD/SSD specific settings.
+
+	smartctl.cpp, smartd.cpp: Use new database initialization function.
+
+	Create branch RELEASE_6_4_DRIVEDB with last drivedb.h file
+	compatible with smartmontools 6.4.
+
+2015-10-22  Paul Grabinar  <pgrabinar@ocz.com>
+
+	drivedb.h:
+	- SandForce Driven SSDs: OCZ RevoDrive 350, Z-Drive 4500
+	- Indilinx Barefoot 3 based SSDs: Add attributes,
+	  OCZ ARC 100, Saber 1000, Vector 180, Vertex 460A
+	- OCZ Intrepid 3000 SSDs: Intrepid 3700
+	- OCZ Trion
+
+2015-10-20  Christian Franke  <franke@computer.org>
+
+	Reduce variable scope where possible (cppcheck: variableScope).
+
+	Makefile.am: Remove *.s from files used to generate svnversion.h.
+
+2015-10-18  Alex Samorukov <samm@os2.kiev.ua>
+
+	fixes suggested by cppcheck:
+	Check realloc result to avoid memory leak (memleakOnRealloc)
+	Fix printf() signednsess (invalidPrintfArgType_sint)
+
+2015-10-17  Christian Franke  <franke@computer.org>
+
+	Various fixes suggested by cppcheck:
+	Close FILE pointer before reopening it (cppcheck: publicAllocationError).
+	Add missing member initializations to ctors (cppcheck: uninitMemberVar).
+	Remove redundant nullptr check (cppcheck: nullPointerRedundantCheck).
+	Remove redundant assignments (cppcheck: redundantAssignment).
+	Clarify calculation precedence (cppcheck: clarifyCalculation).
+	Use C++-style casts for pointer types (cppcheck: cstyleCast).
+	Remove duplicate on both sides of '||' (cppcheck: duplicateExpression).
+	Declare ctors with one argument as 'explicit'
+	(cppcheck: noExplicitConstructor).
+	Remove unread variables and assignments (cppcheck: unreadVariable).
+	Fix signedness of sscanf() formats strings
+	(cppcheck: invalidScanfArgType_int).
+
+2015-10-14  Christian Franke  <franke@computer.org>
+
+	configure.ac: Disable os_solaris_ata.o by default.
+	Add --with-solaris-sparc-ata option to enable.
+	Makefile.am: Exclude os_solaris_ata.s from source tarball
+	(Debian bug 729842).
+	os_solaris.cpp: Check for WITH_SOLARIS_SPARC_ATA instead of __sparc.
+
+2015-10-13  Christian Franke  <franke@computer.org>
+
+	Makefile.am: Fix error handling in various shell scripts.
+
+2015-10-13  Casper Dik  <...>
+
+	os_solaris.cpp: Detect SATA devices as SCSI devices.  This adds
+	support for auto detection of SATA devices behind SAT layer.
+	Set USCSI_SILENT flag to suppress /dev/console messages on command
+	error.
+
+2015-10-11  Christian Franke  <franke@computer.org>
+
+	drivedb.h: SiliconMotion based SSDs: Transcend SSD370S, SSD420,
+	update attribute 245 (ticket #595, ticket #602).
+
+2015-10-10  Christian Franke  <franke@computer.org>
+
+	Makefile.am: Use MKDIR_P to create directories
+	(available since automake 1.10).
+
+	os_win32.cpp: Detect USB ID if WMI reports type name "SCSI" instead
+	of "USBSTOR".
+	Detect USB ID also if drive letter is specified as device name.
+
+2015-10-04  Christian Franke  <franke@computer.org>
+
+	drivedb.h:
+	- USB: Genesys Logic (0x05e3:0x0735)
+	- USB: Addonics (0x0bf6:0x1001): unsupported (ticket #609)
+	- USB: Initio (0x13fd:0x3920)
+	- USB: JMicron JMS539 (0x152d:0x0539, 0x0100): Set from -d usbjmicron to
+	  unsupported because some devices may require -d sat instead (ticket #552).
+	- USB: JMicron (0x152d:0x0565) (ticket #607)
+	- USB: VIA VL711 (0x2109:0x0711): unsupported (ticket #594)
+	- USB: Hitachi Touro Mobile (0x4971:0x1024)
+
+2015-09-25  Christian Franke  <franke@computer.org>
+
+	scsiata.cpp: Ignore SAT ATA PASS-THROUGH fixed format sense data if no
+	ATA status bit is set (ticket #612).
+
+2015-09-23 Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h: Innostor USB3.0 to SATAIII bridge (#611)
+
+2015-09-21 Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h: decode 188 attribute for the "Seagate Enterprise Capacity
+	3.5 HDD" drives family, (see #551).
+
+2015-09-04 Alex Samorukov <samm@os2.kiev.ua>
+
+	Makefile.am: integrate darwin dmg build process to the Makefile
+
+2015-09-03 Alex Samorukov <samm@os2.kiev.ua>
+
+	os_darwin: Initial import of the files required to build
+	OSX/smartmontools native package (see #555).
+
+2015-08-27  Alex Samorukov <samm@os2.kiev.ua>
+
+	Homepage URL updated from the sourceforge to smartmontools.org (r4120)
+
+2015-08-26  Alex Samorukov <samm@os2.kiev.ua>
+
+	os_darwin.cpp: Implement get_os_version_str() for the darwin.
+
+2015-08-17  Christian Franke  <franke@computer.org>
+
+	scsiata.cpp: Ignore bogus SCSI sense_key if ATA status in
+	SAT ATA Return Descriptor indicates success (ticket #548).
+
+2015-08-08  Christian Franke  <franke@computer.org>
+
+	os_win32.cpp: Fix get_os_version_str() for Windows >= 8.1.
+	Add Windows 10 Final.
+
+2015-08-02  Christian Franke  <franke@computer.org>
+
+	configure.ac: Remove '--disable-drivedb',
+	'--enable-savestates', '--enable-attributelog'.
+	Print error message if used.
+
+2015-07-15  Christian Franke  <franke@computer.org>
+
+	autogen.sh: Drop support for automake 1.7 - 1.9.x.
+	Rework search for automake-VERSION.
+	configure.ac: Drop support for autoconf 2.5x.
+	Drop support for automake 1.7 - 1.9.x.
+	Remove --with-docdir option.
+
+2015-06-24  Alex Samorukov <samm@os2.kiev.ua>
+
+	drivedb.h:
+	- USB: SimpleTech 3.0 bridge (0x4971:0x8017), reported in #554
 
 2015-06-04  Christian Franke  <franke@computer.org>
 

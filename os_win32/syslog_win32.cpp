@@ -1,9 +1,9 @@
 /*
  * os_win32/syslog_win32.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2004-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2004-15 Christian Franke
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h> // RegisterEventSourceA(), ReportEventA(), ...
 
-const char *syslog_win32_cpp_cvsid = "$Id: syslog_win32.cpp 3575 2012-07-19 21:32:56Z chrfranke $"
+const char *syslog_win32_cpp_cvsid = "$Id: syslog_win32.cpp 4149 2015-10-17 15:38:01Z chrfranke $"
   SYSLOG_H_CVSID;
 
 #ifdef _MSC_VER
@@ -420,7 +420,7 @@ int main(int argc, char* argv[])
 		if (i % 13 == 0)
 			Sleep(1000L);
 		sprintf(buf, "Log Line %d\n", i);
-		syslog(i % 17 ? LOG_INFO : LOG_ERR, buf);
+		syslog((i % 17) ? LOG_INFO : LOG_ERR, buf);
 	}
 	closelog();
 	return 0;

@@ -1,12 +1,12 @@
 #
-# $Id: configure.ac 4109 2015-06-04 16:30:15Z chrfranke $
+# $Id: configure.ac 4181 2015-12-07 20:58:40Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
-AC_PREREQ(2.50)
-AC_INIT(smartmontools, 6.4, smartmontools-support@lists.sourceforge.net)
-AC_CONFIG_SRCDIR(smartctl.cpp)
+AC_PREREQ([2.60])
+AC_INIT(smartmontools, 6.5, smartmontools-support@lists.sourceforge.net)
+AM_INIT_AUTOMAKE([1.10 foreign])
 
-smartmontools_cvs_tag=`echo '$Id: configure.ac 4109 2015-06-04 16:30:15Z chrfranke $'`
+smartmontools_cvs_tag=`echo '$Id: configure.ac 4181 2015-12-07 20:58:40Z chrfranke $'`
 smartmontools_release_date=2015-06-04
 smartmontools_release_time="16:29:41 UTC"
 
@@ -14,11 +14,10 @@ AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",          
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",   [smartmontools Release Date])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_TIME,   "$smartmontools_release_time",   [smartmontools Release Time])
 AC_DEFINE_UNQUOTED(CONFIG_H_CVSID,               "$smartmontools_cvs_tag",        [smartmontools CVS Tag])
-AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "http://smartmontools.sourceforge.net/", [smartmontools Home Page])
+AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "http://www.smartmontools.org/", [smartmontools Home Page])
 
+AC_CONFIG_SRCDIR([smartctl.cpp])
 AC_CONFIG_HEADER([config.h])
-
-AM_INIT_AUTOMAKE([foreign])
 
 AM_MAINTAINER_MODE
 
@@ -231,32 +230,15 @@ case "${host}" in
 esac
 AC_SUBST(initdfile)
 
-autoconf_25x=${docdir:-yes}
-AC_ARG_WITH(docdir,
-  [AS_HELP_STRING([--with-docdir=DIR], [Deprecated (use --docdir=DIR instead)])],
-  [docdir="$withval"],
-  [ if test -z "$docdir"; then
-      # autoconf 2.5x without '--docdir' support
-      docdir='${datadir}/doc/${PACKAGE}'
-    fi
-  ])
-AC_SUBST(docdir)
-
 AC_ARG_WITH(exampledir,
   [AS_HELP_STRING([--with-exampledir=DIR], [Location of example scripts [DOCDIR/examplescripts]])],
   [exampledir="$withval"], [exampledir='${docdir}/examplescripts'])
 AC_SUBST(exampledir)
 
-used_deprecated_option=no
-AC_ARG_ENABLE(drivedb,
-  [AS_HELP_STRING([--disable-drivedb], [Deprecated (use --without-drivedbdir instead)])],
-  [used_deprecated_option=yes], [enable_drivedb=yes])
-
-drivedbdir=
+drivedbdir='${datadir}/${PACKAGE}'
 AC_ARG_WITH(drivedbdir,
-  [AS_HELP_STRING([--with-drivedbdir=@<:@DIR|no@:>@], [Location of drive database file [DATADIR/smartmontools]])],
-  [test "$withval" != "no" && drivedbdir="$withval"],
-  [test "$enable_drivedb" != "no" && drivedbdir='${datadir}/${PACKAGE}'])
+  [AS_HELP_STRING([--with-drivedbdir@<:@=DIR|yes|no@:>@], [Location of drive database file [DATADIR/smartmontools]])],
+  [case "$withval" in yes) ;; no) drivedbdir= ;; *) drivedbdir="$withval" ;; esac])
 AC_SUBST(drivedbdir)
 AM_CONDITIONAL(ENABLE_DRIVEDB, [test -n "$drivedbdir"])
 
@@ -272,31 +254,23 @@ AC_ARG_WITH(smartdplugindir,
   [smartdplugindir='${smartdscriptdir}/smartd_warning.d'])
 AC_SUBST(smartdplugindir)
 
-AC_ARG_ENABLE(savestates,
-  [AS_HELP_STRING([--enable-savestates], [Deprecated (use --with-savestates@<:@=yes@:>@ instead)])],
-  [used_deprecated_option=yes], [enable_savestates=no])
-
-savestates='${localstatedir}/lib/${PACKAGE}/smartd.'
+savestates=
 AC_ARG_WITH(savestates,
   [AS_HELP_STRING([--with-savestates@<:@=PREFIX|yes|no@:>@],
     [Enable default smartd state files [no] (yes=LOCALSTATEDIR/lib/smartmontools/smartd.)])],
-  [case "$withval" in yes) ;; no) savestates= ;; *) savestates="$withval" ;; esac],
-  [test "$enable_savestates" != "yes" && savestates=])
+  [case "$withval" in yes) savestates='${localstatedir}/lib/${PACKAGE}/smartd.' ;;
+                      no) ;; *) savestates="$withval" ;; esac])
 savestatesdir="${savestates%/*}"
 AC_SUBST(savestates)
 AC_SUBST(savestatesdir)
 AM_CONDITIONAL(ENABLE_SAVESTATES, [test -n "$savestates"])
 
-AC_ARG_ENABLE(attributelog,
-  [AS_HELP_STRING([--enable-attributelog], [Deprecated (use --with-attributelog@<:@=yes@:>@ instead)])],
-  [used_deprecated_option=yes], [enable_attributelog=no])
-
-attributelog='${localstatedir}/lib/${PACKAGE}/attrlog.'
+attributelog=
 AC_ARG_WITH(attributelog,
   [AS_HELP_STRING([--with-attributelog@<:@=PREFIX|yes|no@:>@],
     [Enable default smartd attribute log files [no] (yes=LOCALSTATEDIR/lib/smartmontools/attrlog.)])],
-  [case "$withval" in yes) ;; no) attributelog= ;; *) attributelog="$withval" ;; esac],
-  [test "$enable_attributelog" != "yes" && attributelog=])
+  [case "$withval" in yes) attributelog='${localstatedir}/lib/${PACKAGE}/attrlog.' ;;
+                      no) ;; *) attributelog="$withval" ;; esac])
 attributelogdir="${attributelog%/*}"
 AC_SUBST(attributelog)
 AC_SUBST(attributelogdir)
@@ -351,6 +325,21 @@ AC_MSG_CHECKING([whether to use libcap-ng])
 AC_SUBST(CAPNG_LDADD)
 AC_MSG_RESULT([$use_libcap_ng])
 
+AC_ARG_WITH(solaris-sparc-ata,
+  [AS_HELP_STRING([--with-solaris-sparc-ata@<:@=yes|no@:>@],
+    [Enable legacy ATA support on Solaris SPARC (requires os_solaris_ata.s from SVN repository) [no]])])
+
+case "$host:$with_solaris_sparc_ata" in
+  sparc-*-solaris*:yes)
+    if test ! -f "$srcdir/os_solaris_ata.s"; then
+      AC_MSG_ERROR([Missing source file: $srcdir/os_solaris_ata.s
+This file is no longer included in the source tarball but still
+available in the SVN repository.])
+    fi
+    AC_DEFINE(WITH_SOLARIS_SPARC_ATA, 1, [Define to 1 to enable legacy ATA support on Solaris SPARC.])
+    ;;
+esac
+
 # Assume broken snprintf only on Windows with MSVCRT (MinGW without ANSI stdio support)
 libc_have_working_snprintf=yes
 
@@ -385,12 +374,41 @@ if test "$libc_have_working_snprintf" = "yes"; then
   AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane.]) dnl `vim syntax
 fi
 
-if test "$prefix" = "NONE"; then
-    # Fix mandir default set by autoconf 2.5x
-    if test "$mandir" = '${prefix}/man'; then
-    	AC_SUBST([mandir], ['${prefix}/share/man'])
-    fi
+os_win32_manifest=
+case "$host" in
+  *-*-mingw*)
+    # Newer MinGW may add a default manifest
+    AC_MSG_CHECKING([whether $CC adds an application manifest])
+    cc_adds_manifest=no
+    AC_LINK_IFELSE([AC_LANG_PROGRAM()], [
+        if "$WINDRES" -O rc conftest.exe 2>/dev/null | grep '^1.*RT_MANIFEST' >/dev/null 2>&1; then
+          cc_adds_manifest=incomplete
+          # Manifest must provide a Win 10 compatibility ID
+          if "$WINDRES" -O rc conftest.exe 2>/dev/null | grep '{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}' >/dev/null 2>&1; then
+            cc_adds_manifest=yes
+          fi
+        fi],
+      [AC_MSG_ERROR([test compile failed])])
+    AC_MSG_RESULT([$cc_adds_manifest])
+    test "$cc_adds_manifest" = "yes" || os_win32_manifest='default.manifest.o'
+    ;;
+esac
+
+# TODO: Remove after smartmontools 6.5
+AC_ARG_WITH(docdir,
+  [AS_HELP_STRING([--with-docdir=DIR], [(removed, use --docdir=DIR instead)])],
+  [AC_MSG_ERROR([--with-docdir is no longer supported, use --docdir instead])])
+AC_ARG_ENABLE(drivedb,
+  [AS_HELP_STRING([--disable-drivedb], [(removed, use --without-drivedbdir instead)])])
+AC_ARG_ENABLE(savestates,
+  [AS_HELP_STRING([--enable-savestates], [(removed, use --with-savestates@<:@=yes@:>@ instead)])])
+AC_ARG_ENABLE(attributelog,
+  [AS_HELP_STRING([--enable-attributelog], [(removed, use --with-attributelog@<:@=yes@:>@ instead)])])
+if test -n "${enable_drivedb+set}${enable_savestates+set}${enable_attributelog+set}"; then
+  AC_MSG_ERROR([Options --disable-drivedb, --enable-savestates, --enable-attributelog are no longer supported.
+Use --without-drivedbdir, --with-savestates, --with-attributelog instead.])
 fi
+
 
 AC_SUBST(releaseversion,['${PACKAGE}-${VERSION}'])
 AC_SUBST(smartmontools_release_date)
@@ -398,7 +416,7 @@ AC_SUBST(smartmontools_release_time)
 
 # Set platform-specific modules and symbols
 os_libs=
-os_dltools='curl wget lynx'
+os_dltools='curl wget lynx svn'
 os_mailer=mail
 os_hostname="'hostname'"
 os_dnsdomainname=
@@ -419,12 +437,14 @@ case "${host}" in
   *-*-freebsd*|*-*-dragonfly*|*-*-kfreebsd*-gnu*)
     os_deps='os_freebsd.o cciss.o dev_areca.o'
     os_libs='-lcam'
-    os_dltools='curl wget lynx fetch'
+    os_dltools='curl wget lynx fetch svn'
     AC_CHECK_LIB(usb, libusb20_dev_get_device_desc)
     os_man_filter=FreeBSD
     ;;
   sparc-*-solaris*)
-    os_deps='os_solaris.o os_solaris_ata.o'
+    os_deps='os_solaris.o'
+    test "$with_solaris_sparc_ata" = "yes" \
+      && os_deps="$os_deps os_solaris_ata.o"
     os_mailer='mailx'
     os_solaris=yes
     os_man_filter=Solaris
@@ -443,7 +463,7 @@ case "${host}" in
   *-*-openbsd*)
     os_deps='os_openbsd.o'
     os_libs='-lutil'
-    os_dltools='curl wget lynx ftp'
+    os_dltools='curl wget lynx ftp svn'
     os_man_filter=OpenBSD
     ;;
   *-*-cygwin*)
@@ -505,6 +525,7 @@ AC_SUBST([os_hostname])
 AC_SUBST([os_dnsdomainname])
 AC_SUBST([os_nisdomainname])
 AC_SUBST([os_man_filter])
+AC_SUBST([os_win32_manifest])
 
 # Create drivedb.h update branch name from version: 5.41[.X] -> RELEASE_5_41_DRIVEDB
 DRIVEDB_BRANCH=`echo $VERSION | sed 's,^\([[0-9]]*\.[[0-9]]*\)\..*$,\1,' \
@@ -576,6 +597,7 @@ echo "OS specific modules:    $os_deps $os_libs $LIBS" >&AS_MESSAGE_FD
 
 case "$host_os" in
   mingw*)
+    echo "application manifest:   ${os_win32_manifest:-built-in}" >&AS_MESSAGE_FD
     echo "resource compiler:      $WINDRES" >&AS_MESSAGE_FD
     echo "message compiler:       $WINDMC" >&AS_MESSAGE_FD
     echo "NSIS compiler:          $MAKENSIS" >&AS_MESSAGE_FD
@@ -646,19 +668,14 @@ case "$host_os" in
 esac
 echo "-----------------------------------------------------------------------------" >&AS_MESSAGE_FD
 
-if test "$autoconf_25x" = "yes"; then
- echo "WARNING:" >&AS_MESSAGE_FD
- echo "Support for old autoconf 2.5x versions will be removed in a future" >&AS_MESSAGE_FD
- echo "release of smartmontools." >&AS_MESSAGE_FD
-elif test "${with_docdir+set}" = "set"; then
- echo "WARNING:" >&AS_MESSAGE_FD
- echo "Option --with-docdir is deprecated and will be removed in a future" >&AS_MESSAGE_FD
- echo "release of smartmontools.  Use --docdir instead." >&AS_MESSAGE_FD
-fi
-
-if test "$used_deprecated_option" = "yes"; then
-  echo "WARNING:" >&AS_MESSAGE_FD
-  echo "Options --disable-drivedb, --enable-savestates, --enable-attributelog are" >&AS_MESSAGE_FD
-  echo "deprecated and will be removed in a future release of smartmontools." >&AS_MESSAGE_FD
-  echo "Use --without-drivedb, --with-savestates, --with-attributelog instead." >&AS_MESSAGE_FD
-fi
+# TODO: Remove after smartmontools 6.5
+case "$host:${with_solaris_sparc_ata+set}" in
+  sparc-*-solaris*:)
+    AC_MSG_WARN([
+Legacy ATA support is no longer enabled by default on Solaris SPARC.
+The required source file 'os_solaris_ata.s' is no longer included in
+the source tarball but still available in the SVN repository.
+Use option '--with-solaris-sparc-ata' to enable legacy ATA support.
+Use option '--without-solaris-sparc-ata' to suppress this warning.])
+    ;;
+esac

@@ -1,12 +1,10 @@
 /*
  * scsicmds.h
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-8 Bruce Allen
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
- *
- * Additional SCSI work:
  * Copyright (C) 2003-15 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,7 +30,7 @@
 #ifndef SCSICMDS_H_
 #define SCSICMDS_H_
 
-#define SCSICMDS_H_CVSID "$Id: scsicmds.h 4081 2015-05-10 16:42:50Z chrfranke $\n"
+#define SCSICMDS_H_CVSID "$Id: scsicmds.h 4152 2015-10-17 16:08:21Z chrfranke $\n"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -322,7 +320,7 @@ class scsi_device;
 class supported_vpd_pages
 {
 public:
-    supported_vpd_pages(scsi_device * device);
+    explicit supported_vpd_pages(scsi_device * device);
     ~supported_vpd_pages() { num_valid = 0; }
 
     bool is_supported(int vpd_page_num) const;

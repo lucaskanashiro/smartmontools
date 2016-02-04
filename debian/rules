@@ -9,8 +9,8 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
-DEB_BUILD_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_OS)
-DEB_BUILD_ARCH_CPU ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU)
+DEB_BUILD_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+DEB_HOST_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIGURE_ARGS += --with-selinux
@@ -35,7 +35,7 @@ endif
 PACKAGE = smartmontools
 SRC_VERSION := $(shell dpkg-parsechangelog | sed -ne 's/^Version: \(.*\)-.*/\1/p'| cut -d':' -f2)
 SVN_REVISION := $(shell echo $(SRC_VERSION) | awk -F"+" '{ print $$2 }' | sed 's/svn//' )
-TARBALL = $(PACKAGE)_$(SRC_VERSION).orig.tar.gz
+TARBALL = $(PACKAGE)_$(SRC_VERSION).orig.tar.xz
 SVN_ROOT := 'https://svn.code.sf.net/p/smartmontools/code/trunk/smartmontools'
 
 get-orig-source:
@@ -44,7 +44,7 @@ get-orig-source:
 		svn export -r $(SVN_REVISION) $(SVN_ROOT) \
 			get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig
 		rm -rf get-orig-source/$(PACKAGE)-$(SRC_VERSION).orig/os_solaris_ata.s
-		GZIP=--best tar czf $(TARBALL) -C get-orig-source $(PACKAGE)-$(SRC_VERSION).orig
+		tar cJf $(TARBALL) -C get-orig-source $(PACKAGE)-$(SRC_VERSION).orig
 		rm -rf get-orig-source
 		echo "  "$(TARBALL)" created; move it to the right destination to build the package"
 
@@ -53,13 +53,12 @@ configure-stamp:
 	dh_testdir
 	./autogen.sh
 	CFLAGS="${CFLAGS}" CXXFLAGS="${CFLAGS}" ./configure --prefix=/usr		 \
+				--build=$(DEB_BUILD_GNU_TYPE) \
+				--host=$(DEB_HOST_GNU_TYPE) \
 				--sysconfdir=/etc		 \
 				--mandir=/usr/share/man		 \
 				--with-initscriptdir=no \
-				--with-docdir=/usr/share/doc/smartmontools \
-				--enable-drivedb \
-				--enable-savestates \
-				--enable-attributelog \
+				--docdir=/usr/share/doc/smartmontools \
 				--with-savestates=/var/lib/smartmontools/smartd. \
 				--with-attributelog=/var/lib/smartmontools/attrlog. \
 				--with-exampledir=/usr/share/doc/smartmontools/examples/ \
@@ -87,7 +86,9 @@ clean:
 	# Add here commands to clean up after the build process.
 	[ ! -f Makefile ] || $(MAKE) distclean
 	rm -f build-stamp configure-stamp \
-	      Makefile.in examplescripts/Makefile.in aclocal.m4 configure
+	      Makefile.in examplescripts/Makefile.in aclocal.m4 configure \
+	      config.guess config.h.in config.sub depcomp install-sh \
+	      m4/pkg.m4 missing
 	dh_clean
 
 install: build
@@ -96,6 +97,7 @@ install: build
 	dh_prep
 	dh_installdirs
 	$(MAKE) DESTDIR=$(CURDIR)/debian/smartmontools install
+	rm -f debian/smartmontools/usr/sbin/update-smart-drivedb
 
 # Build architecture-independent files here.
 binary-indep:
@@ -105,6 +107,9 @@ binary-indep:
 binary-arch: build install
 	dh_testdir
 	dh_testroot
+	rm -f debian/smartmontools/usr/share/doc/smartmontools/INSTALL \
+          debian/smartmontools/usr/share/doc/smartmontools/COPYING \
+          debian/smartmontools/usr/share/doc/smartmontools/ChangeLog
 	dh_installdocs
 	dh_installexamples
 	dh_installmenu
@@ -112,10 +117,9 @@ binary-arch: build install
 	dh_install
 	dh_link
 	dh_systemd_enable
-	dh_installinit -- start 20 2 3 4 5 . stop 20 1 .
-	dh_systemd_enable
+	dh_installinit
+	dh_systemd_start
 	dh_installcron
-	dh_installman debian/update-smart-drivedb.8
 	dh_installinfo
 	dh_lintian
 	dh_installchangelogs ChangeLog

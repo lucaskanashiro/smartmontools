@@ -1,7 +1,7 @@
 /*
  * dev_ata_cmd_set.h
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2008 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
@@ -18,7 +18,7 @@
 #ifndef DEV_ATA_CMD_SET_H
 #define DEV_ATA_CMD_SET_H
 
-#define DEV_ATA_CMD_SET_H_CVSID "$Id: dev_ata_cmd_set.h,v 1.3 2008/08/23 21:32:12 chrfranke Exp $\n"
+#define DEV_ATA_CMD_SET_H_CVSID "$Id: dev_ata_cmd_set.h 4122 2015-08-27 19:08:07Z chrfranke $"
 
 #include "atacmds.h" // smart_command_set
 #include "dev_interface.h"

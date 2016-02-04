@@ -1,3 +1,4 @@
+50_manpage_improvements.diff
 52_remove-pragma.diff
 53_use-smartd-runner-by-default.diff
 54_remove-Id-from-smartd.conf.diff

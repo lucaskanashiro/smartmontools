@@ -1,10 +1,10 @@
 /*
  * ataprint.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-15 Christian Franke
+ * Copyright (C) 2008-16 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -40,7 +40,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 4104 2015-06-03 18:50:39Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 4203 2016-01-21 20:42:39Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 
@@ -697,6 +697,7 @@ static void print_drive_info(const ata_identify_device * drive,
   pout("ATA Version is:   %s\n", infofound(ataver.c_str()));
 
   // Print Transport specific version
+    // cppcheck-suppress variableScope
   char buf[32] = "";
   unsigned short word222 = drive->words088_255[222-88];
   if (word222 != 0x0000 && word222 != 0xffff) switch (word222 >> 12) {
@@ -1542,13 +1543,13 @@ static void print_device_statistics_page(const unsigned char * data, int page)
       page, offset,
       abs(size),
       valstr,
-      (flags & 0x20 ? 'N' : '-'), // normalized statistics
-      (flags & 0x10 ? 'D' : '-'), // supports DSN (ACS-3)
-      (flags & 0x08 ? 'C' : '-'), // monitored condition met (ACS-3)
-      (flags & 0x07 ? '+' : ' '), // reserved flags
-      (info         ? info[i].name :
-       page == 0xff ? "Vendor Specific" // ACS-4
-                    : "Unknown"        ));
+      ((flags & 0x20) ? 'N' : '-'), // normalized statistics
+      ((flags & 0x10) ? 'D' : '-'), // supports DSN (ACS-3)
+      ((flags & 0x08) ? 'C' : '-'), // monitored condition met (ACS-3)
+      ((flags & 0x07) ? '+' : ' '), // reserved flags
+      ( info          ? info[i].name :
+       (page == 0xff) ? "Vendor Specific" // ACS-4
+                      : "Unknown"        ));
   }
 }
 
@@ -1714,7 +1715,7 @@ static void PrintSataPhyEventCounters(const unsigned char * data, bool reset)
       case 0x010: name = "R_ERR response for host-to-device data FIS, non-CRC"; break;
       case 0x012: name = "R_ERR response for host-to-device non-data FIS, CRC"; break;
       case 0x013: name = "R_ERR response for host-to-device non-data FIS, non-CRC"; break;
-      default:    name = (id & 0x8000 ? "Vendor specific" : "Unknown"); break;
+      default:    name = ((id & 0x8000) ? "Vendor specific" : "Unknown"); break;
     }
 
     // Counters stop at max value, add '+' in this case
@@ -1812,7 +1813,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
   for (int k = 4; k >= 0; k-- ) {
 
     // The error log data structure entries are a circular buffer
-    int j, i=(data->error_log_pointer+k)%5;
+    int i = (data->error_log_pointer + k) % 5;
     const ata_smart_errorlog_struct * elog = data->errorlog_struct+i;
     const ata_smart_errorlog_error_struct * summary = &(elog->error_struct);
 
@@ -1848,7 +1849,7 @@ static int PrintSmartErrorlog(const ata_smart_errorlog *data,
       pout("  Commands leading to the command that caused the error were:\n"
            "  CR FR SC SN CL CH DH DC   Powered_Up_Time  Command/Feature_Name\n"
            "  -- -- -- -- -- -- -- --  ----------------  --------------------\n");
-      for ( j = 4; j >= 0; j--){
+      for (int j = 4; j >= 0; j--) {
         const ata_smart_errorlog_command_struct * thiscommand = elog->commands+j;
 
         // Spec says: unused data command structures shall be zero filled
@@ -2775,13 +2776,21 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        !(drive.cfs_enable_1 & 0x0020) ? "Disabled" : "Enabled"); // word085
   }
 
-  // Print ATA security status
+  // Check for ATA Security LOCK
+  unsigned short word128 = drive.words088_255[128-88];
+  bool locked = ((word128 & 0x0007) == 0x0007); // LOCKED|ENABLED|SUPPORTED
+
+  // Print ATA Security status
   if (options.get_security)
-    print_ata_security_status("ATA Security is:  ", drive.words088_255[128-88]);
+    print_ata_security_status("ATA Security is:  ", word128);
 
   // Print write cache reordering status
   if (options.sct_wcache_reorder_get) {
-    if (isSCTFeatureControlCapable(&drive)) {
+    if (!isSCTFeatureControlCapable(&drive))
+      pout("Wt Cache Reorder: Unavailable\n");
+    else if (locked)
+      pout("Wt Cache Reorder: Unknown (SCT not supported if ATA Security is LOCKED)\n");
+    else {
       int wcache_reorder = ataGetSetSCTWriteCacheReordering(device,
         false /*enable*/, false /*persistent*/, false /*set*/);
 
@@ -2793,8 +2802,6 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       else
         pout("Wt Cache Reorder: Unknown (0x%02x)\n", wcache_reorder);
     }
-    else
-      pout("Wt Cache Reorder: Unavailable\n");
   }
 
   // Print remaining drive info
@@ -2885,6 +2892,9 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     bool enable = (options.sct_wcache_reorder_set > 0);
     if (!isSCTFeatureControlCapable(&drive))
       pout("Write cache reordering %sable failed: SCT Feature Control command not supported\n",
+        (enable ? "en" : "dis"));
+    else if (locked)
+      pout("Write cache reordering %sable failed: SCT not supported if ATA Security is LOCKED\n",
         (enable ? "en" : "dis"));
     else if (ataGetSetSCTWriteCacheReordering(device,
                enable, false /*persistent*/, true /*set*/) < 0) {
@@ -3310,7 +3320,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       pout("SMART Extended Self-test Log size %u not supported\n\n", nsectors);
     else {
       raw_buffer log_07_buf(nsectors * 512);
-      ata_smart_extselftestlog * log_07 = (ata_smart_extselftestlog *)log_07_buf.data();
+      ata_smart_extselftestlog * log_07 = reinterpret_cast<ata_smart_extselftestlog *>(log_07_buf.data());
       if (!ataReadExtSelfTestLog(device, log_07, nsectors)) {
         pout("Read SMART Extended Self-test Log failed\n\n");
         failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
@@ -3378,9 +3388,15 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
 
   // Check if SCT commands available
   bool sct_ok = isSCTCapable(&drive);
-  if(!sct_ok && (options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int
-                 || options.sct_erc_get || options.sct_erc_set                        ))
-    pout("SCT Commands not supported\n\n");
+  if (   options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int
+      || options.sct_erc_get  || options.sct_erc_set                          ) {
+    if (!sct_ok)
+      pout("SCT Commands not supported\n\n");
+    else if (locked) {
+      pout("SCT Commands not supported if ATA Security is LOCKED\n\n");
+      sct_ok = false;
+    }
+  }
 
   // Print SCT status and temperature history table
   if (sct_ok && (options.sct_temp_sts || options.sct_temp_hist || options.sct_temp_int)) {

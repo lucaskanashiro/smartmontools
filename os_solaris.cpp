@@ -1,10 +1,10 @@
 /*
  * os_solaris.c
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2003-8 SAWADA Keiji <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2003-8 Casper Dik <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2003-08 SAWADA Keiji
+ * Copyright (C) 2003-15 Casper Dik
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,9 +39,9 @@
 
 extern long long bytes;
 
-static const char *filenameandversion="$Id: os_solaris.cpp 3806 2013-03-29 20:17:03Z chrfranke $";
+static const char *filenameandversion="$Id: os_solaris.cpp 4142 2015-10-14 19:05:19Z chrfranke $";
 
-const char *os_XXXX_c_cvsid="$Id: os_solaris.cpp 3806 2013-03-29 20:17:03Z chrfranke $" \
+const char *os_XXXX_c_cvsid="$Id: os_solaris.cpp 4142 2015-10-14 19:05:19Z chrfranke $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_SOLARIS_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 // The printwarning() function warns about unimplemented functions
@@ -99,6 +99,7 @@ void print_smartctl_examples(){
 static const char *uscsidrvrs[] = {
         "sd",
         "ssd",
+        "disk",       // SATA devices
         "st"
 };
 
@@ -271,7 +272,7 @@ int deviceclose(int fd){
     return close(fd);
 }
 
-#if defined(__sparc)
+#if defined(WITH_SOLARIS_SPARC_ATA)
 // swap each 2-byte pairs in a sector
 static void swap_sector(void *p)
 {
@@ -286,7 +287,7 @@ static void swap_sector(void *p)
 
 // Interface to ATA devices.  See os_linux.c
 int ata_command_interface(int fd, smart_command_set command, int select, char *data){
-#if defined(__sparc)
+#if defined(WITH_SOLARIS_SPARC_ATA)
     int err;
  
     switch (command){
@@ -328,7 +329,7 @@ int ata_command_interface(int fd, smart_command_set command, int select, char *d
 	EXIT(1);
 	break;
     }
-#else /* __sparc */
+#else /* WITH_SOLARIS_SPARC_ATA */
     ARGUSED(fd); ARGUSED(command); ARGUSED(select); ARGUSED(data);
 
     /* Above smart_* routines uses undocumented ioctls of "dada"
@@ -395,7 +396,7 @@ int do_scsi_cmnd_io(int fd, struct scsi_cmnd_io * iop, int report)
   default:
     return -EINVAL;
   }
-  uscsi.uscsi_flags |= (USCSI_ISOLATE | USCSI_RQENABLE);
+  uscsi.uscsi_flags |= (USCSI_ISOLATE | USCSI_RQENABLE | USCSI_SILENT);
 
   if (ioctl(fd, USCSICMD, &uscsi)) {
     int err = errno;

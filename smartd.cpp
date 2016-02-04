@@ -1,10 +1,10 @@
 /*
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen
+ * Copyright (C) 2008-16 Christian Franke
  * Copyright (C) 2000    Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2008    Oliver Bock <brevilo@users.sourceforge.net>
- * Copyright (C) 2008-15 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -106,7 +106,7 @@ typedef int pid_t;
 extern "C" int getdomainname(char *, int); // no declaration in header files!
 #endif
 
-const char * smartd_cpp_cvsid = "$Id: smartd.cpp 4059 2015-04-18 17:01:31Z chrfranke $"
+const char * smartd_cpp_cvsid = "$Id: smartd.cpp 4207 2016-01-22 19:35:10Z chrfranke $"
   CONFIG_H_CVSID;
 
 // smartd exit codes
@@ -385,19 +385,21 @@ struct persistent_dev_state
   
   // SCSI ONLY
 
-  struct scsi_error_counter {
+  struct scsi_error_counter_t {
     struct scsiErrorCounter errCounter;
     unsigned char found;
-    scsi_error_counter() : found(0) { }
+    scsi_error_counter_t() : found(0)
+      { memset(&errCounter, 0, sizeof(errCounter)); }
   };
-  scsi_error_counter scsi_error_counters[3];
+  scsi_error_counter_t scsi_error_counters[3];
 
-  struct scsi_nonmedium_error {
+  struct scsi_nonmedium_error_t {
     struct scsiNonMediumError nme;
     unsigned char found;
-    scsi_nonmedium_error() : found(0) { }
+    scsi_nonmedium_error_t() : found(0)
+      { memset(&nme, 0, sizeof(nme)); }
   };
-  scsi_nonmedium_error scsi_nonmedium_error;
+  scsi_nonmedium_error_t scsi_nonmedium_error;
 
   persistent_dev_state();
 };
@@ -1056,13 +1058,13 @@ static void MailWarning(const dev_config & cfg, dev_state & state, int which, co
   env[11].set("SMARTD_NEXTDAYS", dates);
 
   // now construct a command to send this as EMAIL
-  char command[2048];
   if (!*executable)
     executable = "<mail>";
   const char * newadd = (!address.empty()? address.c_str() : "<nomailer>");
   const char * newwarn = (which? "Warning via" : "Test of");
 
 #ifndef _WIN32
+  char command[2048];
   snprintf(command, sizeof(command), "%s 2>&1", warning_script.c_str());
   
   // tell SYSLOG what we are about to do...
@@ -1109,12 +1111,9 @@ static void MailWarning(const dev_config & cfg, dev_state & state, int which, co
 	       errno?strerror(errno):"");
     else {
       // mail process apparently succeeded. Check and report exit status
-      int status8;
-
       if (WIFEXITED(status)) {
 	// exited 'normally' (but perhaps with nonzero status)
-	status8=WEXITSTATUS(status);
-	
+        int status8 = WEXITSTATUS(status);
 	if (status8>128)  
 	  PrintOut(LOG_CRIT,"%s %s to %s: failed (32-bit/8-bit exit status: %d/%d) perhaps caught signal %d [%s]\n", 
 		   newwarn, executable, newadd, status, status8, status8-128, strsignal(status8-128));
@@ -1140,6 +1139,7 @@ static void MailWarning(const dev_config & cfg, dev_state & state, int which, co
   
 #else // _WIN32
   {
+    char command[2048];
     snprintf(command, sizeof(command), "cmd /c \"%s\"", warning_script.c_str());
 
     char stdoutbuf[800]; // < buffer in syslog_win32::vsyslog()
@@ -1808,6 +1808,12 @@ static int ATADeviceScan(dev_config & cfg, dev_state & state, ata_device * atade
     }
   }
 
+  // Check for ATA Security LOCK
+  unsigned short word128 = drive.words088_255[128-88];
+  bool locked = ((word128 & 0x0007) == 0x0007); // LOCKED|ENABLED|SUPPORTED
+  if (locked)
+    PrintOut(LOG_INFO, "Device: %s, ATA Security is **LOCKED**\n", name);
+
   // Set default '-C 197[+]' if no '-C ID' is specified.
   if (!cfg.curr_pending_set)
     cfg.curr_pending_id = get_unc_attr_id(false, cfg.attribute_defs, cfg.curr_pending_incr);
@@ -2110,6 +2116,9 @@ static int ATADeviceScan(dev_config & cfg, dev_state & state, ata_device * atade
     if (!isSCTErrorRecoveryControlCapable(&drive))
       PrintOut(LOG_INFO, "Device: %s, no SCT Error Recovery Control support, ignoring -l scterc\n",
                name);
+    else if (locked)
+      PrintOut(LOG_INFO, "Device: %s, no SCT support if ATA Security is LOCKED, ignoring -l scterc\n",
+               name);
     else if (   ataSetSCTErrorRecoveryControltime(atadev, 1, cfg.sct_erc_readtime )
              || ataSetSCTErrorRecoveryControltime(atadev, 2, cfg.sct_erc_writetime))
       PrintOut(LOG_INFO, "Device: %s, set of SCT Error Recovery Control failed\n", name);
@@ -2160,7 +2169,7 @@ static int ATADeviceScan(dev_config & cfg, dev_state & state, ata_device * atade
 // please.
 static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scsidev)
 {
-  int k, err, req_len, avail_len, version, len;
+  int err, req_len, avail_len, version, len;
   const char *device = cfg.name.c_str();
   struct scsi_iec_mode_page iec;
   UINT8  tBuf[64];
@@ -2289,7 +2298,7 @@ static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scs
   // Flag that certain log pages are supported (information may be
   // available from other sources).
   if (0 == scsiLogSense(scsidev, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 0)) {
-    for (k = 4; k < tBuf[3] + LOGPAGEHDRSIZE; ++k) {
+    for (int k = 4; k < tBuf[3] + LOGPAGEHDRSIZE; ++k) {
       switch (tBuf[k]) { 
       case TEMPERATURE_LPAGE:
         state.TempPageSupported = 1;
@@ -3222,12 +3231,7 @@ static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device 
 
 static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_device * scsidev, bool allow_selftests)
 {
-    UINT8 asc, ascq;
-    UINT8 currenttemp;
-    UINT8 triptemp;
-    UINT8  tBuf[252];
     const char * name = cfg.name.c_str();
-    const char *cp;
 
     // If the user has asked for it, test the email warning system
     if (cfg.emailtest)
@@ -3242,9 +3246,9 @@ static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_devic
     } else if (debugmode)
         PrintOut(LOG_INFO,"Device: %s, opened SCSI device\n", name);
     reset_warning_mail(cfg, state, 9, "open device worked again");
-    currenttemp = 0;
-    asc = 0;
-    ascq = 0;
+
+    UINT8 asc = 0, ascq = 0;
+    UINT8 currenttemp = 0, triptemp = 0;
     if (!state.SuppressReport) {
         if (scsiCheckIE(scsidev, state.SmartPageSupported, state.TempPageSupported,
                         &asc, &ascq, &currenttemp, &triptemp)) {
@@ -3255,7 +3259,7 @@ static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_devic
         }
     }
     if (asc > 0) {
-        cp = scsiGetIEString(asc, ascq);
+        const char * cp = scsiGetIEString(asc, ascq);
         if (cp) {
             PrintOut(LOG_CRIT, "Device: %s, SMART Failure: %s\n", name, cp);
             MailWarning(cfg, state, 1,"Device: %s, SMART Failure: %s", name, cp);
@@ -3282,6 +3286,7 @@ static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_devic
     }
     if (!cfg.attrlog_file.empty()){
       // saving error counters to state
+      UINT8 tBuf[252];
       if (state.ReadECounterPageSupported && (0 == scsiLogSense(scsidev,
           READ_ERROR_COUNTER_LPAGE, 0, tBuf, sizeof(tBuf), 0))) {
           scsiDecodeErrCounterPage(tBuf, &state.scsi_error_counters[0].errCounter);
@@ -3902,13 +3907,13 @@ static int ParseToken(char * token, dev_config & cfg)
                  configfile, lineno, name, arg, cfg.test_regex.get_errmsg());
         return -1;
       }
+      // Do a bit of sanity checking and warn user if we think that
+      // their regexp is "strange". User probably confused about shell
+      // glob(3) syntax versus regular expression syntax regexp(7).
+      if (arg[(val = strspn(arg, "0123456789/.-+*|()?^$[]SLCOcnr"))])
+        PrintOut(LOG_INFO,  "File %s line %d (drive %s): warning, character %d (%c) looks odd in extended regular expression %s\n",
+                 configfile, lineno, name, val+1, arg[val], arg);
     }
-    // Do a bit of sanity checking and warn user if we think that
-    // their regexp is "strange". User probably confused about shell
-    // glob(3) syntax versus regular expression syntax regexp(7).
-    if (arg[(val = strspn(arg, "0123456789/.-+*|()?^$[]SLCOcnr"))])
-      PrintOut(LOG_INFO,  "File %s line %d (drive %s): warning, character %d (%c) looks odd in extended regular expression %s\n",
-               configfile, lineno, name, val+1, arg[val], arg);
     break;
   case 'm':
     // send email to address that follows
@@ -4002,8 +4007,8 @@ static int ParseToken(char * token, dev_config & cfg)
     break;
   case 'W':
     // track Temperature
-    if ((val=Get3Integers(arg=strtok(NULL,delim), name, token, lineno, configfile,
-                          &cfg.tempdiff, &cfg.tempinfo, &cfg.tempcrit))<0)
+    if (Get3Integers(arg=strtok(NULL, delim), name, token, lineno, configfile,
+                     &cfg.tempdiff, &cfg.tempinfo, &cfg.tempcrit) < 0)
       return -1;
     break;
   case 'v':
@@ -4300,7 +4305,6 @@ static int ParseConfigFile(dev_config_vector & conf_entries)
         if (scandevice==-2)
           return -1;
         // the final line is part of a continuation line
-        cont=0;
         entry+=scandevice;
       }
       break;
@@ -4446,7 +4450,7 @@ static void ParseOpts(int argc, char **argv)
 
   opterr=optopt=0;
   bool badarg = false;
-  bool no_defaultdb = false; // set true on '-B FILE'
+  bool use_default_db = true; // set false on '-B FILE'
 
   // Parse input options.
   int optchar;
@@ -4587,7 +4591,7 @@ static void ParseOpts(int argc, char **argv)
         if (*path == '+' && path[1])
           path++;
         else
-          no_defaultdb = true;
+          use_default_db = false;
         unsigned char savedebug = debugmode; debugmode = 1;
         if (!read_drive_database(path))
           EXIT(EXIT_BADCMD);
@@ -4692,9 +4696,9 @@ static void ParseOpts(int argc, char **argv)
 #endif
 
   // Read or init drive database
-  if (!no_defaultdb) {
+  {
     unsigned char savedebug = debugmode; debugmode = 1;
-    if (!read_default_drive_databases())
+    if (!init_drive_database(use_default_db))
         EXIT(EXIT_BADCMD);
     debugmode = savedebug;
   }

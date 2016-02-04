@@ -1,7 +1,7 @@
 /*
  * os_darwin.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2004-8 Geoffrey Keating <geoffk@geoffk.org>
  * Copyright (C) 2014 Alex Samorukov <samm@os2.kiev.ua>
@@ -22,6 +22,7 @@
 #include <mach/mach.h>
 #include <mach/mach_error.h>
 #include <mach/mach_init.h>
+#include <sys/utsname.h>
 #include <IOKit/IOCFPlugIn.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOReturn.h>
@@ -45,7 +46,7 @@
 #include "dev_interface.h"
 
 // Needed by '-V' option (CVS versioning) of smartd/smartctl
-const char *os_darwin_cpp_cvsid="$Id: os_darwin.cpp 3982 2014-08-16 21:07:19Z samm2 $" \
+const char *os_darwin_cpp_cvsid="$Id: os_darwin.cpp 4214 2016-01-24 22:53:37Z samm2 $" \
 ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_DARWIN_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 // examples for smartctl
@@ -77,7 +78,7 @@ static struct {
   IOATASMARTInterface **smartIf;
 } devices[20];
 
-const char * dev_darwin_cpp_cvsid = "$Id: os_darwin.cpp 3982 2014-08-16 21:07:19Z samm2 $"
+const char * dev_darwin_cpp_cvsid = "$Id: os_darwin.cpp 4214 2016-01-24 22:53:37Z samm2 $"
   DEV_INTERFACE_H_CVSID;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -181,8 +182,8 @@ bool darwin_smart_device::open()
   
   if (strcmp (type, "ATA") != 0)
     {
-      errno = EINVAL;
-      return -1;
+      set_err (EINVAL);
+      return false;
     }
   
   // Find a free device number.
@@ -191,8 +192,8 @@ bool darwin_smart_device::open()
       break;
   if (devnum == sizeof (devices) / sizeof (devices[0]))
     {
-      errno = EMFILE;
-      return -1;
+      set_err (EMFILE);
+      return false;
     }
   
   devname = NULL;
@@ -218,8 +219,8 @@ bool darwin_smart_device::open()
 
   if (! disk)
     {
-      errno = ENOENT;
-      return -1;
+      set_err(ENOENT);
+      return false;
     }
   
   // Find a SMART-capable driver which is a parent of this device.
@@ -232,9 +233,9 @@ bool darwin_smart_device::open()
       err = IORegistryEntryGetParentEntry (disk, kIOServicePlane, &disk);
       if (err != kIOReturnSuccess || ! disk)
       {
-        errno = ENODEV;
+        set_err(ENODEV);
         IOObjectRelease (prevdisk);
-        return -1;
+        return false;
       }
     }
   
@@ -257,8 +258,8 @@ bool darwin_smart_device::open()
       CFUUIDGetUUIDBytes ( kIOATASMARTInterfaceID),
       (void **)&devices[devnum].smartIf);
   }
-  
-  
+
+
   m_fd = devnum;
   if (m_fd < 0) {
     set_err((errno==ENOENT || errno==ENOTDIR) ? ENODEV : errno);
@@ -311,9 +312,9 @@ static int make_device_names (char*** devlist, const char* name) {
 
   // Create an array of service names.
   IOIteratorReset (i);
-  *devlist = (char**)calloc (result, sizeof (char *)); 
-  if (! *devlist)
+  if (! result)
     goto error;
+  *devlist = (char**)calloc (result, sizeof (char *)); 
   index = 0;
   while ((device = IOIteratorNext (i)) != MACH_PORT_NULL) {
     if (is_smart_capable (device))
@@ -342,6 +343,9 @@ static int make_device_names (char*** devlist, const char* name) {
       free ((*devlist)[index]);
       free (*devlist);
     }
+  if(!result) // no devs found
+    return 0;
+
   return -1;
 }
 
@@ -454,7 +458,7 @@ bool darwin_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & ou
         if (select != SHORT_SELF_TEST && select != EXTEND_SELF_TEST)
         {
           errno = EINVAL;
-          err = -1;
+          return set_err(ENOSYS, "Unsupported SMART self-test mode");
         }
         err = smartIf->SMARTExecuteOffLineImmediate (ifp, 
           select == EXTEND_SELF_TEST);
@@ -488,6 +492,8 @@ class darwin_smart_interface
 : public /*implements*/ smart_interface
 {
 public:
+  virtual std::string get_os_version_str();
+
   virtual std::string get_app_examples(const char * appname);
 
   virtual bool scan_smart_devices(smart_device_list & devlist, const char * type,
@@ -504,6 +510,15 @@ protected:
 
 
 //////////////////////////////////////////////////////////////////////
+
+std::string darwin_smart_interface::get_os_version_str()
+{
+  // now we are just getting darwin runtime version, to get OSX version more things needs to be done, see
+  // http://stackoverflow.com/questions/11072804/how-do-i-determine-the-os-version-at-runtime-in-os-x-or-ios-without-using-gesta
+  struct utsname osname;
+  uname(&osname);
+  return strprintf("%s %s %s", osname.sysname, osname.release, osname.machine);
+}
 
 std::string darwin_smart_interface::get_app_examples(const char * appname)
 {

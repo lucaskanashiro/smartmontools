@@ -7,7 +7,7 @@ patch gets things to parity with the 3ware documentation with a couple
 minor exceptions
 
 diff --git a/smartd.conf b/smartd.conf
-index 715258e..d5d71ff 100644
+index 5490bde..59addd4 100644
 --- a/smartd.conf
 +++ b/smartd.conf
 @@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
@@ -24,11 +24,11 @@ index 715258e..d5d71ff 100644
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
 diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 21b031f..66a254b 100644
+index df2b6c4..f098a6e 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
 @@ -157,6 +157,12 @@ Section below!
- .B \ \ /dev/tws0 -d 3ware,1 -a -s L/../../7/02
+ .B \ \ /dev/tws0 \-d 3ware,1 \-a \-s L/../../7/02
  .\" %ENDIF OS FreeBSD
  .B #
 +.B # Monitor 2 disks connected to the first HP SmartArray controller which
@@ -38,11 +38,11 @@ index 21b031f..66a254b 100644
 +.B \ \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
 +.B #
  .B # Three SATA disks on a HighPoint RocketRAID controller.
- .B # Start short self-tests daily between 1-2, 2-3, and
- .B # 3-4 am.
-@@ -1450,6 +1456,9 @@ configuration file Directives might be:
+ .B # Start short self-tests daily between 1\(en2, 2\(en3, and
+ .B # 3\(en4 am.
+@@ -1453,6 +1459,9 @@ configuration file Directives might be:
  If you want more frequent information, use:
- .B -a.
+ .B \-a.
  
 +.B If a cciss controller is used
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,

@@ -1,7 +1,7 @@
 /*
  * dev_ata_cmd_set.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2008 Christian Franke <smartmontools-support@lists.sourceforge.net>
  *
@@ -22,7 +22,7 @@
 
 #include <errno.h>
 
-const char * dev_ata_cmd_set_cpp_cvsid = "$Id: dev_ata_cmd_set.cpp,v 1.4 2008/10/24 21:49:23 manfred99 Exp $"
+const char * dev_ata_cmd_set_cpp_cvsid = "$Id: dev_ata_cmd_set.cpp 4122 2015-08-27 19:08:07Z chrfranke $"
   DEV_ATA_CMD_SET_H_CVSID;
 
 

@@ -2,9 +2,18 @@ Source: smartmontools
 Section: utils
 Priority: optional
 Maintainer: Giuseppe Iuculano <iuculano@debian.org>
-Uploaders: Florian Maier <contact@marsmenschen.com>, Jonathan Dowland <jmtd@debian.org>
-Build-Depends: debhelper (>= 7), libcam-dev [kfreebsd-any], freebsd-glue [kfreebsd-any], automake1.11, autoconf, libcap-ng-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386 !sparc !avr32], libselinux1-dev [!kfreebsd-i386 !kfreebsd-amd64 !hurd-i386], libusb2-dev [kfreebsd-i386 kfreebsd-amd64], dh-systemd (>= 1.13)
-Standards-Version: 3.9.5
+Uploaders: Florian Maier <contact@marsmenschen.com>,
+           Jonathan Dowland <jmtd@debian.org>
+Build-Depends: autoconf,
+               automake1.11,
+               debhelper (>= 7),
+               dh-systemd (>= 1.13),
+               freebsd-glue [kfreebsd-any],
+               libcam-dev [kfreebsd-any],
+               libcap-ng-dev [!kfreebsd-any !hurd-i386 !sparc !avr32],
+               libselinux1-dev [linux-any],
+               libusb2-dev [kfreebsd-any]
+Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/collab-maint/smartmontools.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/smartmontools.git
 Homepage: http://smartmontools.sourceforge.net/
@@ -12,7 +21,10 @@ Homepage: http://smartmontools.sourceforge.net/
 Package: smartmontools
 Architecture: any
 Conflicts: smartsuite, ucsc-smartsuite
-Depends: ${misc:Depends}, ${shlibs:Depends}, debianutils (>= 2.2), lsb-base (>= 3.2-14)
+Depends: debianutils (>= 2.2),
+         lsb-base (>= 3.2-14),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Recommends: mailx | mailutils
 Suggests: gsmartcontrol, smart-notifier
 Description: control and monitor storage systems using S.M.A.R.T.

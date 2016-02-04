@@ -1,13 +1,11 @@
 /*
  * scsiprint.cpp
  *
- * Home page of code is: http://smartmontools.sourceforge.net
+ * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2002-11 Bruce Allen <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-11 Bruce Allen
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
- *
- * Additional SCSI work:
- * Copyright (C) 2003-13 Douglas Gilbert <dgilbert@interlog.com>
+ * Copyright (C) 2003-15 Douglas Gilbert <dgilbert@interlog.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +40,7 @@
 
 #define GBUF_SIZE 65535
 
-const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 4040 2015-03-10 22:30:44Z dpgilbert $"
+const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 4189 2015-12-16 14:53:41Z dpgilbert $"
                                  SCSIPRINT_H_CVSID;
 
 
@@ -244,8 +242,7 @@ scsiGetTapeAlertsData(scsi_device * device, int peripheral_type)
 static void
 scsiGetStartStopData(scsi_device * device)
 {
-    UINT32 u;
-    int err, len, k, extra, pc;
+    int err, len, k, extra;
     unsigned char * ucp;
 
     if ((err = scsiLogSense(device, STARTSTOP_CYCLE_COUNTER_LPAGE, 0, gBuf,
@@ -271,7 +268,8 @@ scsiGetStartStopData(scsi_device * device)
             return;
         }
         extra = ucp[3] + 4;
-        pc = (ucp[0] << 8) + ucp[1];
+        int pc = (ucp[0] << 8) + ucp[1];
+        UINT32 u;
         switch (pc) {
         case 1:
             if (10 == extra)
@@ -321,7 +319,7 @@ scsiGetStartStopData(scsi_device * device)
 static void
 scsiPrintGrownDefectListLen(scsi_device * device)
 {
-    int err, dl_format, got_rd12, generation;
+    int err, dl_format, got_rd12;
     unsigned int dl_len, div;
 
     memset(gBuf, 0, 8);
@@ -353,7 +351,7 @@ scsiPrintGrownDefectListLen(scsi_device * device)
         got_rd12 = 1;
 
     if (got_rd12) {
-        generation = (gBuf[2] << 8) + gBuf[3];
+        int generation = (gBuf[2] << 8) + gBuf[3];
         if ((generation > 1) && (scsi_debugmode > 0)) {
             print_on();
             pout("Read defect list (12): generation=%d\n", generation);
@@ -405,9 +403,8 @@ scsiPrintGrownDefectListLen(scsi_device * device)
 static void
 scsiPrintSeagateCacheLPage(scsi_device * device)
 {
-    int k, j, num, pl, pc, err, len;
+    int num, pl, pc, err, len;
     unsigned char * ucp;
-    unsigned char * xp;
     uint64_t ull;
 
     if ((err = scsiLogSense(device, SEAGATE_CACHE_LPAGE, 0, gBuf,
@@ -460,14 +457,14 @@ scsiPrintSeagateCacheLPage(scsi_device * device)
                        "> segment size"); break;
         default: pout("  Unknown Seagate parameter code [0x%x]", pc); break;
         }
-        k = pl - 4;
-        xp = ucp + 4;
+        int k = pl - 4;
+        unsigned char * xp = ucp + 4;
         if (k > (int)sizeof(ull)) {
             xp += (k - (int)sizeof(ull));
             k = (int)sizeof(ull);
         }
         ull = 0;
-        for (j = 0; j < k; ++j) {
+        for (int j = 0; j < k; ++j) {
             if (j > 0)
                 ull <<= 8;
             ull |= xp[j];
@@ -482,9 +479,8 @@ scsiPrintSeagateCacheLPage(scsi_device * device)
 static void
 scsiPrintSeagateFactoryLPage(scsi_device * device)
 {
-    int k, j, num, pl, pc, len, err, good, bad;
+    int num, pl, pc, len, err, good, bad;
     unsigned char * ucp;
-    unsigned char * xp;
     uint64_t ull;
 
     if ((err = scsiLogSense(device, SEAGATE_FACTORY_LPAGE, 0, gBuf,
@@ -552,14 +548,14 @@ scsiPrintSeagateFactoryLPage(scsi_device * device)
             break;
         }
         if (good) {
-            k = pl - 4;
-            xp = ucp + 4;
+            int k = pl - 4;
+            unsigned char * xp = ucp + 4;
             if (k > (int)sizeof(ull)) {
                 xp += (k - (int)sizeof(ull));
                 k = (int)sizeof(ull);
             }
             ull = 0;
-            for (j = 0; j < k; ++j) {
+            for (int j = 0; j < k; ++j) {
                 if (j > 0)
                     ull <<= 8;
                 ull |= xp[j];
@@ -580,10 +576,7 @@ scsiPrintErrorCounterLog(scsi_device * device)
 {
     struct scsiErrorCounter errCounterArr[3];
     struct scsiErrorCounter * ecp;
-    struct scsiNonMediumError nme;
     int found[3] = {0, 0, 0};
-    const char * pageNames[3] = {"read:   ", "write:  ", "verify: "};
-    double processed_gb;
 
     if (gReadECounterLPage && (0 == scsiLogSense(device,
                 READ_ERROR_COUNTER_LPAGE, 0, gBuf, LOG_RESP_LEN, 0))) {
@@ -618,10 +611,11 @@ scsiPrintErrorCounterLog(scsi_device * device)
             if (! found[k])
                 continue;
             ecp = &errCounterArr[k];
+            static const char * const pageNames[3] = {"read:   ", "write:  ", "verify: "};
             pout("%s%8" PRIu64 " %8" PRIu64 "  %8" PRIu64 "  %8" PRIu64 "   %8" PRIu64,
                  pageNames[k], ecp->counter[0], ecp->counter[1],
                  ecp->counter[2], ecp->counter[3], ecp->counter[4]);
-            processed_gb = ecp->counter[5] / 1000000000.0;
+            double processed_gb = ecp->counter[5] / 1000000000.0;
             pout("   %12.3f    %8" PRIu64 "\n", processed_gb, ecp->counter[6]);
         }
     }
@@ -629,6 +623,7 @@ scsiPrintErrorCounterLog(scsi_device * device)
         pout("Error Counter logging not supported\n");
     if (gNonMediumELPage && (0 == scsiLogSense(device,
                 NON_MEDIUM_ERROR_LPAGE, 0, gBuf, LOG_RESP_LEN, 0))) {
+        struct scsiNonMediumError nme;
         scsiDecodeNonMediumErrPage(gBuf, &nme);
         if (nme.gotPC0)
             pout("\nNon-medium error count: %8" PRIu64 "\n", nme.counterPC0);
@@ -720,7 +715,7 @@ static const char * self_test_result[] = {
 static int
 scsiPrintSelfTest(scsi_device * device)
 {
-    int num, k, n, res, err, durationSec;
+    int num, k, err, durationSec;
     int noheader = 1;
     int retval = 0;
     UINT8 * ucp;
@@ -762,7 +757,7 @@ scsiPrintSelfTest(scsi_device * device)
         int i;
 
         // timestamp in power-on hours (or zero if test in progress)
-        n = (ucp[6] << 8) | ucp[7];
+        int n = (ucp[6] << 8) | ucp[7];
 
         // The spec says "all 20 bytes will be zero if no test" but
         // DG has found otherwise.  So this is a heuristic.
@@ -785,6 +780,7 @@ scsiPrintSelfTest(scsi_device * device)
 
         // check the self-test result nibble, using the self-test results
         // field table from T10/1416-D (SPC-3) Rev. 23, section 7.2.10:
+        int res;
         switch ((res = ucp[4] & 0xf)) {
         case 0x3:
             // an unknown error occurred while the device server
@@ -903,7 +899,7 @@ static const char * reassign_status[] = {
 static int
 scsiPrintBackgroundResults(scsi_device * device)
 {
-    int num, j, m, err, pc, pl, truncated;
+    int num, j, m, err, truncated;
     int noheader = 1;
     int firstresult = 1;
     int retval = 0;
@@ -937,9 +933,9 @@ scsiPrintBackgroundResults(scsi_device * device)
     ucp = gBuf + 4;
     num -= 4;
     while (num > 3) {
-        pc = (ucp[0] << 8) | ucp[1];
+        int pc = (ucp[0] << 8) | ucp[1];
         // pcb = ucp[2];
-        pl = ucp[3] + 4;
+        int pl = ucp[3] + 4;
         switch (pc) {
         case 0:
             if (noheader) {
@@ -1012,7 +1008,7 @@ scsiPrintBackgroundResults(scsi_device * device)
 static int
 scsiPrintSSMedia(scsi_device * device)
 {
-    int num, err, pc, pl, truncated;
+    int num, err, truncated;
     int retval = 0;
     UINT8 * ucp;
 
@@ -1043,9 +1039,9 @@ scsiPrintSSMedia(scsi_device * device)
     ucp = gBuf + 4;
     num -= 4;
     while (num > 3) {
-        pc = (ucp[0] << 8) | ucp[1];
+        int pc = (ucp[0] << 8) | ucp[1];
         // pcb = ucp[2];
-        pl = ucp[3] + 4;
+        int pl = ucp[3] + 4;
         switch (pc) {
         case 1:
             if (pl < 8) {
@@ -1202,7 +1198,6 @@ show_sas_port_param(unsigned char * ucp, int param_len)
     int j, m, n, nphys, t, sz, spld_len;
     unsigned char * vcp;
     uint64_t ull;
-    unsigned int ui;
     char s[64];
 
     sz = sizeof(s);
@@ -1299,6 +1294,7 @@ show_sas_port_param(unsigned char * ucp, int param_len)
         }
         pout("    attached SAS address = 0x%" PRIx64 "\n", ull);
         pout("    attached phy identifier = %d\n", vcp[24]);
+        unsigned int ui;
         ui = (vcp[32] << 24) | (vcp[33] << 16) | (vcp[34] << 8) | vcp[35];
         pout("    Invalid DWORD count = %u\n", ui);
         ui = (vcp[36] << 24) | (vcp[37] << 16) | (vcp[38] << 8) | vcp[39];
@@ -1308,15 +1304,16 @@ show_sas_port_param(unsigned char * ucp, int param_len)
         ui = (vcp[44] << 24) | (vcp[45] << 16) | (vcp[46] << 8) | vcp[47];
         pout("    Phy reset problem = %u\n", ui);
         if (spld_len > 51) {
-            int num_ped, peis;
+            int num_ped;
             unsigned char * xcp;
-            unsigned int pvdt;
 
             num_ped = vcp[51];
             if (num_ped > 0)
                pout("    Phy event descriptors:\n");
             xcp = vcp + 52;
             for (m = 0; m < (num_ped * 12); m += 12, xcp += 12) {
+                int peis;
+                unsigned int pvdt;
                 peis = xcp[3];
                 ui = (xcp[4] << 24) | (xcp[5] << 16) | (xcp[6] << 8) |
                      xcp[7];
@@ -1332,12 +1329,12 @@ show_sas_port_param(unsigned char * ucp, int param_len)
 static int
 show_protocol_specific_page(unsigned char * resp, int len)
 {
-    int k, num, param_len;
+    int k, num;
     unsigned char * ucp;
 
     num = len - 4;
     for (k = 0, ucp = resp + 4; k < num; ) {
-        param_len = ucp[3] + 4;
+        int param_len = ucp[3] + 4;
         if (6 != (0xf & ucp[4]))
             return 0;   /* only decode SAS log page */
         if (0 == k)
@@ -1453,10 +1450,9 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
 {
     char timedatetz[DATEANDEPOCHLEN];
     struct scsi_iec_mode_page iec;
-    int err, iec_err, len, req_len, avail_len, n, scsi_version;
-    int is_tape = 0;
+    int err, iec_err, len, req_len, avail_len, scsi_version;
+    bool is_tape = false;
     int peri_dt = 0;
-    int returnval = 0;
     int transport = -1;
     int form_factor = 0;
     int haw_zbc = 0;
@@ -1482,8 +1478,10 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
     avail_len = gBuf[4] + 5;
     len = (avail_len < req_len) ? avail_len : req_len;
     peri_dt = gBuf[0] & 0x1f;
-    if (peripheral_type)
-        *peripheral_type = peri_dt;
+    *peripheral_type = peri_dt;
+    if ((SCSI_PT_SEQUENTIAL_ACCESS == peri_dt) ||
+        (SCSI_PT_MEDIUM_CHANGER == peri_dt))
+        is_tape = true;
 
     if (len < 36) {
         print_on();
@@ -1523,16 +1521,15 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
 
     protect = gBuf[5] & 0x1;    /* from and including SPC-3 */
 
-    if (! is_tape) {    /* only do this for disks */
+    if (! is_tape) {    /* assume disk if not tape drive (or tape changer) */
         unsigned int lb_size = 0;
         unsigned char lb_prov_resp[8];
-        char cap_str[64];
-        char si_str[64];
         char lb_str[16];
         int lb_per_pb_exp = 0;
         uint64_t capacity = scsiGetSize(device, &lb_size, &lb_per_pb_exp);
 
         if (capacity) {
+            char cap_str[64], si_str[64];
             format_with_thousands_sep(cap_str, sizeof(cap_str), capacity);
             format_capacity(si_str, sizeof(si_str), capacity);
             pout("User Capacity:        %s bytes [%s]\n", cap_str, si_str);
@@ -1550,7 +1547,7 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
                     snprintf(lb_str, sizeof(lb_str) - 1, "%u",
                              (lb_size * (1 << lb_per_pb_exp)));
                     pout("Physical block size:  %s bytes\n", lb_str);
-                    n = ((rc16_12[2] & 0x3f) << 8) + rc16_12[3];
+                    int n = ((rc16_12[2] & 0x3f) << 8) + rc16_12[3];
                     if (n > 0)  // not common so cut the clutter
                         pout("Lowest aligned LBA:   %d\n", n);
                 }
@@ -1711,9 +1708,6 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
     dateandtimezone(timedatetz);
     pout("Local Time is:        %s\n", timedatetz);
 
-    if ((SCSI_PT_SEQUENTIAL_ACCESS == *peripheral_type) ||
-        (SCSI_PT_MEDIUM_CHANGER == *peripheral_type))
-        is_tape = 1;
     // See if unit accepts SCSI commmands from us
     if ((err = scsiTestUnitReady(device))) {
         if (SIMPLE_ERR_NOT_READY == err) {
@@ -1736,6 +1730,7 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
             pout("device Test Unit Ready  [%s]\n", scsiErrString(err));
             print_off();
         }
+        int returnval = 0; // TODO: exit with FAILID if failuretest returns
         failuretest(MANDATORY_CMD, returnval|=FAILID);
     }
 
@@ -1865,6 +1860,8 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
     int returnval = 0;
     int res, durationSec;
     struct scsi_sense_disect sense_info;
+    bool is_disk;
+    bool is_tape;
 
     bool any_output = options.drive_info;
 
@@ -1882,115 +1879,108 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
             failuretest(MANDATORY_CMD, returnval |= FAILID);
         any_output = true;
     }
+    is_disk = (SCSI_PT_DIRECT_ACCESS == peripheral_type);
+    is_tape = ((SCSI_PT_SEQUENTIAL_ACCESS == peripheral_type) ||
+               (SCSI_PT_MEDIUM_CHANGER == peripheral_type));
 
-  // Print read look-ahead status for disks
-  short int wce = -1, rcd = -1;
-  if (options.get_rcd || options.get_wce) {
-    if (SCSI_PT_DIRECT_ACCESS == peripheral_type)
-       res = scsiGetSetCache(device, modese_len, &wce, &rcd);
-    else
-       res = -1; // fetch for disks only
-    any_output = true;
-  }
+    short int wce = -1, rcd = -1;
+    // Print read look-ahead status for disks
+    if (options.get_rcd || options.get_wce) {
+        if (is_disk) {
+            res = scsiGetSetCache(device, modese_len, &wce, &rcd);
+            if (options.get_rcd)
+                pout("Read Cache is:        %s\n",
+                     res ? "Unavailable" : // error
+                     rcd ? "Disabled" : "Enabled");
+            if (options.get_wce)
+                pout("Writeback Cache is:   %s\n",
+                     res ? "Unavailable" : // error
+                     !wce ? "Disabled" : "Enabled");
+        }
+    } else
+        any_output = true;
 
-  if (options.get_rcd) {
-    pout("Read Cache is:        %s\n",
-      res ? "Unavailable" : // error
-      rcd ? "Disabled" : "Enabled");
-   }
+    if (options.drive_info)
+        pout("\n");
 
-  if (options.get_wce) {
-    pout("Writeback Cache is:   %s\n",
-      res ? "Unavailable" : // error
-      !wce ? "Disabled" : "Enabled");
-   }
-   if (options.drive_info)
-     pout("\n");
-
-  // START OF THE ENABLE/DISABLE SECTION OF THE CODE
-  if (   options.smart_disable           || options.smart_enable
-      || options.smart_auto_save_disable || options.smart_auto_save_enable)
-    pout("=== START OF ENABLE/DISABLE COMMANDS SECTION ===\n");
+    // START OF THE ENABLE/DISABLE SECTION OF THE CODE
+    if (options.smart_disable           || options.smart_enable ||
+        options.smart_auto_save_disable || options.smart_auto_save_enable)
+        pout("=== START OF ENABLE/DISABLE COMMANDS SECTION ===\n");
 
     if (options.smart_enable) {
         if (scsiSmartEnable(device))
             failuretest(MANDATORY_CMD, returnval |= FAILSMART);
-        any_output = true;
+            any_output = true;
     }
 
     if (options.smart_disable) {
         if (scsiSmartDisable(device))
             failuretest(MANDATORY_CMD,returnval |= FAILSMART);
-        any_output = true;
+            any_output = true;
     }
 
     if (options.smart_auto_save_enable) {
-      if (scsiSetControlGLTSD(device, 0, modese_len)) {
-        pout("Enable autosave (clear GLTSD bit) failed\n");
-        failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
-      }
-      else {
-         pout("Autosave enabled (GLTSD bit set).\n");
-      }
-      any_output = true;
+        if (scsiSetControlGLTSD(device, 0, modese_len)) {
+            pout("Enable autosave (clear GLTSD bit) failed\n");
+            failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
+        } else
+            pout("Autosave enabled (GLTSD bit cleared).\n");
+        any_output = true;
     }
 
     // Enable/Disable write cache
-    if (options.set_wce && SCSI_PT_DIRECT_ACCESS == peripheral_type) {
-      short int enable = wce = (options.set_wce > 0);
-      rcd = -1;
-      if (scsiGetSetCache(device, modese_len, &wce, &rcd)) {
-          pout("Write cache %sable failed: %s\n", (enable ? "en" : "dis"),
-               device->get_errmsg());
-          failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
-      }
-      else
-        pout("Write cache %sabled\n", (enable ? "en" : "dis"));
-      any_output = true;
+    if (options.set_wce && is_disk) {
+        short int enable = wce = (options.set_wce > 0);
+
+        rcd = -1;
+        if (scsiGetSetCache(device, modese_len, &wce, &rcd)) {
+            pout("Write cache %sable failed: %s\n", (enable ? "en" : "dis"),
+                 device->get_errmsg());
+            failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
+        } else
+            pout("Write cache %sabled\n", (enable ? "en" : "dis"));
+        any_output = true;
     }
 
     // Enable/Disable read cache
-    if (options.set_rcd && SCSI_PT_DIRECT_ACCESS == peripheral_type) {
-      short int enable =  (options.set_rcd > 0);
-      rcd = !enable;
-      wce = -1;
-      if (scsiGetSetCache(device, modese_len, &wce, &rcd)) {
-          pout("Read cache %sable failed: %s\n", (enable ? "en" : "dis"),
+    if (options.set_rcd && is_disk) {
+        short int enable =  (options.set_rcd > 0);
+
+        rcd = !enable;
+        wce = -1;
+        if (scsiGetSetCache(device, modese_len, &wce, &rcd)) {
+            pout("Read cache %sable failed: %s\n", (enable ? "en" : "dis"),
                 device->get_errmsg());
-          failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
-      }
-      else
-        pout("Read cache %sabled\n", (enable ? "en" : "dis"));
-      any_output = true;
+            failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
+        } else
+            pout("Read cache %sabled\n", (enable ? "en" : "dis"));
+        any_output = true;
     }
 
     if (options.smart_auto_save_disable) {
-      if (scsiSetControlGLTSD(device, 1, modese_len)) {
-        pout("Disable autosave (set GLTSD bit) failed\n");
-        failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
-      }
-      else {
-         pout("Autosave disabled (GLTSD bit cleared).\n");
-      }
-      any_output = true;
+        if (scsiSetControlGLTSD(device, 1, modese_len)) {
+            pout("Disable autosave (set GLTSD bit) failed\n");
+            failuretest(OPTIONAL_CMD,returnval |= FAILSMART);
+        } else
+            pout("Autosave disabled (GLTSD bit set).\n");
+        any_output = true;
     }
-  if (   options.smart_disable           || options.smart_enable
-      || options.smart_auto_save_disable || options.smart_auto_save_enable)
-    pout("\n"); // END OF THE ENABLE/DISABLE SECTION OF THE CODE
+    if (options.smart_disable           || options.smart_enable ||
+        options.smart_auto_save_disable || options.smart_auto_save_enable)
+        pout("\n"); // END OF THE ENABLE/DISABLE SECTION OF THE CODE
 
     // START OF READ-ONLY OPTIONS APART FROM -V and -i
-    if (    options.smart_check_status  || options.smart_ss_media_log
-           || options.smart_vendor_attrib || options.smart_error_log
-           || options.smart_selftest_log  || options.smart_vendor_attrib
-           || options.smart_background_log || options.sasphy
-         )
-    pout("=== START OF READ SMART DATA SECTION ===\n");
+    if (options.smart_check_status  || options.smart_ss_media_log ||
+        options.smart_vendor_attrib || options.smart_error_log ||
+        options.smart_selftest_log  || options.smart_background_log ||
+        options.sasphy)
+        pout("=== START OF READ SMART DATA SECTION ===\n");
 
     if (options.smart_check_status) {
         scsiGetSupportedLogPages(device);
         checkedSupportedLogPages = 1;
-        if ((SCSI_PT_SEQUENTIAL_ACCESS == peripheral_type) ||
-            (SCSI_PT_MEDIUM_CHANGER == peripheral_type)) { /* tape device */
+        if (is_tape) {
             if (gTapeAlertsLPage) {
                 if (options.drive_info)
                     pout("TapeAlert Supported\n");
@@ -2010,7 +2000,7 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
         any_output = true;
     }
 
-    if (options.smart_ss_media_log) {
+    if (is_disk && options.smart_ss_media_log) {
         if (! checkedSupportedLogPages)
             scsiGetSupportedLogPages(device);
         res = 0;
@@ -2023,12 +2013,11 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
     if (options.smart_vendor_attrib) {
         if (! checkedSupportedLogPages)
             scsiGetSupportedLogPages(device);
-        if (gTempLPage) {
+        if (gTempLPage)
             scsiPrintTemp(device);
-        }
         if (gStartStopLPage)
             scsiGetStartStopData(device);
-        if (SCSI_PT_DIRECT_ACCESS == peripheral_type) {
+        if (is_disk) {
             scsiPrintGrownDefectListLen(device);
             if (gSeagateCacheLPage)
                 scsiPrintSeagateCacheLPage(device);
@@ -2088,21 +2077,19 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
     }
     // check if another test is running
     if (options.smart_short_selftest || options.smart_extend_selftest) {
-      if (!scsiRequestSense(device, &sense_info) &&
+        if (!scsiRequestSense(device, &sense_info) &&
             (sense_info.asc == 0x04 && sense_info.ascq == 0x09)) {
-         if (!options.smart_selftest_force) {
-           pout("Can't start self-test without aborting current test");
-           if (sense_info.progress != -1) {
-             pout(" (%d%% remaining)",
-                  100 - sense_info.progress * 100 / 65535);
-           }
-           pout(",\nadd '-t force' option to override, or run 'smartctl -X' "
-                "to abort test.\n");
-            return -1;
-         }
-         else
-            scsiSmartSelfTestAbort(device);
-       }
+            if (!options.smart_selftest_force) {
+                pout("Can't start self-test without aborting current test");
+                if (sense_info.progress != -1)
+                    pout(" (%d%% remaining)",
+                         100 - sense_info.progress * 100 / 65535);
+                pout(",\nadd '-t force' option to override, or run "
+                     "'smartctl -X' to abort test.\n");
+                return -1;
+            } else
+                scsiSmartSelfTestAbort(device);
+        }
     }
     if (options.smart_short_selftest) {
         if (scsiSmartShortSelfTest(device))
@@ -2145,8 +2132,8 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
     }
 
     if (!any_output)
-      pout("SCSI device successfully opened\n\n"
-           "Use 'smartctl -a' (or '-x') to print SMART (and more) information\n\n");
+        pout("SCSI device successfully opened\n\nUse 'smartctl -a' (or '-x') "
+             "to print SMART (and more) information\n\n");
 
     return returnval;
 }
