@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-15 Christian Franke
+ * Copyright (C) 2008-16 Christian Franke
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -48,10 +48,11 @@
 #include "knowndrives.h"
 #include "scsicmds.h"
 #include "scsiprint.h"
+#include "nvmeprint.h"
 #include "smartctl.h"
 #include "utility.h"
 
-const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 4162 2015-10-31 16:36:16Z chrfranke $"
+const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 4311 2016-04-27 21:03:01Z chrfranke $"
   CONFIG_H_CVSID SMARTCTL_H_CVSID;
 
 // Globals to control printing
@@ -128,7 +129,7 @@ static void Usage()
 "======================================= READ AND DISPLAY DATA OPTIONS =====\n\n"
 "  -H, --health\n"
 "        Show device SMART health status\n\n"
-"  -c, --capabilities                                                  (ATA)\n"
+"  -c, --capabilities                                            (ATA, NVMe)\n"
 "        Show device SMART capabilities\n\n"
 "  -A, --attributes\n"
 "        Show device SMART vendor-specific Attributes and values\n\n"
@@ -140,7 +141,8 @@ static void Usage()
 "                               background, sasphy[,reset], sataphy[,reset],\n"
 "                               scttemp[sts,hist], scttempint,N[,p],\n"
 "                               scterc[,N,M], devstat[,N], ssd,\n"
-"                               gplog,N[,RANGE], smartlog,N[,RANGE]\n\n"
+"                               gplog,N[,RANGE], smartlog,N[,RANGE],\n"
+"                               nvmelog,N,SIZE\n\n"
 "  -v N,OPTION , --vendorattribute=N,OPTION                            (ATA)\n"
 "        Set display OPTION for vendor Attribute N (see man page)\n\n"
 "  -F TYPE, --firmwarebug=TYPE                                         (ATA)\n"
@@ -194,7 +196,7 @@ static std::string getvalidarglist(int opt)
   case 'b':
     return "warn, exit, ignore";
   case 'r':
-    return "ioctl[,N], ataioctl[,N], scsiioctl[,N]";
+    return "ioctl[,N], ataioctl[,N], scsiioctl[,N], nvmeioctl[,N]";
   case opt_smart:
   case 'o':
   case 'S':
@@ -205,8 +207,8 @@ static std::string getvalidarglist(int opt)
            "background, sasphy[,reset], sataphy[,reset], "
            "scttemp[sts,hist], scttempint,N[,p], "
            "scterc[,N,M], devstat[,N], ssd, "
-           "gplog,N[,RANGE], smartlog,N[,RANGE]";
-
+           "gplog,N[,RANGE], smartlog,N[,RANGE], "
+           "nvmelog,N,SIZE";
   case 'P':
     return "use, ignore, show, showall";
   case 't':
@@ -259,13 +261,13 @@ enum checksum_err_mode_t {
 
 static checksum_err_mode_t checksum_err_mode = CHECKSUM_ERR_WARN;
 
-static void scan_devices(const char * type, bool with_open, char ** argv);
+static void scan_devices(const smart_devtype_list & types, bool with_open, char ** argv);
 
 
 /*      Takes command options and sets features to be run */    
 static const char * parse_options(int argc, char** argv,
   ata_print_options & ataopts, scsi_print_options & scsiopts,
-  bool & print_type_only)
+  nvme_print_options & nvmeopts, bool & print_type_only)
 {
   // Please update getvalidarglist() if you edit shortopts
   const char *shortopts = "h?Vq:d:T:b:r:s:o:S:HcAl:iaxv:P:t:CXF:n:B:f:g:";
@@ -313,6 +315,7 @@ static const char * parse_options(int argc, char** argv,
   opterr=optopt=0;
 
   const char * type = 0; // set to -d optarg
+  smart_devtype_list scan_types; // multiple -d TYPE options for --scan
   bool use_default_db = true; // set false on '-B FILE'
   bool output_format_set = false; // set true on '-f FORMAT'
   int scan = 0; // set by --scan, --scan-open
@@ -345,8 +348,14 @@ static const char * parse_options(int argc, char** argv,
     case 'd':
       if (!strcmp(optarg, "test"))
         print_type_only = true;
-      else
-        type = (strcmp(optarg, "auto") ? optarg : (char *)0);
+      else if (!strcmp(optarg, "auto")) {
+        type = 0;
+        scan_types.clear();
+      }
+      else {
+        type = optarg;
+        scan_types.push_back(optarg);
+      }
       break;
     case 'T':
       if (!strcmp(optarg,"normal")) {
@@ -376,26 +385,22 @@ static const char * parse_options(int argc, char** argv,
       break;
     case 'r':
       {
-        int i;
-        char *s;
-
-        // split_report_arg() may modify its first argument string, so use a
-        // copy of optarg in case we want optarg for an error message.
-        if (!(s = strdup(optarg))) {
-          throw std::bad_alloc();
-        }
-        if (split_report_arg(s, &i)) {
+        int n1 = -1, n2 = -1, len = strlen(optarg);
+        char s[9+1]; unsigned i = 1;
+        sscanf(optarg, "%9[a-z]%n,%u%n", s, &n1, &i, &n2);
+        if (!((n1 == len || n2 == len) && 1 <= i && i <= 4)) {
           badarg = true;
         } else if (!strcmp(s,"ioctl")) {
-          ata_debugmode  = scsi_debugmode = i;
+          ata_debugmode = scsi_debugmode = nvme_debugmode = i;
         } else if (!strcmp(s,"ataioctl")) {
           ata_debugmode = i;
         } else if (!strcmp(s,"scsiioctl")) {
           scsi_debugmode = i;
+        } else if (!strcmp(s,"nvmeioctl")) {
+          nvme_debugmode = i;
         } else {
           badarg = true;
         }
-        free(s);
       }
       break;
 
@@ -437,7 +442,7 @@ static const char * parse_options(int argc, char** argv,
       }
       break;
     case 'H':
-      ataopts.smart_check_status = scsiopts.smart_check_status = true;
+      ataopts.smart_check_status = scsiopts.smart_check_status = nvmeopts.smart_check_status = true;
       scsiopts.smart_ss_media_log = true;
       break;
     case 'F':
@@ -447,14 +452,23 @@ static const char * parse_options(int argc, char** argv,
         badarg = true;
       break;
     case 'c':
-      ataopts.smart_general_values = true;
+      ataopts.smart_general_values = nvmeopts.drive_capabilities = true;
       break;
     case 'A':
-      ataopts.smart_vendor_attrib = scsiopts.smart_vendor_attrib = true;
+      ataopts.smart_vendor_attrib = scsiopts.smart_vendor_attrib = nvmeopts.smart_vendor_attrib = true;
       break;
     case 'l':
-      if (!strcmp(optarg,"error")) {
+      if (str_starts_with(optarg, "error")) {
+        int n1 = -1, n2 = -1, len = strlen(optarg);
+        unsigned val = ~0;
+        sscanf(optarg, "error%n,%u%n", &n1, &val, &n2);
         ataopts.smart_error_log = scsiopts.smart_error_log = true;
+        if (n1 == len)
+          nvmeopts.error_log_entries = 16;
+        else if (n2 == len && val > 0)
+          nvmeopts.error_log_entries = val;
+        else
+          badarg = true;
       } else if (!strcmp(optarg,"selftest")) {
         ataopts.smart_selftest_log = scsiopts.smart_selftest_log = true;
       } else if (!strcmp(optarg, "selective")) {
@@ -583,12 +597,25 @@ static const char * parse_options(int argc, char** argv,
           req.nsectors = (sign == '-' ? nsectors-page+1 : nsectors);
           ataopts.log_requests.push_back(req);
         }
-      } else {
+      }
+
+      else if (str_starts_with(optarg, "nvmelog,")) {
+        int n = -1, len = strlen(optarg);
+        unsigned page = 0, size = 0;
+        sscanf(optarg, "nvmelog,0x%x,0x%x%n", &page, &size, &n);
+        if (n == len && page <= 0xff && 0 < size && size <= 0x4000) {
+          nvmeopts.log_page = page; nvmeopts.log_page_size = size;
+        }
+        else
+          badarg = true;
+      }
+
+      else {
         badarg = true;
       }
       break;
     case 'i':
-      ataopts.drive_info = scsiopts.drive_info = true;
+      ataopts.drive_info = scsiopts.drive_info = nvmeopts.drive_info = true;
       break;
 
     case opt_identify:
@@ -607,23 +634,25 @@ static const char * parse_options(int argc, char** argv,
       break;
 
     case 'a':
-      ataopts.drive_info           = scsiopts.drive_info          = true;
-      ataopts.smart_check_status   = scsiopts.smart_check_status  = true;
-      ataopts.smart_general_values = true;
-      ataopts.smart_vendor_attrib  = scsiopts.smart_vendor_attrib = true;
+      ataopts.drive_info           = scsiopts.drive_info          = nvmeopts.drive_info          = true;
+      ataopts.smart_check_status   = scsiopts.smart_check_status  = nvmeopts.smart_check_status  = true;
+      ataopts.smart_general_values =                                nvmeopts.drive_capabilities  = true;
+      ataopts.smart_vendor_attrib  = scsiopts.smart_vendor_attrib = nvmeopts.smart_vendor_attrib = true;
       ataopts.smart_error_log      = scsiopts.smart_error_log     = true;
+      nvmeopts.error_log_entries   = 16;
       ataopts.smart_selftest_log   = scsiopts.smart_selftest_log  = true;
       ataopts.smart_selective_selftest_log = true;
       /* scsiopts.smart_background_log = true; */
       scsiopts.smart_ss_media_log = true;
       break;
     case 'x':
-      ataopts.drive_info           = scsiopts.drive_info          = true;
-      ataopts.smart_check_status   = scsiopts.smart_check_status  = true;
-      ataopts.smart_general_values = true;
-      ataopts.smart_vendor_attrib  = scsiopts.smart_vendor_attrib = true;
+      ataopts.drive_info           = scsiopts.drive_info          = nvmeopts.drive_info          = true;
+      ataopts.smart_check_status   = scsiopts.smart_check_status  = nvmeopts.smart_check_status  = true;
+      ataopts.smart_general_values =                                nvmeopts.drive_capabilities  = true;
+      ataopts.smart_vendor_attrib  = scsiopts.smart_vendor_attrib = nvmeopts.smart_vendor_attrib = true;
       ataopts.smart_ext_error_log  = 8;
       ataopts.retry_error_log      = true;
+      nvmeopts.error_log_entries   = 16;
       ataopts.smart_ext_selftest_log = 25;
       ataopts.retry_selftest_log   = true;
       scsiopts.smart_error_log     = scsiopts.smart_selftest_log    = true;
@@ -1003,7 +1032,7 @@ static const char * parse_options(int argc, char** argv,
     // Read or init drive database to allow USB ID check.
     if (!init_drive_database(use_default_db))
       EXIT(FAILCMD);
-    scan_devices(type, (scan == opt_scan_open), argv + optind);
+    scan_devices(scan_types, (scan == opt_scan_open), argv + optind);
     EXIT(0);
   }
 
@@ -1012,6 +1041,15 @@ static const char * parse_options(int argc, char** argv,
   // turned off
   if (printing_is_switchable)
     printing_is_off = true;
+
+  // Check for multiple -d TYPE options
+  if (scan_types.size() > 1) {
+    printing_is_off = false;
+    printslogan();
+    pout("ERROR: multiple -d TYPE options are only allowed with --scan\n");
+    UsageSummary();
+    EXIT(FAILCMD);
+  }
 
   // error message if user has asked for more than one test
   if (testcnt > 1) {
@@ -1155,19 +1193,22 @@ void checksumwarning(const char * string)
 // Return info string about device protocol
 static const char * get_protocol_info(const smart_device * dev)
 {
-  switch ((int)dev->is_ata() | ((int)dev->is_scsi() << 1)) {
+  switch (   (int)dev->is_ata()
+          | ((int)dev->is_scsi() << 1)
+          | ((int)dev->is_nvme() << 2)) {
     case 0x1: return "ATA";
     case 0x2: return "SCSI";
     case 0x3: return "ATA+SCSI";
+    case 0x4: return "NVMe";
     default:  return "Unknown";
   }
 }
 
 // Device scan
 // smartctl [-d type] --scan[-open] -- [PATTERN] [smartd directive ...]
-void scan_devices(const char * type, bool with_open, char ** argv)
+void scan_devices(const smart_devtype_list & types, bool with_open, char ** argv)
 {
-  bool dont_print = !(ata_debugmode || scsi_debugmode);
+  bool dont_print = !(ata_debugmode || scsi_debugmode || nvme_debugmode);
 
   const char * pattern = 0;
   int ai = 0;
@@ -1176,7 +1217,7 @@ void scan_devices(const char * type, bool with_open, char ** argv)
 
   smart_device_list devlist;
   printing_is_off = dont_print;
-  bool ok = smi()->scan_smart_devices(devlist, type , pattern);
+  bool ok = smi()->scan_smart_devices(devlist, types, pattern);
   printing_is_off = false;
 
   if (!ok) {
@@ -1228,8 +1269,9 @@ static int main_worker(int argc, char **argv)
   // Parse input arguments
   ata_print_options ataopts;
   scsi_print_options scsiopts;
+  nvme_print_options nvmeopts;
   bool print_type_only = false;
-  const char * type = parse_options(argc, argv, ataopts, scsiopts, print_type_only);
+  const char * type = parse_options(argc, argv, ataopts, scsiopts, nvmeopts, print_type_only);
 
   const char * name = argv[argc-1];
 
@@ -1262,6 +1304,11 @@ static int main_worker(int argc, char **argv)
     pout("%s: Device of type '%s' [%s] detected\n",
          dev->get_info_name(), dev->get_dev_type(), get_protocol_info(dev.get()));
 
+  if (dev->is_ata() && ataopts.powermode>=2 && dev->is_powered_down()) {
+    pout( "%s: Device is in %s mode, exit(%d)\n", dev->get_info_name(), "STANDBY (OS)", FAILPOWER );
+    return FAILPOWER;
+  }
+
   // Open device
   {
     // Save old info
@@ -1271,7 +1318,8 @@ static int main_worker(int argc, char **argv)
     dev.replace( dev->autodetect_open() );
 
     // Report if type has changed
-    if ((type || print_type_only) && oldinfo.dev_type != dev->get_dev_type())
+    if (   (ata_debugmode || scsi_debugmode || nvme_debugmode || print_type_only)
+        && oldinfo.dev_type != dev->get_dev_type()                               )
       pout("%s: Device open changed type from '%s' to '%s'\n",
         dev->get_info_name(), oldinfo.dev_type.c_str(), dev->get_dev_type());
   }
@@ -1289,9 +1337,11 @@ static int main_worker(int argc, char **argv)
     retval = ataPrintMain(dev->to_ata(), ataopts);
   else if (dev->is_scsi())
     retval = scsiPrintMain(dev->to_scsi(), scsiopts);
+  else if (dev->is_nvme())
+    retval = nvmePrintMain(dev->to_nvme(), nvmeopts);
   else
     // we should never fall into this branch!
-    pout("%s: Neither ATA nor SCSI device\n", dev->get_info_name());
+    pout("%s: Neither ATA, SCSI nor NVMe device\n", dev->get_info_name());
 
   dev->close();
   return retval;
@@ -1302,6 +1352,8 @@ static int main_worker(int argc, char **argv)
 int main(int argc, char **argv)
 {
   int status;
+  bool badcode = false;
+
   try {
     // Do the real work ...
     status = main_worker(argc, argv);
@@ -1318,8 +1370,21 @@ int main(int argc, char **argv)
   catch (const std::exception & ex) {
     // Other fatal errors
     printf("Smartctl: Exception: %s\n", ex.what());
+    badcode = true;
     status = FAILCMD;
   }
+
+  // Check for remaining device objects
+  if (smart_device::get_num_objects() != 0) {
+    printf("Smartctl: Internal Error: %d device object(s) left at exit.\n",
+           smart_device::get_num_objects());
+    badcode = true;
+    status = FAILCMD;
+  }
+
+  if (badcode)
+     printf("Please inform " PACKAGE_BUGREPORT ", including output of smartctl -V.\n");
+
   return status;
 }
 

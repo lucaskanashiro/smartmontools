@@ -1,8 +1,8 @@
 .ig
 Copyright (C) 2002-10 Bruce Allen
-Copyright (C) 2004-15 Christian Franke
+Copyright (C) 2004-16 Christian Franke
 
-$Id: smartd.conf.5.in 4103 2015-06-01 19:51:18Z chrfranke $
+$Id: smartd.conf.5.in 4307 2016-04-24 12:37:31Z chrfranke $
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -322,6 +322,18 @@ from issuing SCSI commands to an ATA device.
 \fBsmartd\fP
 from issuing ATA commands to a SCSI device.
 
+.\" %ENDIF NOT OS Darwin
+.\" %IF OS FreeBSD Linux Windows Cygwin
+.I nvme[,NSID]
+\- [FreeBSD, Linux, Windows and Cygwin only] [NEW EXPERIMENTAL SMARTD FEATURE]
+the device type is NVM Express (NVMe).
+The optional parameter NSID specifies the namespace id (in hex) passed
+to the driver.
+Use 0xffffffff for the broadcast namespace id.
+The default for NSID is the namespace id addressed by the device name.
+
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
+.\" %IF NOT OS Darwin
 .I sat[,auto][,N]
 \- the device type is SCSI to ATA Translation (SAT).
 This is for ATA disks that have a SCSI to ATA Translation (SAT) Layer
@@ -566,7 +578,7 @@ Directive are \fIon\fP and \fIoff\fP.  Also affects SCSI devices.
 [Please see the \fBsmartctl \-S\fP command-line option.]
 .TP
 .B \-H
-[ATA only] Check the health status of the disk with the SMART RETURN
+[ATA] Check the health status of the disk with the SMART RETURN
 STATUS command.
 If this command reports a failing health status, then disk
 failure is predicted in less than 24 hours, and a message at loglevel
@@ -574,23 +586,46 @@ failure is predicted in less than 24 hours, and a message at loglevel
 will be logged to syslog.  [Please see the
 .B smartctl \-H
 command-line option.]
+.\" %IF OS FreeBSD Linux Windows Cygwin
+
+[NVMe] [FreeBSD, Linux, Windows and Cygwin only]
+[NEW EXPERIMENTAL SMARTD FEATURE]
+Checks the "Critical Warning" byte from the SMART/Health Information log.
+If any warning bit is set, a message at loglevel \fB\'LOG_CRIT\'\fP
+will be logged to syslog.
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .TP
 .B \-l TYPE
 Reports increases in the number of errors in one of three SMART logs.  The
 valid arguments to this Directive are:
 
 .I error
-\- [ATA only] report if the number of ATA errors reported in the Summary SMART
+\- [ATA] report if the number of ATA errors reported in the Summary SMART
 error log has increased since the last check.
 
+.\" %IF OS FreeBSD Linux Windows Cygwin
+.I error
+\- [NVMe] [FreeBSD, Linux, Windows and Cygwin only]
+[NEW EXPERIMENTAL SMARTD FEATURE]
+report if the "Number of Error Information Log Entries" from the
+SMART/Health Information log has increased since the last check.
+
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .I xerror
-\- [ATA only] report if the number of ATA errors reported in the Extended
+\- [ATA] report if the number of ATA errors reported in the Extended
 Comprehensive SMART error log has increased since the last check.
 
 If both \'\-l error\' and \'\-l xerror\' are specified, smartd checks
 the maximum of both values.
 
 [Please see the \fBsmartctl \-l xerror\fP command-line option.]
+
+.\" %IF OS FreeBSD Linux Windows Cygwin
+.I xerror
+\- [NVMe] [FreeBSD, Linux, Windows and Cygwin only]
+[NEW EXPERIMENTAL SMARTD FEATURE]
+same as \'-l error\'.
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 
 .I selftest
 \- report if the number of failed tests reported in the SMART
@@ -882,8 +917,6 @@ sessions, and \'\fBconnected\fP\' specifies the console session and
 all connected (active or waiting for login) remote sessions.
 This is handled by the script EXEDIR/smartd_warning.cmd which runs
 the tool EXEDIR/wtssendmsg.exe (see also \'\-M exec\' below).
-The addresses \'\fBmsgbox\fP\' and \'\fBsysmsgbox\fP\' are now
-deprecated and have the same effect as \'\fBconsole\fP\'.
 .\" %ENDIF OS Windows
 .TP
 .B \-M TYPE
@@ -1326,6 +1359,12 @@ To combine all of the above reports, use:
 For ATA devices, smartd interprets Attribute 194 or 190 as Temperature Celsius
 by default. This can be changed to Attribute 9 or 220 by the drive
 database or by the \'\-v 9,temp\' or \'\-v 220,temp\' directive.
+.\" %IF OS FreeBSD Linux Windows Cygwin
+
+[NEW EXPERIMENTAL SMARTD FEATURE]
+For NVMe devices, smartd checks the maximum of the Composite Temperature value
+and all Temperature Sensor values reported by SMART/Health Information log.
+.\" %ENDIF OS FreeBSD Linux Windows Cygwin
 .TP
 .B \-F TYPE
 [ATA only] Modifies the behavior of \fBsmartd\fP to compensate for some
@@ -1479,6 +1518,10 @@ will do the same, but restricts the scan to ATA devices only.
 will do the same, but only monitors the SMART health status of the
 devices, (rather than the default \-a, which monitors all SMART
 properties).
+.br
+[NEW EXPERIMENTAL SMARTD FEATURE]
+Multiple \'\-d TYPE\' options may be specified with DEVICESCAN
+to combine the scan results of more than one TYPE.
 
 Configuration entries for specific devices may precede the \fBDEVICESCAN\fP entry.
 For example
@@ -1570,4 +1613,4 @@ full path of this file.
 .SH PACKAGE VERSION
 CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 .br
-$Id: smartd.conf.5.in 4103 2015-06-01 19:51:18Z chrfranke $
+$Id: smartd.conf.5.in 4307 2016-04-24 12:37:31Z chrfranke $

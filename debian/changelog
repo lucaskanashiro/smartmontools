@@ -1,3 +1,9 @@
+smartmontools (6.5+svn4324-1) unstable; urgency=low
+
+  * [a86ec89] Imported Upstream version 6.5+svn43204 (Closes: #831504)
+
+ -- Giuseppe Iuculano <iuculano@debian.org>  Sat, 30 Jul 2016 19:10:13 +0200
+
 smartmontools (6.4+svn4214-1) unstable; urgency=medium
 
   [ Helmut Grohne ]

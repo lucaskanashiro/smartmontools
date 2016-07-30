@@ -27,11 +27,8 @@
 
 #include <errno.h>
 
-const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 4205 2016-01-22 15:22:53Z samm2 $"
+const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 4321 2016-05-10 13:43:10Z chrfranke $"
   OS_OPENBSD_H_CVSID;
-
-/* global variable holding byte count of allocated memory */
-extern long long bytes;
 
 enum warnings {
   BAD_SMART, MAX_MSG
@@ -132,11 +129,10 @@ get_dev_names(char ***names, const char *prefix)
       return -1;
     }
     sprintf(mp[n], "%s%s%c", net_dev_prefix, p, 'a' + getrawpartition());
-    bytes += strlen(mp[n]) + 1;
     n++;
   }
 
-  void * tmp = (char **)realloc(mp, n * (sizeof(char *)));
+  char ** tmp = (char **)realloc(mp, n * (sizeof(char *)));
   if (NULL == tmp) {
     pout("Out of memory constructing scan device list\n");
     free(mp);
@@ -144,7 +140,6 @@ get_dev_names(char ***names, const char *prefix)
   }
   else
     mp = tmp;
-  bytes += (n) * (sizeof(char *));
   *names = mp;
   return n;
 }

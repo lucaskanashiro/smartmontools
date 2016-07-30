@@ -1,5 +1,3 @@
-diff --git a/smartd.conf b/smartd.conf
-index d4a0d10..263526e 100644
 --- a/smartd.conf
 +++ b/smartd.conf
 @@ -2,8 +2,6 @@

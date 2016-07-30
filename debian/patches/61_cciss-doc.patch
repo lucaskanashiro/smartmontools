@@ -6,11 +6,9 @@ file and adds some more cciss documentation to the manpages. I think this
 patch gets things to parity with the 3ware documentation with a couple
 minor exceptions
 
-diff --git a/smartd.conf b/smartd.conf
-index 5490bde..59addd4 100644
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
+@@ -92,6 +92,12 @@
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -23,11 +21,9 @@ index 5490bde..59addd4 100644
  
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index df2b6c4..f098a6e 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -157,6 +157,12 @@ Section below!
+@@ -157,6 +157,12 @@
  .B \ \ /dev/tws0 \-d 3ware,1 \-a \-s L/../../7/02
  .\" %ENDIF OS FreeBSD
  .B #
@@ -40,7 +36,7 @@ index df2b6c4..f098a6e 100644
  .B # Three SATA disks on a HighPoint RocketRAID controller.
  .B # Start short self-tests daily between 1\(en2, 2\(en3, and
  .B # 3\(en4 am.
-@@ -1453,6 +1459,9 @@ configuration file Directives might be:
+@@ -1492,6 +1498,9 @@
  If you want more frequent information, use:
  .B \-a.
  

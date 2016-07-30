@@ -26,11 +26,8 @@
 #include <errno.h>
 #include <unistd.h>
 
-const char * os_netbsd_cpp_cvsid = "$Id: os_netbsd.cpp 4205 2016-01-22 15:22:53Z samm2 $"
+const char * os_netbsd_cpp_cvsid = "$Id: os_netbsd.cpp 4320 2016-05-10 13:39:19Z chrfranke $"
   OS_NETBSD_H_CVSID;
-
-/* global variable holding byte count of allocated memory */
-extern long long bytes;
 
 enum warnings {
   BAD_SMART, MAX_MSG
@@ -57,7 +54,7 @@ printwarning(int msgNo, const char *extra)
   return;
 }
 
-static const char *net_dev_prefix = "/dev/";
+static const char *net_dev_prefix = "/dev/r";
 static const char *net_dev_ata_disk = "wd";
 static const char *net_dev_scsi_disk = "sd";
 static const char *net_dev_scsi_tape = "enrst";
@@ -128,11 +125,10 @@ get_dev_names(char ***names, const char *prefix)
       return -1;
     }
     sprintf(mp[n], "%s%s%c", net_dev_prefix, p, 'a' + getrawpartition());
-    bytes += strlen(mp[n]) + 1;
     n++;
   }
 
-  void * tmp = (char **)realloc(mp, n * (sizeof(char *)));
+  char ** tmp = (char **)realloc(mp, n * (sizeof(char *)));
   if (NULL == tmp) {
     pout("Out of memory constructing scan device list\n");
     free(mp);
@@ -140,7 +136,6 @@ get_dev_names(char ***names, const char *prefix)
   }
   else
     mp = tmp;
-  bytes += (n) * (sizeof(char *));
   *names = mp;
   return n;
 }

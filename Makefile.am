@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 4192 2015-12-19 13:59:40Z chrfranke $
+# $Id: Makefile.am 4299 2016-04-16 19:45:57Z chrfranke $
 #
 
 @SET_MAKE@
@@ -42,7 +42,7 @@ sbin_PROGRAMS = \
         smartctl \
         smartd
 
-if ENABLE_DRIVEDB
+if ENABLE_UPDATE_SMART_DRIVEDB
 if OS_WIN32_MINGW
 else
 sbin_SCRIPTS = update-smart-drivedb
@@ -70,6 +70,10 @@ smartctl_SOURCES = \
         int64.h \
         knowndrives.cpp \
         knowndrives.h \
+        nvmecmds.cpp \
+        nvmecmds.h \
+        nvmeprint.cpp \
+        nvmeprint.h \
         scsicmds.cpp \
         scsicmds.h \
         scsiata.cpp \
@@ -106,6 +110,7 @@ EXTRA_smartctl_SOURCES = \
         dev_areca.cpp \
         dev_areca.h \
         dev_legacy.cpp \
+        linux_nvme_ioctl.h \
         megaraid.h
 
 if OS_WIN32_MINGW
@@ -131,6 +136,8 @@ smartd_SOURCES = \
         int64.h \
         knowndrives.cpp \
         knowndrives.h \
+        nvmecmds.cpp \
+        nvmecmds.h \
         scsicmds.cpp \
         scsicmds.h \
         scsiata.cpp \
@@ -165,6 +172,8 @@ EXTRA_smartd_SOURCES = \
         dev_areca.cpp \
         dev_areca.h \
         dev_legacy.cpp \
+        linux_nvme_ioctl.h \
+        freebsd_nvme_ioctl.h \
         megaraid.h
 
 if OS_WIN32_MINGW
@@ -249,7 +258,7 @@ if OS_SOLARIS
 extra_MANS =      smartd.conf.4 \
                   smartctl.1m   \
                   smartd.1m
-if ENABLE_DRIVEDB
+if ENABLE_UPDATE_SMART_DRIVEDB
 extra_MANS += update-smart-drivedb.1m
 endif
 
@@ -287,7 +296,7 @@ man_MANS =        smartd.conf.5 \
                   smartctl.8    \
                   smartd.8
 
-if ENABLE_DRIVEDB
+if ENABLE_UPDATE_SMART_DRIVEDB
 man_MANS += update-smart-drivedb.8
 endif
 
@@ -363,9 +372,7 @@ EXTRA_DIST = \
         update-smart-drivedb.in \
         update-smart-drivedb.8.in \
         m4/pkg.m4 \
-        os_darwin/SMART.in \
-        os_darwin/StartupParameters.plist \
-        os_darwin/English_Localizable.strings \
+        os_darwin/com.smartmontools.smartd.plist.in \
         os_darwin/pkg/PackageInfo.in \
         os_darwin/pkg/Distribution.in \
         os_darwin/pkg/installer/README.html \
@@ -465,34 +472,20 @@ smartd_warning.sh: smartd_warning.sh.in config.status
 
 if INSTALL_INITSCRIPT
 if OS_DARWIN
-initd_DATA = SMART                            \
-	os_darwin/StartupParameters.plist     \
-	os_darwin/English_Localizable.strings
-
-initd_install_name = SMART
+initd_DATA = com.smartmontools.smartd.plist
 
 initd_DATA_install = install-initdDATA-darwin
 initd_DATA_uninstall = uninstall-initdDATA-darwin
 
-SMART : os_darwin/SMART.in
+com.smartmontools.smartd.plist : os_darwin/com.smartmontools.smartd.plist.in
 	sed "s|/usr/sbin/|$(sbindir)/|" $< > $@
 
 install-initdDATA-darwin: $(initd_DATA)
-	$(MKDIR_P) $(DESTDIR)$(initddir)
-	$(MKDIR_P) $(DESTDIR)$(initddir)/SMART
-	$(MKDIR_P) $(DESTDIR)$(initddir)/SMART/Resources
-	$(INSTALL_SCRIPT) $(top_builddir)/SMART $(DESTDIR)$(initddir)/SMART
-	$(INSTALL_DATA) $(srcdir)/os_darwin/StartupParameters.plist \
-	    $(DESTDIR)$(initddir)/SMART/StartupParameters.plist
-	for i in English ; do \
-	  RDIR=$(DESTDIR)$(initddir)/SMART/Resources/$${i}.lproj ; \
-	  $(MKDIR_P) $$RDIR ;\
-	  $(INSTALL_DATA) $(srcdir)/os_darwin/$${i}_Localizable.strings \
-	    $$RDIR/Localizable.strings ; \
-	done
+	$(MKDIR_P) '$(DESTDIR)$(initddir)'
+	$(INSTALL_DATA) $(top_builddir)/$(initd_DATA) $(DESTDIR)$(initddir)/$(initd_DATA)
 
 uninstall-initdDATA-darwin:
-	rm -rf $(DESTDIR)$(initddir)/$(initd_install_name)
+	rm -f $(DESTDIR)$(initddir)/$(initd_DATA)
 
 else
 
@@ -576,6 +569,11 @@ MAN_FILTER = { \
     else \
       sed '/^\.\\" %IF ENABLE_DRIVEDB/,/^\.\\" %ENDIF ENABLE_DRIVEDB/ s,^,.\\"\# ,' ; \
     fi | \
+    if test '$(with_update_smart_drivedb)' = 'yes'; then \
+      cat; \
+    else \
+      sed '/^\.\\" %IF ENABLE_UPDATE_SMART_DRIVEDB/,/^\.\\" %ENDIF ENABLE_UPDATE_SMART_DRIVEDB/ s,^,.\\"\# ,' ; \
+    fi | \
     if test -n '$(initddir)'; then \
       sed 's|/usr/local/etc/rc\.d/init\.d/|$(initddir)/|g' ; \
     else \
@@ -600,6 +598,11 @@ MAN_FILTER = { \
       cat; \
     else \
       sed '/^\.\\" %IF ENABLE_CAPABILITIES/,/^\.\\" %ENDIF ENABLE_CAPABILITIES/ s,^,.\\"\# ,' ; \
+    fi | \
+    if test '$(with_nvme_devicescan)' = 'yes'; then \
+      cat; \
+    else \
+      sed '/^\.\\" %IF ENABLE_NVME_DEVICESCAN/,/^\.\\" %ENDIF ENABLE_NVME_DEVICESCAN/ s,^,.\\"\# ,' ; \
     fi | \
     if test -n '$(os_man_filter)'; then \
       sed -e 's,OS_MAN_FILTER,$(os_man_filter),g' \

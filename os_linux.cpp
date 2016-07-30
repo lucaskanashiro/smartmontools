@@ -5,7 +5,7 @@
  *
  * Copyright (C) 2003-11 Bruce Allen
  * Copyright (C) 2003-11 Doug Gilbert <dgilbert@interlog.com>
- * Copyright (C) 2008-15 Christian Franke
+ * Copyright (C) 2008-16 Christian Franke
  *
  * Original AACRaid code:
  *  Copyright (C) 2014    Raghava Aditya <raghava.aditya@pmcs.com>
@@ -93,13 +93,16 @@
 #include "dev_ata_cmd_set.h"
 #include "dev_areca.h"
 
+// "include/uapi/linux/nvme_ioctl.h" from Linux kernel sources
+#include "linux_nvme_ioctl.h" // nvme_passthru_cmd, NVME_IOCTL_ADMIN_CMD
+
 #ifndef ENOTSUP
 #define ENOTSUP ENOSYS
 #endif
 
 #define ARGUSED(x) ((void)(x))
 
-const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 4157 2015-10-20 16:03:57Z chrfranke $"
+const char * os_linux_cpp_cvsid = "$Id: os_linux.cpp 4295 2016-04-15 20:01:32Z chrfranke $"
   OS_LINUX_H_CVSID;
 extern unsigned char failuretest_permissive;
 
@@ -377,8 +380,8 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     memcpy(task+sizeof(ide_task_request_t), data, 512);
 
     if (ioctl(get_fd(), HDIO_DRIVE_TASKFILE, task)) {
-      if (errno==-EINVAL)
-        pout("Kernel lacks HDIO_DRIVE_TASKFILE support; compile kernel with CONFIG_IDE_TASKFILE_IO set\n");
+      if (errno==EINVAL)
+        pout("Kernel lacks HDIO_DRIVE_TASKFILE support; compile kernel with CONFIG_IDE_TASK_IOCTL set\n");
       return -1;
     }
     return 0;
@@ -403,7 +406,7 @@ int linux_ata_device::ata_command_interface(smart_command_set command, int selec
     buff[5]=normal_hi;
 
     if (ioctl(get_fd(), HDIO_DRIVE_TASK, buff)) {
-      if (errno==-EINVAL) {
+      if (errno==EINVAL) {
         pout("Error SMART Status command via HDIO_DRIVE_TASK failed");
         pout("Rebuild older linux 2.2 kernels with HDIO_DRIVE_TASK support added\n");
       }
@@ -545,14 +548,14 @@ static int sg_io_cmnd_io(int dev_fd, struct scsi_cmnd_io * iop, int report,
             (DXFER_TO_DEVICE == iop->dxfer_dir) && (iop->dxferp)) {
             int trunc = (iop->dxfer_len > 256) ? 1 : 0;
 
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
-                          "data, len=%d%s:\n", (int)iop->dxfer_len,
-                          (trunc ? " [only first 256 bytes shown]" : ""));
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
+                     "data, len=%d%s:\n", (int)iop->dxfer_len,
+                     (trunc ? " [only first 256 bytes shown]" : ""));
             dStrHex((const char *)iop->dxferp,
                     (trunc ? 256 : iop->dxfer_len) , 1);
         }
         else
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
         pout("%s", buff);
     }
     memset(&io_hdr, 0, sizeof(struct sg_io_hdr));
@@ -645,7 +648,7 @@ static int sg_io_cmnd_io(int dev_fd, struct scsi_cmnd_io * iop, int report,
             }
         }
         if (report) {
-            if (SCSI_STATUS_CHECK_CONDITION == iop->scsi_status) {
+            if (SCSI_STATUS_CHECK_CONDITION == iop->scsi_status && iop->sensep) {
                 if ((iop->sensep[0] & 0x7f) > 0x71)
                     pout("  status=%x: [desc] sense_key=%x asc=%x ascq=%x\n",
                          iop->scsi_status, iop->sensep[1] & 0xf,
@@ -693,18 +696,17 @@ static int sisc_cmnd_io(int dev_fd, struct scsi_cmnd_io * iop, int report)
         j = snprintf(buff, sz, " [%s: ", np ? np : "<unknown opcode>");
         for (k = 0; k < (int)iop->cmnd_len; ++k)
             j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "%02x ", ucp[k]);
-        if ((report > 1) &&
-            (DXFER_TO_DEVICE == iop->dxfer_dir) && (iop->dxferp)) {
+        if ((report > 1) && (DXFER_TO_DEVICE == iop->dxfer_dir)) {
             int trunc = (iop->dxfer_len > 256) ? 1 : 0;
 
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
-                          "data, len=%d%s:\n", (int)iop->dxfer_len,
-                          (trunc ? " [only first 256 bytes shown]" : ""));
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
+                     "data, len=%d%s:\n", (int)iop->dxfer_len,
+                     (trunc ? " [only first 256 bytes shown]" : ""));
             dStrHex((const char *)iop->dxferp,
                     (trunc ? 256 : iop->dxfer_len) , 1);
         }
         else
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
         pout("%s", buff);
     }
     switch (iop->dxfer_dir) {
@@ -974,14 +976,14 @@ bool linux_aacraid_device::scsi_pass_through(scsi_cmnd_io *iop)
         (DXFER_TO_DEVICE == iop->dxfer_dir) && (iop->dxferp)) {
         int trunc = (iop->dxfer_len > 256) ? 1 : 0;
 
-        j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
-                      "data, len=%d%s:\n", (int)iop->dxfer_len,
-                      (trunc ? " [only first 256 bytes shown]" : ""));
+        snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
+                 "data, len=%d%s:\n", (int)iop->dxfer_len,
+                 (trunc ? " [only first 256 bytes shown]" : ""));
         dStrHex((const char *)iop->dxferp,
                (trunc ? 256 : iop->dxfer_len) , 1);
     }
     else
-      j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
+      snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
 
     pout("%s", buff);
   }
@@ -1110,7 +1112,7 @@ class linux_megaraid_device
 {
 public:
   linux_megaraid_device(smart_interface *intf, const char *name, 
-    unsigned int bus, unsigned int tgt);
+    unsigned int tgt);
 
   virtual ~linux_megaraid_device() throw();
 
@@ -1123,7 +1125,6 @@ public:
 
 private:
   unsigned int m_disknum;
-  unsigned int m_busnum;
   unsigned int m_hba;
   int m_fd;
 
@@ -1136,10 +1137,10 @@ private:
 };
 
 linux_megaraid_device::linux_megaraid_device(smart_interface *intf,
-  const char *dev_name, unsigned int bus, unsigned int tgt)
+  const char *dev_name, unsigned int tgt)
  : smart_device(intf, dev_name, "megaraid", "megaraid"),
    linux_smart_device(O_RDWR | O_NONBLOCK),
-   m_disknum(tgt), m_busnum(bus), m_hba(0),
+   m_disknum(tgt), m_hba(0),
    m_fd(-1), pt_cmd(0)
 {
   set_info().info_name = strprintf("%s [megaraid_disk_%02d]", dev_name, m_disknum);
@@ -1279,14 +1280,14 @@ bool linux_megaraid_device::scsi_pass_through(scsi_cmnd_io *iop)
             (DXFER_TO_DEVICE == iop->dxfer_dir) && (iop->dxferp)) {
             int trunc = (iop->dxfer_len > 256) ? 1 : 0;
 
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
-                          "data, len=%d%s:\n", (int)iop->dxfer_len,
-                          (trunc ? " [only first 256 bytes shown]" : ""));
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n  Outgoing "
+                     "data, len=%d%s:\n", (int)iop->dxfer_len,
+                     (trunc ? " [only first 256 bytes shown]" : ""));
             dStrHex((const char *)iop->dxferp,
                     (trunc ? 256 : iop->dxfer_len) , 1);
         }
         else
-            j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
+            snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
         pout("%s", buff);
   }
 
@@ -2364,7 +2365,6 @@ int linux_highpoint_device::ata_command_interface(smart_command_set command, int
     unsigned int *hpt_tf = (unsigned int *)task;
     ide_task_request_t *reqtask = (ide_task_request_t *)(&task[4*sizeof(int)]);
     task_struct_t *taskfile = (task_struct_t *)reqtask->io_ports;
-    int retval;
 
     memset(task, 0, sizeof(task));
 
@@ -2389,16 +2389,13 @@ int linux_highpoint_device::ata_command_interface(smart_command_set command, int
 
     memcpy(task+sizeof(ide_task_request_t)+4*sizeof(int), data, 512);
 
-    if ((retval=ioctl(get_fd(), HPTIO_CTL, task))) {
-      if (retval==-EINVAL)
-        pout("Kernel lacks HDIO_DRIVE_TASKFILE support; compile kernel with CONFIG_IDE_TASKFILE_IO set\n");
+    if (ioctl(get_fd(), HPTIO_CTL, task))
       return -1;
-    }
+
     return 0;
   }
 
   if (command==STATUS_CHECK){
-    int retval;
     unsigned const char normal_lo=0x4f, normal_hi=0xc2;
     unsigned const char failed_lo=0xf4, failed_hi=0x2c;
     buff[4]=normal_lo;
@@ -2406,15 +2403,8 @@ int linux_highpoint_device::ata_command_interface(smart_command_set command, int
 
     hpt[2] = HDIO_DRIVE_TASK;
 
-    if ((retval=ioctl(get_fd(), HPTIO_CTL, hpt_buff))) {
-      if (retval==-EINVAL) {
-        pout("Error SMART Status command via HDIO_DRIVE_TASK failed");
-        pout("Rebuild older linux 2.2 kernels with HDIO_DRIVE_TASK support added\n");
-      }
-      else
-        syserror("Error SMART Status command failed");
+    if (ioctl(get_fd(), HPTIO_CTL, hpt_buff))
       return -1;
-    }
 
     if (buff[4]==normal_lo && buff[5]==normal_hi)
       return 0;
@@ -2589,6 +2579,76 @@ smart_device * linux_scsi_device::autodetect_open()
   return this;
 }
 
+/////////////////////////////////////////////////////////////////////////////
+/// NVMe support
+
+class linux_nvme_device
+: public /*implements*/ nvme_device,
+  public /*extends*/ linux_smart_device
+{
+public:
+  linux_nvme_device(smart_interface * intf, const char * dev_name,
+    const char * req_type, unsigned nsid);
+
+  virtual bool open();
+
+  virtual bool nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & out);
+};
+
+linux_nvme_device::linux_nvme_device(smart_interface * intf, const char * dev_name,
+  const char * req_type, unsigned nsid)
+: smart_device(intf, dev_name, "nvme", req_type),
+  nvme_device(nsid),
+  linux_smart_device(O_RDONLY | O_NONBLOCK)
+{
+}
+
+bool linux_nvme_device::open()
+{
+  if (!linux_smart_device::open())
+    return false;
+
+  if (!get_nsid()) {
+    // Use actual NSID (/dev/nvmeXnN) if available,
+    // else use broadcast namespace (/dev/nvmeX)
+    int nsid = ioctl(get_fd(), NVME_IOCTL_ID, (void*)0);
+    set_nsid(nsid);
+  }
+
+  return true;
+}
+
+bool linux_nvme_device::nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & out)
+{
+  nvme_passthru_cmd pt;
+  memset(&pt, 0, sizeof(pt));
+
+  pt.opcode = in.opcode;
+  pt.nsid = in.nsid;
+  pt.addr = (uint64_t)in.buffer;
+  pt.data_len = in.size;
+  pt.cdw10 = in.cdw10;
+  pt.cdw11 = in.cdw11;
+  pt.cdw12 = in.cdw12;
+  pt.cdw13 = in.cdw13;
+  pt.cdw14 = in.cdw14;
+  pt.cdw15 = in.cdw15;
+  // Kernel default for NVMe admin commands is 60 seconds
+  // pt.timeout_ms = 60 * 1000;
+
+  int status = ioctl(get_fd(), NVME_IOCTL_ADMIN_CMD, &pt);
+
+  if (status < 0)
+    return set_err(errno, "NVME_IOCTL_ADMIN_CMD: %s", strerror(errno));
+
+  if (status > 0)
+    return set_nvme_err(out, status);
+
+  out.result = pt.result;
+  return true;
+}
+
+
 //////////////////////////////////////////////////////////////////////
 // USB bridge ID detection
 
@@ -2661,6 +2721,9 @@ protected:
 
   virtual scsi_device * get_scsi_device(const char * name, const char * type);
 
+  virtual nvme_device * get_nvme_device(const char * name, const char * type,
+    unsigned nsid);
+
   virtual smart_device * autodetect_smart_device(const char * name);
 
   virtual smart_device * get_custom_smart_device(const char * name, const char * type);
@@ -2669,7 +2732,9 @@ protected:
 
 private:
   bool get_dev_list(smart_device_list & devlist, const char * pattern,
-    bool scan_ata, bool scan_scsi, const char * req_type, bool autodetect);
+    bool scan_ata, bool scan_scsi, bool scan_nvme,
+    const char * req_type, bool autodetect);
+
   bool get_dev_megasas(smart_device_list & devlist);
   smart_device * missing_option(const char * opt);
   int megasas_dcmd_cmd(int bus_no, uint32_t opcode, void *buf,
@@ -2696,7 +2761,7 @@ std::string linux_smart_interface::get_app_examples(const char * appname)
 // we are going to take advantage of the fact that Linux's devfs will only
 // have device entries for devices that exist.
 bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
-  const char * pattern, bool scan_ata, bool scan_scsi,
+  const char * pattern, bool scan_ata, bool scan_scsi, bool scan_nvme,
   const char * req_type, bool autodetect)
 {
   // Use glob to look for any directory entries matching the pattern
@@ -2779,6 +2844,8 @@ bool linux_smart_interface::get_dev_list(smart_device_list & devlist,
         dev = autodetect_smart_device(name);
       else if (is_scsi)
         dev = new linux_scsi_device(this, name, req_type, true /*scanning*/);
+      else if (scan_nvme)
+        dev = new linux_nvme_device(this, name, req_type, 0 /* use default nsid */);
       else
         dev = new linux_ata_device(this, name, req_type);
       if (dev) // autodetect_smart_device() may return nullptr.
@@ -2859,18 +2926,31 @@ bool linux_smart_interface::scan_smart_devices(smart_device_list & devlist,
   bool scan_ata  = (!*type || !strcmp(type, "ata" ));
   // "sat" detection will be later handled in linux_scsi_device::autodetect_open()
   bool scan_scsi = (!*type || !strcmp(type, "scsi") || !strcmp(type, "sat"));
-  if (!(scan_ata || scan_scsi))
-    return true;
+
+#ifdef WITH_NVME_DEVICESCAN // TODO: Remove when NVMe support is no longer EXPERIMENTAL
+  bool scan_nvme = (!*type || !strcmp(type, "nvme"));
+#else
+  bool scan_nvme = (          !strcmp(type, "nvme"));
+#endif
+
+  if (!(scan_ata || scan_scsi || scan_nvme)) {
+    set_err(EINVAL, "Invalid type '%s', valid arguments are: ata, scsi, sat, nvme", type);
+    return false;
+  }
 
   if (scan_ata)
-    get_dev_list(devlist, "/dev/hd[a-t]", true, false, type, false);
+    get_dev_list(devlist, "/dev/hd[a-t]", true, false, false, type, false);
   if (scan_scsi) {
     bool autodetect = !*type; // Try USB autodetection if no type specifed
-    get_dev_list(devlist, "/dev/sd[a-z]", false, true, type, autodetect);
+    get_dev_list(devlist, "/dev/sd[a-z]", false, true, false, type, autodetect);
     // Support up to 104 devices
-    get_dev_list(devlist, "/dev/sd[a-c][a-z]", false, true, type, autodetect);
+    get_dev_list(devlist, "/dev/sd[a-c][a-z]", false, true, false, type, autodetect);
     // get device list from the megaraid device
     get_dev_megasas(devlist);
+  }
+  if (scan_nvme) {
+    get_dev_list(devlist, "/dev/nvme[0-9]", false, false, true, type, false);
+    get_dev_list(devlist, "/dev/nvme[1-9][0-9]", false, false, true, type, false);
   }
 
   // if we found traditional links, we are done
@@ -2879,7 +2959,7 @@ bool linux_smart_interface::scan_smart_devices(smart_device_list & devlist,
 
   // else look for devfs entries without traditional links
   // TODO: Add udev support
-  return get_dev_list(devlist, "/dev/discs/disc*", scan_ata, scan_scsi, type, false);
+  return get_dev_list(devlist, "/dev/discs/disc*", scan_ata, scan_scsi, false, type, false);
 }
 
 ata_device * linux_smart_interface::get_ata_device(const char * name, const char * type)
@@ -2890,6 +2970,12 @@ ata_device * linux_smart_interface::get_ata_device(const char * name, const char
 scsi_device * linux_smart_interface::get_scsi_device(const char * name, const char * type)
 {
   return new linux_scsi_device(this, name, type);
+}
+
+nvme_device * linux_smart_interface::get_nvme_device(const char * name, const char * type,
+  unsigned nsid)
+{
+  return new linux_nvme_device(this, name, type, nsid);
 }
 
 smart_device * linux_smart_interface::missing_option(const char * opt)
@@ -2985,7 +3071,7 @@ linux_smart_interface::megasas_pd_add_list(int bus_no, smart_device_list & devli
       continue; /* non disk device found */
     char line[128];
     snprintf(line, sizeof(line) - 1, "/dev/bus/%d", bus_no);
-    smart_device * dev = new linux_megaraid_device(this, line, 0, list->addr[i].device_id);
+    smart_device * dev = new linux_megaraid_device(this, line, list->addr[i].device_id);
     devlist.push_back(dev);
   }
   free(list);
@@ -3076,6 +3162,10 @@ smart_device * linux_smart_interface::autodetect_smart_device(const char * name)
   // form /dev/nos* or nos*
   if (str_starts_with(test_name, "nos"))
     return new linux_scsi_device(this, name, "");
+
+  // form /dev/nvme* or nvme*
+  if (str_starts_with(test_name, "nvme"))
+    return new linux_nvme_device(this, name, "", 0 /* use default nsid */);
 
   // form /dev/tw[ael]* or tw[ael]*
   if (str_starts_with(test_name, "tw") && strchr("ael", test_name[2]))
@@ -3174,7 +3264,7 @@ smart_device * linux_smart_interface::get_custom_smart_device(const char * name,
 
   // MegaRAID ?
   if (sscanf(type, "megaraid,%d", &disknum) == 1) {
-    return new linux_megaraid_device(this, name, 0, disknum);
+    return new linux_megaraid_device(this, name, disknum);
   }
 
   //aacraid?

@@ -51,9 +51,6 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_NETDB_H
-#include <netdb.h>
-#endif
 
 #ifdef _WIN32
 #ifdef _MSC_VER
@@ -78,6 +75,7 @@ typedef int pid_t;
 #include "dev_interface.h"
 #include "knowndrives.h"
 #include "scsicmds.h"
+#include "nvmecmds.h"
 #include "utility.h"
 
 // This is for solaris, where signal() resets the handler to SIG_DFL
@@ -102,12 +100,10 @@ typedef int pid_t;
 #define SIGQUIT_KEYNAME "CONTROL-\\"
 #endif // _WIN32
 
-#if defined (__SVR4) && defined (__sun)
-extern "C" int getdomainname(char *, int); // no declaration in header files!
-#endif
-
-const char * smartd_cpp_cvsid = "$Id: smartd.cpp 4207 2016-01-22 19:35:10Z chrfranke $"
+const char * smartd_cpp_cvsid = "$Id: smartd.cpp 4308 2016-04-24 13:36:10Z chrfranke $"
   CONFIG_H_CVSID;
+
+using namespace smartmontools;
 
 // smartd exit codes
 #define EXIT_BADCMD    1   // command line did not parse
@@ -401,6 +397,9 @@ struct persistent_dev_state
   };
   scsi_nonmedium_error_t scsi_nonmedium_error;
 
+  // NVMe only
+  uint64_t nvme_err_log_entries;
+
   persistent_dev_state();
 };
 
@@ -411,7 +410,8 @@ persistent_dev_state::persistent_dev_state()
   scheduled_test_next_check(0),
   selective_test_last_start(0),
   selective_test_last_end(0),
-  ataerrorcount(0)
+  ataerrorcount(0),
+  nvme_err_log_entries(0)
 {
 }
 
@@ -431,6 +431,7 @@ struct temp_dev_state
 
   bool powermodefail;                     // true if power mode check failed
   int powerskipcnt;                       // Number of checks skipped due to idle or standby mode
+  int lastpowermodeskipped;               // the last power mode that was skipped
 
   // SCSI ONLY
   unsigned char SmartPageSupported;       // has log sense IE page (0x2f)
@@ -463,6 +464,7 @@ temp_dev_state::temp_dev_state()
   tempmin_delay(0),
   powermodefail(false),
   powerskipcnt(0),
+  lastpowermodeskipped(0),
   SmartPageSupported(false),
   TempPageSupported(false),
   ReadECounterPageSupported(false),
@@ -568,12 +570,13 @@ static bool parse_dev_state_line(const char * line, persistent_dev_state & state
        "|(resvd)" // (23)
        ")" // 18)
       ")" // 16)
+     "|(nvme-err-log-entries)" // (24)
      ")" // 1)
-     " *= *([0-9]+)[ \n]*$", // (24)
+     " *= *([0-9]+)[ \n]*$", // (25)
     REG_EXTENDED
   );
 
-  const int nmatch = 1+24;
+  const int nmatch = 1+25;
   regmatch_t match[nmatch];
   if (!regex.execute(line, nmatch, match))
     return false;
@@ -631,6 +634,8 @@ static bool parse_dev_state_line(const char * line, persistent_dev_state & state
     else
       return false;
   }
+  else if (match[m+7].rm_so >= 0)
+    state.nvme_err_log_entries = val;
   else
     return false;
   return true;
@@ -735,6 +740,9 @@ static bool write_dev_state(const char * path, const persistent_dev_state & stat
     write_dev_state_line(f, "ata-smart-attribute", i, "raw", pa.raw);
     write_dev_state_line(f, "ata-smart-attribute", i, "resvd", pa.resvd);
   }
+
+  // NVMe only
+  write_dev_state_line(f, "nvme-err-log-entries", state.nvme_err_log_entries);
 
   return true;
 }
@@ -885,10 +893,6 @@ static int Goodbye(int status)
 {
   // delete PID file, if one was created
   RemovePidFile();
-
-  // if we are exiting because of a code bug, tell user
-  if (status==EXIT_BADCODE)
-        PrintOut(LOG_CRIT, "Please inform " PACKAGE_BUGREPORT ", including output of smartd -V.\n");
 
   // and this should be the final output from smartd before it exits
   PrintOut(status?LOG_CRIT:LOG_INFO, "smartd is exiting (exit status %d)\n", status);
@@ -1472,7 +1476,7 @@ static const char *GetValidArgList(char opt)
   case 'q':
     return "nodev, errors, nodevstartup, never, onecheck, showtests";
   case 'r':
-    return "ioctl[,N], ataioctl[,N], scsiioctl[,N]";
+    return "ioctl[,N], ataioctl[,N], scsiioctl[,N], nvmeioctl[,N]";
   case 'B':
   case 'p':
   case 'w':
@@ -1706,7 +1710,7 @@ static bool check_pending_id(const dev_config & cfg, const dev_state & state,
   return true;
 }
 
-// Called by ATA/SCSIDeviceScan() after successful device check
+// Called by ATA/SCSI/NVMeDeviceScan() after successful device check
 static void finish_device_scan(dev_config & cfg, dev_state & state)
 {
   // Set cfg.emailfreq if user hasn't set it
@@ -2070,7 +2074,10 @@ static int ATADeviceScan(dev_config & cfg, dev_state & state, ata_device * atade
       PrintOut(LOG_CRIT, "Device: %s, no ATA CHECK POWER STATUS support, ignoring -n Directive\n", name);
       cfg.powermode=0;
     } 
-    else if (powermode!=0 && powermode!=0x80 && powermode!=0xff) {
+    else if (powermode!=0x00 && powermode!=0x01
+        && powermode!=0x40 && powermode!=0x41
+        && powermode!=0x80 && powermode!=0x81 && powermode!=0x82 && powermode!=0x83
+        && powermode!=0xff) {
       PrintOut(LOG_CRIT, "Device: %s, CHECK POWER STATUS returned %d, not ATA compliant, ignoring -n Directive\n",
 	       name, powermode);
       cfg.powermode=0;
@@ -2236,7 +2243,7 @@ static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scs
   uint64_t capacity = scsiGetSize(scsidev, &lb_size, NULL);
 
   if (capacity)
-    format_capacity(si_str, sizeof(si_str), capacity);
+    format_capacity(si_str, sizeof(si_str), capacity, ".");
   else
     si_str[0] = '\0';
 
@@ -2297,7 +2304,10 @@ static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scs
   
   // Flag that certain log pages are supported (information may be
   // available from other sources).
-  if (0 == scsiLogSense(scsidev, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 0)) {
+  if (0 == scsiLogSense(scsidev, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 0) ||
+      0 == scsiLogSense(scsidev, SUPPORTED_LPAGES, 0, tBuf, sizeof(tBuf), 68))
+      /* workaround for the bug #678 on ST8000NM0075/E001. Up to 64 pages + 4b header */
+  {
     for (int k = 4; k < tBuf[3] + LOGPAGEHDRSIZE; ++k) {
       switch (tBuf[k]) { 
       case TEMPERATURE_LPAGE:
@@ -2400,6 +2410,119 @@ static int SCSIDeviceScan(dev_config & cfg, dev_state & state, scsi_device * scs
     }
     if (!attrlog_path_prefix.empty())
       cfg.attrlog_file = strprintf("%s%s-%s-%s.scsi.csv", attrlog_path_prefix.c_str(), vendor, model, serial);
+  }
+
+  finish_device_scan(cfg, state);
+
+  return 0;
+}
+
+// Convert 128 bit LE integer to uint64_t or its max value on overflow.
+static uint64_t le128_to_uint64(const unsigned char (& val)[16])
+{
+  for (int i = 8; i < 16; i++) {
+    if (val[i])
+      return ~(uint64_t)0;
+  }
+  uint64_t lo = val[7];
+  for (int i = 7-1; i >= 0; i--) {
+    lo <<= 8; lo += val[i];
+  }
+  return lo;
+}
+
+// Get max temperature in Kelvin reported in NVMe SMART/Health log.
+static int nvme_get_max_temp_kelvin(const nvme_smart_log & smart_log)
+{
+  int k = (smart_log.temperature[1] << 8) | smart_log.temperature[0];
+  for (int i = 0; i < 8; i++) {
+    if (smart_log.temp_sensor[i] > k)
+      k = smart_log.temp_sensor[i];
+  }
+  return k;
+}
+
+static int NVMeDeviceScan(dev_config & cfg, dev_state & state, nvme_device * nvmedev)
+{
+  const char *name = cfg.name.c_str();
+
+  // Device must be open
+
+  // Get ID Controller
+  nvme_id_ctrl id_ctrl;
+  if (!nvme_read_id_ctrl(nvmedev, id_ctrl)) {
+    PrintOut(LOG_INFO, "Device: %s, NVMe Identify Controller failed\n", name);
+    CloseDevice(nvmedev, name);
+    return 2;
+  }
+
+  // Get drive identity
+  char model[40+1], serial[20+1], firmware[8+1];
+  format_char_array(model, id_ctrl.mn);
+  format_char_array(serial, id_ctrl.sn);
+  format_char_array(firmware, id_ctrl.fr);
+
+  // Format device id string for warning emails
+  char nsstr[32] = "", capstr[32] = "";
+  unsigned nsid = nvmedev->get_nsid();
+  if (nsid != 0xffffffff)
+    snprintf(nsstr, sizeof(nsstr), ", NSID:%u", nsid);
+  uint64_t capacity = le128_to_uint64(id_ctrl.tnvmcap);
+  if (capacity)
+    format_capacity(capstr, sizeof(capstr), capacity, ".");
+  cfg.dev_idinfo = strprintf("%s, S/N:%s, FW:%s%s%s%s", model, serial, firmware,
+                             nsstr, (capstr[0] ? ", " : ""), capstr);
+
+  PrintOut(LOG_INFO, "Device: %s, %s\n", name, cfg.dev_idinfo.c_str());
+
+  // Read SMART/Health log
+  nvme_smart_log smart_log;
+  if (!nvme_read_smart_log(nvmedev, smart_log)) {
+    PrintOut(LOG_INFO, "Device: %s, failed to read NVMe SMART/Health Information\n", name);
+    CloseDevice(nvmedev, name);
+    return 2;
+  }
+
+  // Check temperature sensor support
+  if (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit) {
+    if (!nvme_get_max_temp_kelvin(smart_log)) {
+      PrintOut(LOG_INFO, "Device: %s, no Temperature sensors, ignoring -W %d,%d,%d\n",
+               name, cfg.tempdiff, cfg.tempinfo, cfg.tempcrit);
+      cfg.tempdiff = cfg.tempinfo = cfg.tempcrit = 0;
+    }
+  }
+
+  // Init total error count
+  if (cfg.errorlog || cfg.xerrorlog) {
+    state.nvme_err_log_entries = le128_to_uint64(smart_log.num_err_log_entries);
+  }
+
+  // If no supported tests selected, return
+  if (!(   cfg.smartcheck || cfg.errorlog || cfg.xerrorlog
+        || cfg.tempdiff   || cfg.tempinfo || cfg.tempcrit )) {
+    CloseDevice(nvmedev, name);
+    return 3;
+  }
+
+  // Tell user we are registering device
+  PrintOut(LOG_INFO,"Device: %s, is SMART capable. Adding to \"monitor\" list.\n", name);
+
+  // Make sure that init_standby_check() ignores NVMe devices
+  cfg.offlinests_ns = cfg.selfteststs_ns = false;
+
+  CloseDevice(nvmedev, name);
+
+  if (!state_path_prefix.empty()) {
+    // Build file name for state file
+    std::replace_if(model, model+strlen(model), not_allowed_in_filename, '_');
+    std::replace_if(serial, serial+strlen(serial), not_allowed_in_filename, '_');
+    nsstr[0] = 0;
+    if (nsid != 0xffffffff)
+      snprintf(nsstr, sizeof(nsstr), "-n%u", nsid);
+    cfg.state_file = strprintf("%s%s-%s%s.nvme.state", state_path_prefix.c_str(), model, serial, nsstr);
+    // Read previous state
+    if (read_dev_state(cfg.state_file.c_str(), state))
+      PrintOut(LOG_INFO, "Device: %s, state read from %s\n", name, cfg.state_file.c_str());
   }
 
   finish_device_scan(cfg, state);
@@ -3012,6 +3135,28 @@ static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device 
   if (cfg.emailtest)
     MailWarning(cfg, state, 0, "TEST EMAIL from smartd for device: %s", name);
 
+  // User may have requested (with the -n Directive) to leave the disk
+  // alone if it is in idle or standby mode.  In this case check the
+  // power mode first before opening the device for full access,
+  // and exit without check if disk is reported in standby.
+  if (cfg.powermode && !state.powermodefail) {
+    // Note that 'is_powered_down()' handles opening the device itself, and
+    // can be used before calling 'open()' (that's the whole point of 'is_powered_down()'!).
+    if (atadev->is_powered_down())
+    {
+      // skip at most powerskipmax checks
+      if (!cfg.powerskipmax || state.powerskipcnt<cfg.powerskipmax) {
+        // report first only except if state has changed, avoid waking up system disk
+        if ((!state.powerskipcnt || state.lastpowermodeskipped != -1) && !cfg.powerquiet) {
+          PrintOut(LOG_INFO, "Device: %s, is in %s mode, suspending checks\n", name, "STANDBY (OS)");
+          state.lastpowermodeskipped = -1;
+        }
+        state.powerskipcnt++;
+        return 0;
+      }
+    }
+  }
+
   // if we can't open device, fail gracefully rather than hard --
   // perhaps the next time around we'll be able to open it.  ATAPI
   // cd/dvd devices will hang awaiting media if O_NONBLOCK is not
@@ -3048,9 +3193,15 @@ static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device 
       if (cfg.powermode>=1)
         dontcheck=1;
       break;
-    case 0:
+    case 0x00:
       // STANDBY
       mode="STANDBY";
+      if (cfg.powermode>=2)
+        dontcheck=1;
+      break;
+    case 0x01:
+      // STANDBY_Y
+      mode="STANDBY_Y";
       if (cfg.powermode>=2)
         dontcheck=1;
       break;
@@ -3060,8 +3211,30 @@ static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device 
       if (cfg.powermode>=3)
         dontcheck=1;
       break;
+    case 0x81:
+      // IDLE_A
+      mode="IDLE_A";
+      if (cfg.powermode>=3)
+        dontcheck=1;
+      break;
+    case 0x82:
+      // IDLE_B
+      mode="IDLE_B";
+      if (cfg.powermode>=3)
+        dontcheck=1;
+      break;
+    case 0x83:
+      // IDLE_C
+      mode="IDLE_C";
+      if (cfg.powermode>=3)
+        dontcheck=1;
+      break;
     case 0xff:
       // ACTIVE/IDLE
+    case 0x40:
+      // ACTIVE
+    case 0x41:
+      // ACTIVE
       mode="ACTIVE or IDLE";
       break;
     default:
@@ -3077,8 +3250,11 @@ static int ATACheckDevice(const dev_config & cfg, dev_state & state, ata_device 
       // skip at most powerskipmax checks
       if (!cfg.powerskipmax || state.powerskipcnt<cfg.powerskipmax) {
         CloseDevice(atadev, name);
-        if (!state.powerskipcnt && !cfg.powerquiet) // report first only and avoid waking up system disk
+        // report first only except if state has changed, avoid waking up system disk
+        if ((!state.powerskipcnt || state.lastpowermodeskipped != powermode) && !cfg.powerquiet) {
           PrintOut(LOG_INFO, "Device: %s, is in %s mode, suspending checks\n", name, mode);
+          state.lastpowermodeskipped = powermode;
+        }
         state.powerskipcnt++;
         return 0;
       }
@@ -3312,6 +3488,89 @@ static int SCSICheckDevice(const dev_config & cfg, dev_state & state, scsi_devic
     return 0;
 }
 
+static int NVMeCheckDevice(const dev_config & cfg, dev_state & state, nvme_device * nvmedev)
+{
+  const char * name = cfg.name.c_str();
+
+  // TODO: Use common open function for ATA/SCSI/NVMe
+  // If user has asked, test the email warning system
+  if (cfg.emailtest)
+    MailWarning(cfg, state, 0, "TEST EMAIL from smartd for device: %s", name);
+
+  if (!nvmedev->open()) {
+    PrintOut(LOG_INFO, "Device: %s, open() failed: %s\n", name, nvmedev->get_errmsg());
+    MailWarning(cfg, state, 9, "Device: %s, unable to open device", name);
+    return 1;
+  }
+  if (debugmode)
+    PrintOut(LOG_INFO,"Device: %s, opened NVMe device\n", name);
+  reset_warning_mail(cfg, state, 9, "open device worked again");
+
+  // Read SMART/Health log
+  nvme_smart_log smart_log;
+  if (!nvme_read_smart_log(nvmedev, smart_log)) {
+      PrintOut(LOG_INFO, "Device: %s, failed to read NVMe SMART/Health Information\n", name);
+      MailWarning(cfg, state, 6, "Device: %s, failed to read NVMe SMART/Health Information", name);
+      state.must_write = true;
+      return 0;
+  }
+
+  // Check Critical Warning bits
+  if (cfg.smartcheck && smart_log.critical_warning) {
+    unsigned char w = smart_log.critical_warning;
+    std::string msg;
+    static const char * const wnames[] =
+      {"LowSpare", "Temperature", "Reliability", "R/O", "VolMemBackup"};
+
+    for (unsigned b = 0, cnt = 0; b < 8 ; b++) {
+      if (!(w & (1 << b)))
+        continue;
+      if (cnt)
+        msg += ", ";
+      if (++cnt > 3) {
+        msg += "..."; break;
+      }
+      if (b >= sizeof(wnames)/sizeof(wnames[0])) {
+        msg += "*Unknown*"; break;
+      }
+      msg += wnames[b];
+    }
+
+    PrintOut(LOG_CRIT, "Device: %s, Critical Warning (0x%02x): %s\n", name, w, msg.c_str());
+    MailWarning(cfg, state, 1, "Device: %s, Critical Warning (0x%02x): %s", name, w, msg.c_str());
+    state.must_write = true;
+  }
+
+  // Check temperature limits
+  if (cfg.tempdiff || cfg.tempinfo || cfg.tempcrit) {
+    int k = nvme_get_max_temp_kelvin(smart_log);
+    // Convert Kelvin to positive Celsius (TODO: Allow negative temperatures)
+    int c = k - 273;
+    if (c < 1)
+      c = 1;
+    else if (c > 0xff)
+      c = 0xff;
+    CheckTemperature(cfg, state, c, 0);
+  }
+
+  // Check if number of errors has increased
+  if (cfg.errorlog || cfg.xerrorlog) {
+    uint64_t oldcnt = state.nvme_err_log_entries;
+    uint64_t newcnt = le128_to_uint64(smart_log.num_err_log_entries);
+    if (newcnt > oldcnt) {
+      PrintOut(LOG_CRIT, "Device: %s, number of Error Log entries increased from %" PRIu64 " to %" PRIu64 "\n",
+               name, oldcnt, newcnt);
+      MailWarning(cfg, state, 4, "Device: %s, number of Error Log entries increased from %" PRIu64 " to %" PRIu64,
+                  name, oldcnt, newcnt);
+      state.must_write = true;
+    }
+    state.nvme_err_log_entries = newcnt;
+  }
+
+  CloseDevice(nvmedev, name);
+  return 0;
+}
+
 // 0=not used, 1=not disabled, 2=disable rejected by OS, 3=disabled
 static int standby_disable_state = 0;
 
@@ -3402,6 +3661,8 @@ static void CheckDevicesOnce(const dev_config_vector & configs, dev_state_vector
       ATACheckDevice(cfg, state, dev->to_ata(), firstpass, allow_selftests);
     else if (dev->is_scsi())
       SCSICheckDevice(cfg, state, dev->to_scsi(), allow_selftests);
+    else if (dev->is_nvme())
+      NVMeCheckDevice(cfg, state, dev->to_nvme());
   }
 
   do_disable_standby_check(configs, states);
@@ -3666,7 +3927,7 @@ static const char * strtok_dequote(const char * delimiters)
 // This function returns 1 if it has correctly parsed one token (and
 // any arguments), else zero if no tokens remain.  It returns -1 if an
 // error was encountered.
-static int ParseToken(char * token, dev_config & cfg)
+static int ParseToken(char * token, dev_config & cfg, smart_devtype_list & scan_types)
 {
   char sym;
   const char * name = cfg.name.c_str();
@@ -3738,8 +3999,10 @@ static int ParseToken(char * token, dev_config & cfg)
       cfg.removable = true;
     } else if (!strcmp(arg, "auto")) {
       cfg.dev_type = "";
+      scan_types.clear();
     } else {
       cfg.dev_type = arg;
+      scan_types.push_back(arg);
     }
     break;
   case 'F':
@@ -3923,17 +4186,13 @@ static int ParseToken(char * token, dev_config & cfg)
       if (!cfg.emailaddress.empty())
         PrintOut(LOG_INFO, "File %s line %d (drive %s): ignoring previous Address Directive -m %s\n",
                  configfile, lineno, name, cfg.emailaddress.c_str());
-#ifdef _WIN32
+#ifdef _WIN32 // TODO: Remove after smartmontools 6.5
       if (   !strcmp(arg, "msgbox")          || !strcmp(arg, "sysmsgbox")
           || str_starts_with(arg, "msgbox,") || str_starts_with(arg, "sysmsgbox,")) {
-        cfg.emailaddress = "console";
-        const char * arg2 = strchr(arg, ',');
-        if (arg2)
-          cfg.emailaddress += arg2;
-        PrintOut(LOG_INFO, "File %s line %d (drive %s): Deprecated -m %s changed to -m %s\n",
-                 configfile, lineno, name, arg, cfg.emailaddress.c_str());
+        PrintOut(LOG_CRIT, "File %s line %d (drive %s): -m %s is no longer supported, use -m console[,...] instead\n",
+                 configfile, lineno, name, arg);
+        return -1;
       }
-      else
 #endif
       cfg.emailaddress = arg;
     }
@@ -4139,7 +4398,8 @@ static int ParseToken(char * token, dev_config & cfg)
 // -2: found an error
 //
 // Note: this routine modifies *line from the caller!
-static int ParseConfigLine(dev_config_vector & conf_entries, dev_config & default_conf, int lineno, /*const*/ char * line)
+static int ParseConfigLine(dev_config_vector & conf_entries, dev_config & default_conf,
+  smart_devtype_list & scan_types, int lineno, /*const*/ char * line)
 {
   const char *delim = " \n\t";
 
@@ -4168,7 +4428,7 @@ static int ParseConfigLine(dev_config_vector & conf_entries, dev_config & defaul
 
   // parse tokens one at a time from the file.
   while (char * token = strtok(0, delim)) {
-    int rc = ParseToken(token, cfg);
+    int rc = ParseToken(token, cfg, scan_types);
     if (rc < 0)
       // error found on the line
       return -2;
@@ -4178,6 +4438,13 @@ static int ParseConfigLine(dev_config_vector & conf_entries, dev_config & defaul
       break;
 
     // PrintOut(LOG_INFO,"Parsed token %s\n",token);
+  }
+
+  // Check for multiple -d TYPE directives
+  if (retval != -1 && scan_types.size() > 1) {
+    PrintOut(LOG_CRIT, "Drive: %s, invalid multiple -d TYPE Directives on line %d of file %s\n",
+             cfg.name.c_str(), cfg.lineno, configfile);
+    return -2;
   }
 
   // Don't perform checks below for DEFAULT entries
@@ -4236,7 +4503,7 @@ static int ParseConfigLine(dev_config_vector & conf_entries, dev_config & defaul
 // Empty configuration file ==> conf_entries.empty()
 // No configuration file    ==> conf_entries[0].lineno == 0
 // SCANDIRECTIVE found      ==> conf_entries.back().lineno != 0 (size >= 1)
-static int ParseConfigFile(dev_config_vector & conf_entries)
+static int ParseConfigFile(dev_config_vector & conf_entries, smart_devtype_list & scan_types)
 {
   // maximum line length in configuration file
   const int MAXLINELEN = 256;
@@ -4265,7 +4532,7 @@ static int ParseConfigFile(dev_config_vector & conf_entries)
   if (!f) {
     char fakeconfig[] = SCANDIRECTIVE " -a"; // TODO: Remove this hack, build cfg_entry.
 
-    if (ParseConfigLine(conf_entries, default_conf, 0, fakeconfig) != -1)
+    if (ParseConfigLine(conf_entries, default_conf, scan_types, 0, fakeconfig) != -1)
       throw std::logic_error("Internal error parsing " SCANDIRECTIVE);
     return 0;
   }
@@ -4297,7 +4564,7 @@ static int ParseConfigFile(dev_config_vector & conf_entries)
     // are we at the end of the file?
     if (!code){
       if (cont) {
-        scandevice = ParseConfigLine(conf_entries, default_conf, contlineno, fullline);
+        scandevice = ParseConfigLine(conf_entries, default_conf, scan_types, contlineno, fullline);
         // See if we found a SCANDIRECTIVE directive
         if (scandevice==-1)
           return 0;
@@ -4350,7 +4617,8 @@ static int ParseConfigFile(dev_config_vector & conf_entries)
     }
 
     // Not a continuation line. Parse it
-    scandevice = ParseConfigLine(conf_entries, default_conf, contlineno, fullline);
+    scan_types.clear();
+    scandevice = ParseConfigLine(conf_entries, default_conf, scan_types, contlineno, fullline);
 
     // did we find a scandevice directive?
     if (scandevice==-1)
@@ -4537,33 +4805,22 @@ static void ParseOpts(int argc, char **argv)
     case 'r':
       // report IOCTL transactions
       {
-        int i;
-        char *s;
-
-        // split_report_arg() may modify its first argument string, so use a
-        // copy of optarg in case we want optarg for an error message.
-        if (!(s = strdup(optarg))) {
-          PrintOut(LOG_CRIT, "No memory to process -r option - exiting\n");
-          EXIT(EXIT_NOMEM);
-        }
-        if (split_report_arg(s, &i)) {
+        int n1 = -1, n2 = -1, len = strlen(optarg);
+        char s[9+1]; unsigned i = 1;
+        sscanf(optarg, "%9[a-z]%n,%u%n", s, &n1, &i, &n2);
+        if (!((n1 == len || n2 == len) && 1 <= i && i <= 4)) {
           badarg = true;
-        } else if (i<1 || i>3) {
-          debugmode=1;
-          PrintHead();
-          PrintOut(LOG_CRIT, "======> INVALID REPORT LEVEL: %s <=======\n", optarg);
-          PrintOut(LOG_CRIT, "======> LEVEL MUST BE INTEGER BETWEEN 1 AND 3<=======\n");
-          EXIT(EXIT_BADCMD);
         } else if (!strcmp(s,"ioctl")) {
-          ata_debugmode = scsi_debugmode = i;
+          ata_debugmode = scsi_debugmode = nvme_debugmode = i;
         } else if (!strcmp(s,"ataioctl")) {
           ata_debugmode = i;
         } else if (!strcmp(s,"scsiioctl")) {
           scsi_debugmode = i;
+        } else if (!strcmp(s,"nvmeioctl")) {
+          nvme_debugmode = i;
         } else {
           badarg = true;
         }
-        free(s);  // TODO: use std::string
       }
       break;
     case 'c':
@@ -4711,14 +4968,17 @@ static void ParseOpts(int argc, char **argv)
 // SCANDIRECTIVE Directive was found.  It makes entries for device
 // names returned by scan_smart_devices() in os_OSNAME.cpp
 static int MakeConfigEntries(const dev_config & base_cfg,
-  dev_config_vector & conf_entries, smart_device_list & scanned_devs, const char * type)
+  dev_config_vector & conf_entries, smart_device_list & scanned_devs,
+  const smart_devtype_list & types)
 {
   // make list of devices
   smart_device_list devlist;
-  if (!smi()->scan_smart_devices(devlist, (*type ? type : 0)))
-    PrintOut(LOG_CRIT,"Problem creating device name scan list\n");
+  if (!smi()->scan_smart_devices(devlist, types)) {
+    PrintOut(LOG_CRIT, "DEVICESCAN failed: %s\n", smi()->get_errmsg());
+    return 0;
+  }
   
-  // if no devices, or error constructing list, return
+  // if no devices, return
   if (devlist.size() <= 0)
     return 0;
 
@@ -4737,7 +4997,7 @@ static int MakeConfigEntries(const dev_config & base_cfg,
     dev_config & cfg = conf_entries.back();
     cfg.name = dev->get_info().info_name;
     cfg.dev_name = dev->get_info().dev_name;
-    cfg.dev_type = type;
+    cfg.dev_type = dev->get_info().dev_type;
   }
   
   return devlist.size();
@@ -4762,7 +5022,8 @@ static void CanNotRegister(const char *name, const char *type, int line, bool sc
 static int ReadOrMakeConfigEntries(dev_config_vector & conf_entries, smart_device_list & scanned_devs)
 {
   // parse configuration file configfile (normally /etc/smartd.conf)  
-  int entries = ParseConfigFile(conf_entries);
+  smart_devtype_list scan_types;
+  int entries = ParseConfigFile(conf_entries, scan_types);
 
   if (entries < 0) {
     // There was an error reading the configuration file.
@@ -4790,7 +5051,7 @@ static int ReadOrMakeConfigEntries(dev_config_vector & conf_entries, smart_devic
       PrintOut(LOG_INFO,"No configuration file %s found, scanning devices\n", configfile);
     
     // make config list of devices to search for
-    MakeConfigEntries(first, conf_entries, scanned_devs, first.dev_type.c_str());
+    MakeConfigEntries(first, conf_entries, scanned_devs, scan_types);
 
     // warn user if scan table found no devices
     if (conf_entries.empty())
@@ -4938,8 +5199,15 @@ static void RegisterDevices(const dev_config_vector & conf_entries, smart_device
         dev.reset();
       }
     }
+    // or register NVMe devices
+    else if (dev->is_nvme()) {
+      if (NVMeDeviceScan(cfg, state, dev->to_nvme())) {
+        CanNotRegister(cfg.name.c_str(), "NVMe", cfg.lineno, scanning);
+        dev.reset();
+      }
+    }
     else {
-      PrintOut(LOG_INFO, "Device: %s, neither ATA nor SCSI device\n", cfg.name.c_str());
+      PrintOut(LOG_INFO, "Device: %s, neither ATA, SCSI nor NVMe device\n", cfg.name.c_str());
       dev.reset();
     }
 
@@ -5065,13 +5333,16 @@ static int main_worker(int argc, char **argv)
 
       // Log number of devices we are monitoring...
       if (devices.size() > 0 || quit==2 || (quit==1 && !firstpass)) {
-        int numata = 0;
+        int numata = 0, numscsi = 0;
         for (unsigned i = 0; i < devices.size(); i++) {
-          if (devices.at(i)->is_ata())
+          const smart_device * dev = devices.at(i);
+          if (dev->is_ata())
             numata++;
+          else if (dev->is_scsi())
+            numscsi++;
         }
-        PrintOut(LOG_INFO,"Monitoring %d ATA and %d SCSI devices\n",
-                 numata, devices.size() - numata);
+        PrintOut(LOG_INFO,"Monitoring %d ATA/SATA, %d SCSI/SAS and %d NVMe devices\n",
+                 numata, numscsi, (int)devices.size() - numata - numscsi);
       }
       else {
         PrintOut(LOG_INFO,"Unable to monitor any SMART enabled devices. Try debug (-d) option. Exiting...\n");
@@ -5166,6 +5437,16 @@ static int smartd_main(int argc, char **argv)
     PrintOut(LOG_CRIT, "Smartd: Exception: %s\n", ex.what());
     status = EXIT_BADCODE;
   }
+
+  // Check for remaining device objects
+  if (smart_device::get_num_objects() != 0) {
+    PrintOut(LOG_CRIT, "Smartd: Internal Error: %d device object(s) left at exit.\n",
+             smart_device::get_num_objects());
+    status = EXIT_BADCODE;
+  }
+
+  if (status == EXIT_BADCODE)
+    PrintOut(LOG_CRIT, "Please inform " PACKAGE_BUGREPORT ", including output of smartd -V.\n");
 
   if (is_initialized)
     status = Goodbye(status);

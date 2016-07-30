@@ -52,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 4194 2016-01-01 13:46:00Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 4309 2016-04-24 14:59:15Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -96,17 +96,14 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
   if (!full)
     return info;
 
-  info += strprintf(
-    "\n"
-    "%s comes with ABSOLUTELY NO WARRANTY. This is free\n"
+  info += "\n";
+  info += prog_name;
+  info += " comes with ABSOLUTELY NO WARRANTY. This is free\n"
     "software, and you are welcome to redistribute it under\n"
     "the terms of the GNU General Public License; either\n"
     "version 2, or (at your option) any later version.\n"
     "See http://www.gnu.org for further details.\n"
-    "\n",
-    prog_name
-  );
-  info +=
+    "\n"
     "smartmontools release " PACKAGE_VERSION
       " dated " SMARTMONTOOLS_RELEASE_DATE " at " SMARTMONTOOLS_RELEASE_TIME "\n"
 #ifdef SMARTMONTOOLS_SVN_REV
@@ -116,13 +113,24 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
     "smartmontools SVN rev is unknown\n"
 #endif
     "smartmontools build host: " SMARTMONTOOLS_BUILD_HOST "\n"
-#if defined(__GNUC__) && defined(__VERSION__) // works also with CLang
-    "smartmontools build with: GCC " __VERSION__ "\n"
+    "smartmontools build with: "
+#if   __cplusplus > 201402
+                               "C++17"
+#elif __cplusplus > 201103
+                               "C++14"
+#elif __cplusplus > 199711
+                               "C++11"
+#else
+                               "C++98"
 #endif
-    "smartmontools configure arguments: "
+#if defined(__GNUC__) && defined(__VERSION__) // works also with CLang
+                                     ", GCC " __VERSION__
+#endif
+                                                          "\n"
+    "smartmontools configure arguments:"
   ;
   info += (sizeof(SMARTMONTOOLS_CONFIGURE_ARGS) > 1 ?
-           SMARTMONTOOLS_CONFIGURE_ARGS : "[no arguments given]");
+           SMARTMONTOOLS_CONFIGURE_ARGS : " [no arguments given]");
   info += '\n';
 
   return info;
@@ -510,33 +518,6 @@ bool regular_expression::compile()
   return true;
 }
 
-// Splits an argument to the -r option into a name part and an (optional) 
-// positive integer part.  s is a pointer to a string containing the
-// argument.  After the call, s will point to the name part and *i the
-// integer part if there is one or 1 otherwise.  Note that the string s may
-// be changed by this function.  Returns zero if successful and non-zero
-// otherwise.
-int split_report_arg(char *s, int *i)
-{
-  if ((s = strchr(s, ','))) {
-    // Looks like there's a name part and an integer part.
-    char *tailptr;
-
-    *s++ = '\0';
-    if (*s == '0' || !isdigit((int)*s))  // The integer part must be positive
-      return 1;
-    errno = 0;
-    *i = (int) strtol(s, &tailptr, 10);
-    if (errno || *tailptr != '\0')
-      return 1;
-  } else {
-    // There's no integer part.
-    *i = 1;
-  }
-
-  return 0;
-}
-
 #ifndef HAVE_STRTOULL
 // Replacement for missing strtoull() (Linux with libc < 6, MSVC)
 // Functionality reduced to requirements of smartd and split_selective_arg().
@@ -643,53 +624,6 @@ int split_selective_arg(char *s, uint64_t *start,
   return 0;
 }
 
-#ifdef OLD_INTERFACE
-
-int64_t bytes = 0;
-
-// Helps debugging.  If the second argument is non-negative, then
-// decrement bytes by that amount.  Else decrement bytes by (one plus)
-// length of null terminated string.
-void *FreeNonZero(void *address, int size, int /*line*/, const char* /*file*/){
-  if (address) {
-    if (size<0)
-      bytes-=1+strlen((char*)address);
-    else
-      bytes-=size;
-    free(address);
-  }
-  return NULL;
-}
-
-// A custom version of strdup() that keeps track of how much memory is
-// being allocated. If mustexist is set, it also throws an error if we
-// try to duplicate a NULL string.
-char *CustomStrDup(const char *ptr, int mustexist, int /*whatline*/, const char* /*file*/){
-  char *tmp;
-
-  // report error if ptr is NULL and mustexist is set
-  if (ptr==NULL){
-    if (mustexist)
-      throw std::runtime_error("Internal error in CustomStrDup()");
-    else
-      return NULL;
-  }
-
-  // make a copy of the string...
-  tmp=strdup(ptr);
-  
-  if (!tmp)
-    throw std::bad_alloc();
-  
-  // and track memory usage
-  bytes+=1+strlen(ptr);
-  
-  return tmp;
-}
-
-#endif // OLD_INTERFACE
-
-
 // Returns true if region of memory contains non-zero entries
 bool nonempty(const void * data, int size)
 {
@@ -697,6 +631,31 @@ bool nonempty(const void * data, int size)
     if (((const unsigned char *)data)[i])
       return true;
   return false;
+}
+
+// Copy not null terminated char array to null terminated string.
+// Replace non-ascii characters.  Remove leading and trailing blanks.
+const char * format_char_array(char * str, int strsize, const char * chr, int chrsize)
+{
+  int b = 0;
+  while (b < chrsize && chr[b] == ' ')
+    b++;
+  int n = 0;
+  while (b+n < chrsize && chr[b+n])
+    n++;
+  while (n > 0 && chr[b+n-1] == ' ')
+    n--;
+
+  if (n >= strsize)
+    n = strsize-1;
+
+  for (int i = 0; i < n; i++) {
+    char c = chr[b+i];
+    str[i] = (' ' <= c && c <= '~' ? c : '?');
+  }
+
+  str[n] = 0;
+  return str;
 }
 
 // Format integer with thousands separator

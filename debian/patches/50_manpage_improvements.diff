@@ -46,11 +46,9 @@ Change a hyphen-minus to a minus (\-), if in front of a name for an option
 
 Remove space in the first column, if not intended.
 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 21b031f..df2b6c4 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
+@@ -15,7 +15,7 @@
  This code was originally developed as a Senior Thesis by Michael Cornwell
  at the Concurrent Systems Laboratory (now part of the Storage Systems
  Research Center), Jack Baskin School of Engineering, University of
@@ -59,7 +57,7 @@ index 21b031f..df2b6c4 100644
  
  ..
  .TH SMARTD.CONF 5 "CURRENT_SVN_DATE" "CURRENT_SVN_VERSION" "SMART Monitoring Tools"
-@@ -33,23 +33,23 @@ daemon.
+@@ -33,23 +33,23 @@
  
  If the configuration file \fB/usr/local/etc/smartd.conf\fP is present,
  \fBsmartd\fP reads it at startup, before \fBfork\fP(2)ing into the
@@ -88,7 +86,7 @@ index 21b031f..df2b6c4 100644
  
  One can avoid this problem, and gain more control over the types of
  events monitored by
-@@ -59,27 +59,27 @@ by using the configuration file
+@@ -59,27 +59,27 @@
  This file contains a list of devices to monitor, with one device per
  line.  An example file is included with the
  .B smartmontools
@@ -124,7 +122,7 @@ index 21b031f..df2b6c4 100644
  of the
  .B DIRECTIVES
  Section below!
-@@ -92,127 +92,127 @@ Section below!
+@@ -92,127 +92,127 @@
  .B # On the second disk, start a long self-test every
  .B # Sunday between 3 and 4 am.
  .B #
@@ -314,7 +312,7 @@ index 21b031f..df2b6c4 100644
  .B #
  .B ################################################
  .fi
-@@ -237,23 +237,23 @@ as defaults for the next device entries.
+@@ -237,23 +237,23 @@
  This configuration:
  .PP
  .nf
@@ -346,7 +344,7 @@ index 21b031f..df2b6c4 100644
  .fi
  
  
-@@ -264,36 +264,36 @@ or
+@@ -264,36 +264,36 @@
  .B DEFAULT
  on any line of the
  .B /usr/local/etc/smartd.conf
@@ -394,7 +392,7 @@ index 21b031f..df2b6c4 100644
  The individual SATA disks hosted by the Areca controller appear to \fBsmartd\fP
  as normal ATA devices.  Hence all the ATA directives can be used for
  these disks.  Areca firmware version 1.46 or later which supports
-@@ -328,9 +328,9 @@ This is for ATA disks that have a SCSI to ATA Translation (SAT) Layer
+@@ -340,9 +340,9 @@
  (SATL) between the disk and the operating system.
  SAT defines two ATA PASS THROUGH SCSI commands, one 12 bytes long and
  the other 16 bytes long.  The default is the 16 byte variant which can be
@@ -406,7 +404,7 @@ index 21b031f..df2b6c4 100644
  only used if the SCSI INQUIRY data reports a SATL (VENDOR: "ATA     ").
  Otherwise device type SCSI (for SCSI/SAS disks) is used.
  
-@@ -338,28 +338,28 @@ Otherwise device type SCSI (for SCSI/SAS disks) is used.
+@@ -350,28 +350,28 @@
  \- this device type is for ATA disks that are behind a Cypress USB to PATA
  bridge.  This will use the ATACB proprietary scsi pass through command.
  The default SCSI operation code is 0x24, but although it can be overridden
@@ -442,7 +440,7 @@ index 21b031f..df2b6c4 100644
  Note that this does not yet support the SMART status command.
  
  .I usbprolific
-@@ -384,7 +384,7 @@ to a MegaRAID controller.  The non-negative integer N (in the range of 0 to
+@@ -396,7 +396,7 @@
  This interface will also work for Dell PERC controllers.
  In log files and email messages this disk will be identified as
  megaraid_disk_XXX with XXX in the range from 000 to 127 inclusive.
@@ -451,7 +449,7 @@ index 21b031f..df2b6c4 100644
  number.
  Please see the \fBsmartctl\fP(8) man page for further details.
  
-@@ -420,7 +420,7 @@ Please see the \fBsmartctl\fP(8) man page for further details.
+@@ -432,7 +432,7 @@
  \- [FreeBSD, Linux, Windows and Cygwin only] the device consists of one or more SATA disks
  connected to an Areca SATA RAID controller.  The positive integer N (in the range
  from 1 to 24 inclusive) denotes which disk on the controller is monitored.
@@ -460,7 +458,7 @@ index 21b031f..df2b6c4 100644
  areca_disk_XX with XX in the range from 01 to 24 inclusive.
  Please see the \fBsmartctl\fP(8) man page for further details.
  
-@@ -460,7 +460,7 @@ Please see the \fBsmartctl\fP(8) man page for further details.
+@@ -472,7 +472,7 @@
  This allows to ignore specific devices which are detected by a following
  DEVICESCAN configuration line.
  It may also be used to temporary disable longer multi-line configuration entries.
@@ -469,7 +467,7 @@ index 21b031f..df2b6c4 100644
  
  .I removable
  \- the device or its media is removable.  This indicates to
-@@ -468,16 +468,16 @@ This Directive may be used in conjunction with the other \'\-d\' Directives.
+@@ -480,16 +480,16 @@
  that it should continue (instead of exiting, which is the default
  behavior) if the device does not appear to be present when
  \fBsmartd\fP is started.  This Directive may be used in conjunction
@@ -492,7 +490,7 @@ index 21b031f..df2b6c4 100644
  commands issued by \fBsmartd\fP, the disk platters are spun up.  So if
  this option is not used, then a disk which is in a low-power mode may
  be spun up and put into a higher-power mode when it is periodically
-@@ -485,11 +485,11 @@ polled by \fBsmartd\fP.
+@@ -497,11 +497,11 @@
  
  Note that if the disk is in SLEEP mode when \fBsmartd\fP is started,
  then it won't respond to \fBsmartd\fP commands, and so the disk won't
@@ -506,7 +504,7 @@ index 21b031f..df2b6c4 100644
  periodic checks should still be carried out when the device is in a
  low-power mode.  It may be used to prevent a disk from being spun-up
  by periodic \fBsmartd\fP polling.  The allowed values of POWERMODE
-@@ -497,7 +497,7 @@ are:
+@@ -509,7 +509,7 @@
  
  .I never
  \- \fBsmartd\fP will poll (check) the device regardless of its power
@@ -515,7 +513,7 @@ index 21b031f..df2b6c4 100644
  \fBsmartd\fP checks it.  This is the default behavior if the '\-n'
  Directive is not given.
  
-@@ -516,16 +516,16 @@ In the IDLE state, most disks are still spinning, so this is probably
+@@ -528,16 +528,16 @@
  not what you want.
  
  Maximum number of skipped checks (in a row) can be specified by
@@ -536,7 +534,7 @@ index 21b031f..df2b6c4 100644
  .TP
  .B \-T TYPE
  Specifies how tolerant
-@@ -570,7 +570,7 @@ Directive are \fIon\fP and \fIoff\fP.  Also affects SCSI devices.
+@@ -582,7 +582,7 @@
  STATUS command.
  If this command reports a failing health status, then disk
  failure is predicted in less than 24 hours, and a message at loglevel
@@ -545,8 +543,8 @@ index 21b031f..df2b6c4 100644
  will be logged to syslog.  [Please see the
  .B smartctl \-H
  command-line option.]
-@@ -587,7 +587,7 @@ error log has increased since the last check.
- \- [ATA only] report if the number of ATA errors reported in the Extended
+@@ -615,7 +615,7 @@
+ \- [ATA] report if the number of ATA errors reported in the Extended
  Comprehensive SMART error log has increased since the last check.
  
 -If both \'\-l error\' and \'\-l xerror\' are specified, smartd checks
@@ -554,7 +552,7 @@ index 21b031f..df2b6c4 100644
  the maximum of both values.
  
  [Please see the \fBsmartctl \-l xerror\fP command-line option.]
-@@ -598,10 +598,10 @@ Self-Test Log has increased since the last check, or if the timestamp
+@@ -633,10 +633,10 @@
  associated with the most recent failed test has increased.  Note that
  such errors will \fBonly\fP be logged if you run self-tests on the
  disk (and it fails a test!).  Self-Tests can be run automatically by
@@ -569,7 +567,7 @@ index 21b031f..df2b6c4 100644
  command-line option.
  [Please see the \fBsmartctl \-l\fP and \fB\-t\fP command-line
  options.]
-@@ -615,16 +615,16 @@ an extended self-test is run after all bad sectors have been reallocated.
+@@ -650,16 +650,16 @@
  \- [ATA only] report if the Offline Data Collection status has changed
  since the last check.  The report will be logged as LOG_CRIT if the new
  status indicates an error.  With some drives the status often changes,
@@ -590,7 +588,7 @@ index 21b031f..df2b6c4 100644
  .\" %ENDIF OS Cygwin Windows
  
  .I selfteststs[,ns]
-@@ -632,16 +632,16 @@ Data Collection is in progress. See \'\-l selfteststs,ns\' below.
+@@ -667,16 +667,16 @@
  since the last check.  The report will be logged as LOG_CRIT if the new
  status indicates an error.
  .\" %IF NOT OS Cygwin Windows
@@ -610,7 +608,7 @@ index 21b031f..df2b6c4 100644
  timeout.  Auto standby is not disabled if the system is running on
  battery.
  .\" %ENDIF OS Cygwin Windows
-@@ -683,25 +683,25 @@ IDLE mode.
+@@ -718,25 +718,25 @@
  Run Self-Tests or Offline Immediate Tests, at scheduled times.  A
  Self- or Offline Immediate Test will be run at the end of periodic
  device polling, if all 12 characters of the string \fBT/MM/DD/d/HH\fP
@@ -644,7 +642,7 @@ index 21b031f..df2b6c4 100644
  test span is preserved by smartd and used if (and only if) the selective
  self test log is empty.
  .IP \fBMM\fP 4
-@@ -709,7 +709,7 @@ is the month of the year, expressed with two decimal digits.  The
+@@ -744,7 +744,7 @@
  range is from 01 (January) to 12 (December) inclusive.  Do \fBnot\fP
  use a single decimal digit or the match will always fail!
  .IP \fBDD\fP 4
@@ -653,7 +651,7 @@ index 21b031f..df2b6c4 100644
  range is from 01 to 31 inclusive.  Do \fBnot\fP
  use a single decimal digit or the match will always fail!
  .IP \fBd\fP 4
-@@ -717,7 +717,7 @@ is the day of the week, expressed with one decimal digit.  The
+@@ -752,7 +752,7 @@
  range is from 1 (Monday) to 7 (Sunday) inclusive.
  .IP \fBHH\fP 4
  is the hour of the day, written with two decimal digits, and given in
@@ -662,7 +660,7 @@ index 21b031f..df2b6c4 100644
  to 23 (11pm to just before midnight) inclusive.  Do \fBnot\fP use a
  single decimal digit or the match will always fail!
  .RE
-@@ -726,37 +726,37 @@ single decimal digit or the match will always fail!
+@@ -761,37 +761,37 @@
  .TP
  .B \&
  Some examples follow.  In reading these, keep in mind that in extended
@@ -712,7 +710,7 @@ index 21b031f..df2b6c4 100644
  with this directive:
  .nf
  \fB \-s n/../../[1-5]/12\fP
-@@ -767,7 +767,7 @@ Scheduled tests are run immediately following the regularly-scheduled
+@@ -802,7 +802,7 @@
  device polling, if the current local date, time, and test type, match
  \fBREGEXP\fP.  By default the regularly-scheduled device polling
  occurs every thirty minutes after starting \fBsmartd\fP.  Take caution
@@ -721,7 +719,7 @@ index 21b031f..df2b6c4 100644
  sixty minutes: the poll times may fail to coincide with any of the
  testing times that you have specified with \fBREGEXP\fP.  In this case
  the test will be run following the next device polling.
-@@ -782,7 +782,7 @@ test was already started or run in the same hour.
+@@ -817,7 +817,7 @@
  
  To avoid performance problems during system boot, \fBsmartd\fP will
  not attempt to run any scheduled tests following the very first
@@ -730,7 +728,7 @@ index 21b031f..df2b6c4 100644
  
  Each time a test is run, \fBsmartd\fP will log an entry to SYSLOG.
  You can use these or the '-q showtests' command-line option to verify
-@@ -792,12 +792,12 @@ if multiple test types are all scheduled for the same hour, the
+@@ -827,12 +827,12 @@
  longer test type has precedence.  This is usually the desired behavior.
  
  If the scheduled tests are used in conjunction with state persistence
@@ -746,7 +744,7 @@ index 21b031f..df2b6c4 100644
  during disk standby time, the longest of these tests is run when the
  disk is active again.
  
-@@ -809,24 +809,24 @@ in \fBREGEXP\fP that appear to indicate that you have made this
+@@ -844,24 +844,24 @@
  mistake.
  .TP
  .B \-m ADD
@@ -779,7 +777,7 @@ index 21b031f..df2b6c4 100644
  Directive described below to send one test email message on
  \fBsmartd\fP
  startup.
-@@ -837,38 +837,38 @@ executable must be in the path of the shell or environment from which
+@@ -872,38 +872,38 @@
  \fBsmartd\fP
  was started.  If you wish to specify an explicit path to the mail
  executable (for example /usr/local/bin/mail) or a custom script to
@@ -830,37 +828,7 @@ index 21b031f..df2b6c4 100644
  .\" %ENDIF NOT OS Windows
  .\" %ENDIF ENABLE_SMARTDPLUGINDIR
  .\" %IF OS Windows
-@@ -876,21 +876,21 @@ This is handled by the script /usr/local/etc/smartd_warning.sh
- [Windows only] If one of the following words are used as the first address
- in the comma separated list, warning messages are sent via WTSSendMessage().
- This displays message boxes on the desktops of the selected sessions.
--Address \'\fBconsole\fP\' specifies the console session only,
--\'\fBactive\fP\' specifies the console session and all active remote
--sessions, and \'\fBconnected\fP\' specifies the console session and
-+Address \(aq\fBconsole\fP\(aq specifies the console session only,
-+\(aq\fBactive\fP\(aq specifies the console session and all active remote
-+sessions, and \(aq\fBconnected\fP\(aq specifies the console session and
- all connected (active or waiting for login) remote sessions.
- This is handled by the script EXEDIR/smartd_warning.cmd which runs
--the tool EXEDIR/wtssendmsg.exe (see also \'\-M exec\' below).
--The addresses \'\fBmsgbox\fP\' and \'\fBsysmsgbox\fP\' are now
--deprecated and have the same effect as \'\fBconsole\fP\'.
-+the tool EXEDIR/wtssendmsg.exe (see also \(aq\-M exec\(aq below).
-+The addresses \(aq\fBmsgbox\fP\(aq and \(aq\fBsysmsgbox\fP\(aq are now
-+deprecated and have the same effect as \(aq\fBconsole\fP\(aq.
- .\" %ENDIF OS Windows
- .TP
- .B \-M TYPE
- These Directives modify the behavior of the
- \fBsmartd\fP
--email warnings enabled with the \'\-m\' email Directive described above.
--These \'\-M\' Directives only work in conjunction with the \'\-m\'
-+email warnings enabled with the \(aq\-m\(aq email Directive described above.
-+These \(aq\-M\(aq Directives only work in conjunction with the \(aq\-m\(aq
- Directive and can not be used without it.
- 
- Multiple \-M Directives may be given.  If more than one of the
-@@ -902,17 +902,17 @@ three):
+@@ -935,17 +935,17 @@
  
  .I once
  \- send only one warning email for each type of disk problem detected.  This
@@ -881,7 +849,7 @@ index 21b031f..df2b6c4 100644
  previous interval.
  
  If a disk problem is no longer detected, the internal email counter is
-@@ -927,7 +927,7 @@ immediately upon
+@@ -960,7 +960,7 @@
  startup.  This allows one to verify that email is delivered correctly.
  Note that if this Directive is used,
  \fBsmartd\fP
@@ -890,7 +858,7 @@ index 21b031f..df2b6c4 100644
  in addition to the single test email!
  
  .I exec PATH
-@@ -944,7 +944,7 @@ Then it must be included in double quotes.
+@@ -977,7 +977,7 @@
  By setting PATH to point to a customized script, you can make
  \fBsmartd\fP perform useful tricks when a disk problem is detected
  (beeping the console, shutting down the machine, broadcasting warnings
@@ -899,7 +867,7 @@ index 21b031f..df2b6c4 100644
  will \fBblock\fP until the executable PATH returns, so if your
  executable hangs, then \fBsmartd\fP will also hang.
  .\" %IF NOT OS Windows
-@@ -953,7 +953,7 @@ Some sample scripts are included in
+@@ -986,7 +986,7 @@
  .\" %ENDIF NOT OS Windows
  
  The return status of the executable is recorded by \fBsmartd\fP in
@@ -908,7 +876,7 @@ index 21b031f..df2b6c4 100644
  STDERR.  If it does, then this is interpreted as indicating that
  something is going wrong with your executable, and a fragment of this
  output is logged to SYSLOG to help you to understand the problem.
-@@ -962,25 +962,27 @@ should send mail or write to a file or device.
+@@ -995,25 +995,27 @@
  
  Before running the executable, \fBsmartd\fP sets a number of
  environment variables.  These environment variables may be used to
@@ -945,7 +913,7 @@ index 21b031f..df2b6c4 100644
  shell script you should probably enclose it in double quotes.
  .IP \fBSMARTD_DEVICEINFO\fP 4
  is set to device identify information.  It includes most of the info printed
-@@ -1019,7 +1021,7 @@ one or more disk sectors could not be read.
+@@ -1052,7 +1054,7 @@
  .br
  \fIFailedOpenDevice\fP: the open() command to the device failed.
  .IP \fBSMARTD_ADDRESS\fP 4
@@ -954,7 +922,7 @@ index 21b031f..df2b6c4 100644
  If ADD is \fB<nomailer>\fP, then \fBSMARTD_ADDRESS\fP is not set.
  Otherwise, it is set to the comma-separated-list of email addresses
  given by the argument ADD, with the commas replaced by spaces
-@@ -1034,17 +1036,18 @@ SMARTD_ADDRESS.
+@@ -1067,17 +1069,18 @@
  .\" %ENDIF OS Windows
  .IP \fBSMARTD_MESSAGE\fP 4
  is set to the one sentence summary warning email message string from
@@ -979,7 +947,7 @@ index 21b031f..df2b6c4 100644
  .\" %ENDIF NOT OS Windows
  .\" %IF OS Windows
  .IP \fBSMARTD_FULLMSGFILE\fP 4
-@@ -1055,8 +1058,8 @@ the mailer or command exits.
+@@ -1088,8 +1091,8 @@
  .\" %ENDIF OS Windows
  .IP \fBSMARTD_TFIRST\fP 4
  is a text string giving the time and date at which the first problem
@@ -990,7 +958,7 @@ index 21b031f..df2b6c4 100644
  .br
  Sun Feb  9 14:58:19 2003 CST
  .IP \fBSMARTD_TFIRSTEPOCH\fP 4
-@@ -1064,38 +1067,38 @@ is an integer, which is the unix epoch (number of seconds since Jan 1,
+@@ -1097,38 +1100,38 @@
  1970) for \fBSMARTD_TFIRST\fP.
  .IP \fBSMARTD_PREVCNT\fP 4
  is an integer specifying the number of previous messages sent.
@@ -1039,7 +1007,7 @@ index 21b031f..df2b6c4 100644
  .B <nomailer>
  then the executable pointed to by PATH is run in a shell with
  .B no
-@@ -1103,14 +1106,14 @@ STDIN and
+@@ -1136,14 +1139,14 @@
  .B no
  command-line arguments, for example:
  .nf
@@ -1056,7 +1024,7 @@ index 21b031f..df2b6c4 100644
  Directive are given below.
  .\" %IF NOT OS Windows
  Some sample scripts are also included in
-@@ -1142,7 +1145,7 @@ SMARTD_SUBJECT and SMARTD_FULLMESSAGE
+@@ -1175,7 +1178,7 @@
  are set by the script before running the executable.
  .TP
  .B \-f
@@ -1065,7 +1033,7 @@ index 21b031f..df2b6c4 100644
  Attributes are less than or equal to the threshold, it does NOT indicate
  imminent disk failure.  It "indicates an advisory condition where the usage
  or age of the device has exceeded its intended design life period."
-@@ -1150,28 +1153,28 @@ or age of the device has exceeded its intended design life period."
+@@ -1183,28 +1186,28 @@
  .TP
  .B \-p
  [ATA only] Report anytime that a Prefail Attribute has changed
@@ -1100,7 +1068,7 @@ index 21b031f..df2b6c4 100644
  want to keep getting messages about the hours-on-lifetime Attribute
  (usually Attribute 9) failing.  This Directive may appear multiple
  times for a single device, if you want to ignore multiple Attributes.
-@@ -1179,12 +1182,12 @@ times for a single device, if you want to ignore multiple Attributes.
+@@ -1212,12 +1215,12 @@
  .B \-I ID
  [ATA only] Ignore device Attribute \fBID\fP when tracking changes in the
  Attribute values.  \fBID\fP must be a decimal integer in the range
@@ -1116,7 +1084,7 @@ index 21b031f..df2b6c4 100644
  each time the temperature changes.  This Directive may appear multiple
  times for a single device, if you want to ignore multiple Attributes.
  .TP
-@@ -1192,27 +1195,27 @@ times for a single device, if you want to ignore multiple Attributes.
+@@ -1225,27 +1228,27 @@
  [ATA only] When tracking, report the \fIRaw\fP value of Attribute \fBID\fP
  along with its (normally reported) \fINormalized\fP value.  \fBID\fP must
  be a decimal integer in the range from 1 to 255.  This Directive modifies
@@ -1149,7 +1117,7 @@ index 21b031f..df2b6c4 100644
  Directive for the same Attribute, so that the Raw value of the
  Attribute is reported.
  
-@@ -1221,10 +1224,10 @@ A common use of this Directive is to track the device Temperature
+@@ -1254,10 +1257,10 @@
  different types of system behavior affects the values of certain
  Attributes.
  
@@ -1163,7 +1131,7 @@ index 21b031f..df2b6c4 100644
  .TP
  .B \-C ID[+]
  [ATA only] Report if the current number of pending sectors is
-@@ -1234,20 +1237,20 @@ value is the Current Pending Sector count.  The allowed range of
+@@ -1267,20 +1270,20 @@
  ID\ =\ 0.  If the \fB\-C ID\fP option is not given, then it defaults to
  \fB\-C 197\fP (since Attribute 197 is generally used to monitor
  pending sectors).  If the name of this Attribute is changed by a
@@ -1189,7 +1157,7 @@ index 21b031f..df2b6c4 100644
  Typically this is because your computer tried to read that sector, and
  the read failed because the data on it has been corrupted and has
  inconsistent Error Checking and Correction (ECC) codes.  This is
-@@ -1266,13 +1269,13 @@ value is the Offline Uncorrectable Sector count.  The allowed range of
+@@ -1299,13 +1302,13 @@
  ID\ =\ 0.  If the \fB\-U ID\fP option is not given, then it defaults to
  \fB\-U 198\fP (since Attribute 198 is generally used to monitor
  offline uncorrectable sectors).  If the name of this Attribute is changed
@@ -1207,7 +1175,7 @@ index 21b031f..df2b6c4 100644
  
  The warning email counter is reset if the number of offline uncorrectable
  sectors dropped to 0.  This typically happens when all offline uncorrectable
-@@ -1281,7 +1284,7 @@ sectors have been reallocated or could be read again.
+@@ -1314,7 +1317,7 @@
  An offline uncorrectable sector is a disk sector which was not
  readable during an off-line scan or a self-test.  This is important
  to know, because if you have data stored in this disk sector, and you
@@ -1216,7 +1184,7 @@ index 21b031f..df2b6c4 100644
  option for more details.
  .TP
  .B \-W DIFF[,INFO[,CRIT]]
-@@ -1290,21 +1293,21 @@ degrees since last report, or if new min or max temperature is detected.
+@@ -1323,21 +1326,21 @@
  Report or Warn if the temperature is greater or equal than one of
  \fBINFO\fP or \fBCRIT\fP degrees Celsius.
  If the limit \fBCRIT\fP is reached, a message with loglevel
@@ -1245,18 +1213,7 @@ index 21b031f..df2b6c4 100644
  
  To track temperature changes of at least 2 degrees, use:
  .nf
-@@ -1324,8 +1327,8 @@ To combine all of the above reports, use:
- .fi
- 
- For ATA devices, smartd interprets Attribute 194 or 190 as Temperature Celsius
--by default. This can be changed to Attribute 9 or 220 by the drive
--database or by the \'\-v 9,temp\' or \'\-v 220,temp\' directive.
-+by default.  This can be changed to Attribute 9 or 220 by the drive
-+database or by the \(aq\-v 9,temp\(aq or \(aq\-v 220,temp\(aq directive.
- .TP
- .B \-F TYPE
- [ATA only] Modifies the behavior of \fBsmartd\fP to compensate for some
-@@ -1334,7 +1337,7 @@ multiple times.  The valid arguments are:
+@@ -1373,7 +1376,7 @@
  
  .I none
  \- Assume that the device firmware obeys the ATA specifications.  This
@@ -1265,7 +1222,7 @@ index 21b031f..df2b6c4 100644
  drive database.  Using this directive will override any preset values.
  
  .I nologdir
-@@ -1360,8 +1363,8 @@ byte-reversed order.
+@@ -1399,8 +1402,8 @@
  .I samsung3
  \- Some Samsung disks (at least SP2514N with Firmware VF100-37) report
  a self-test still in progress with 0% remaining when the test was already
@@ -1276,7 +1233,7 @@ index 21b031f..df2b6c4 100644
  
  .I xerrorlba
  \- This only affects \fBsmartctl\fP.
-@@ -1372,19 +1375,19 @@ next scheduled self-test (see Directive \'\-s\' above) in this case.
+@@ -1411,19 +1414,19 @@
  [ATA only] Sets a vendor-specific raw value print FORMAT, an optional
  BYTEORDER and an optional NAME for Attribute ID.
  This directive may be used multiple times.
@@ -1301,7 +1258,7 @@ index 21b031f..df2b6c4 100644
  .TP
  .B \-P TYPE
  [ATA only] Specifies whether \fBsmartd\fP should use any preset options
-@@ -1408,22 +1411,22 @@ The valid arguments to this Directive are:
+@@ -1447,22 +1450,22 @@
  command-line option.]
  .TP
  .B \-a
@@ -1333,7 +1290,7 @@ index 21b031f..df2b6c4 100644
  to report nonzero values of the offline pending sector count.
  
  Note that \-a is the default for ATA devices.  If none of these other
-@@ -1448,7 +1451,7 @@ configuration file Directives might be:
+@@ -1487,7 +1490,7 @@
  .B \-H \-l\ selftest \-l\ error \-f.
  .fi
  If you want more frequent information, use:
@@ -1342,7 +1299,7 @@ index 21b031f..df2b6c4 100644
  
  .TP
  .B ADDITIONAL DETAILS ABOUT DEVICESCAN
-@@ -1465,16 +1468,16 @@ SMART properties of any devices that are found.
+@@ -1504,16 +1507,16 @@
  which will be applied to all devices that are found in the scan.  For
  example
  .nf
@@ -1363,7 +1320,7 @@ index 21b031f..df2b6c4 100644
  .fi
  will do the same, but only monitors the SMART health status of the
  devices, (rather than the default \-a, which monitors all SMART
-@@ -1483,26 +1486,26 @@ properties).
+@@ -1526,26 +1529,26 @@
  Configuration entries for specific devices may precede the \fBDEVICESCAN\fP entry.
  For example
  .nf
@@ -1401,7 +1358,7 @@ index 21b031f..df2b6c4 100644
  to the output of the smartd email warning message and sends it to ADDRESS.
  
  .nf
-@@ -1512,16 +1515,16 @@ to the output of the smartd email warning message and sends it to ADDRESS.
+@@ -1555,16 +1558,16 @@
  # Save the email message (STDIN) to a file:
  cat > /root/msg
  
@@ -1424,7 +1381,7 @@ index 21b031f..df2b6c4 100644
  then powers down the machine.
  
  .nf
-@@ -1539,7 +1542,7 @@ EOF
+@@ -1582,7 +1585,7 @@
  sleep 30
  
  # Power down the machine

@@ -40,7 +40,7 @@
 
 #define GBUF_SIZE 65535
 
-const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 4189 2015-12-16 14:53:41Z dpgilbert $"
+const char * scsiprint_c_cvsid = "$Id: scsiprint.cpp 4292 2016-04-12 23:06:59Z dpgilbert $"
                                  SCSIPRINT_H_CVSID;
 
 
@@ -85,7 +85,15 @@ scsiGetSupportedLogPages(scsi_device * device)
         if (scsi_debugmode > 0)
             pout("Log Sense for supported pages failed [%s]\n",
                  scsiErrString(err));
-        return;
+        /* try one more time with defined length, workaround for the bug #678
+        found with ST8000NM0075/E001 */
+        err = scsiLogSense(device, SUPPORTED_LPAGES, 0, gBuf,
+                            LOG_RESP_LEN, 68); /* 64 max pages + 4b header */
+        if (scsi_debugmode > 0)
+            pout("Log Sense for supported pages failed (second attempt) [%s]\n",
+                 scsiErrString(err));
+        if (err)
+            return;
     }
 
     for (i = 4; i < gBuf[3] + LOGPAGEHDRSIZE; i++) {
@@ -149,8 +157,8 @@ scsiGetSmartData(scsi_device * device, bool attribs)
 {
     UINT8 asc;
     UINT8 ascq;
-    UINT8 currenttemp = 0;
-    UINT8 triptemp = 0;
+    UINT8 currenttemp = 255;
+    UINT8 triptemp = 255;
     const char * cp;
     int err = 0;
     print_on();
@@ -171,13 +179,13 @@ scsiGetSmartData(scsi_device * device, bool attribs)
         pout("SMART Health Status: OK\n");
 
     if (attribs && !gTempLPage) {
-        if (currenttemp) {
-            if (255 != currenttemp)
-                pout("Current Drive Temperature:     %d C\n", currenttemp);
-            else
-                pout("Current Drive Temperature:     <not available>\n");
-        }
-        if (triptemp)
+        if (255 == currenttemp)
+            pout("Current Drive Temperature:     <not available>\n");
+        else
+            pout("Current Drive Temperature:     %d C\n", currenttemp);
+        if (255 == triptemp)
+            pout("Drive Trip Temperature:        <not available>\n");
+        else
             pout("Drive Trip Temperature:        %d C\n", triptemp);
     }
     pout("\n");
@@ -202,7 +210,7 @@ scsiGetTapeAlertsData(scsi_device * device, int peripheral_type)
     print_on();
     if ((err = scsiLogSense(device, TAPE_ALERTS_LPAGE, 0, gBuf,
                         LOG_RESP_TAPE_ALERT_LEN, LOG_RESP_TAPE_ALERT_LEN))) {
-        pout("scsiGetTapesAlertData Failed [%s]\n", scsiErrString(err));
+        pout("%s Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return -1;
     }
@@ -248,7 +256,7 @@ scsiGetStartStopData(scsi_device * device)
     if ((err = scsiLogSense(device, STARTSTOP_CYCLE_COUNTER_LPAGE, 0, gBuf,
                             LOG_RESP_LEN, 0))) {
         print_on();
-        pout("scsiGetStartStopData Failed [%s]\n", scsiErrString(err));
+        pout("%s Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return;
     }
@@ -486,7 +494,7 @@ scsiPrintSeagateFactoryLPage(scsi_device * device)
     if ((err = scsiLogSense(device, SEAGATE_FACTORY_LPAGE, 0, gBuf,
                             LOG_RESP_LEN, 0))) {
         print_on();
-        pout("scsiPrintSeagateFactoryLPage Failed [%s]\n", scsiErrString(err));
+        pout("%s Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return;
     }
@@ -733,7 +741,7 @@ scsiPrintSelfTest(scsi_device * device)
     if ((err = scsiLogSense(device, SELFTEST_RESULTS_LPAGE, 0, gBuf,
                             LOG_RESP_SELF_TEST_LEN, 0))) {
         print_on();
-        pout("scsiPrintSelfTest Failed [%s]\n", scsiErrString(err));
+        pout("%s: Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return FAILSMART;
     }
@@ -908,7 +916,7 @@ scsiPrintBackgroundResults(scsi_device * device)
     if ((err = scsiLogSense(device, BACKGROUND_RESULTS_LPAGE, 0, gBuf,
                             LOG_RESP_LONG_LEN, 0))) {
         print_on();
-        pout("scsiPrintBackgroundResults Failed [%s]\n", scsiErrString(err));
+        pout("%s Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return FAILSMART;
     }
@@ -1015,7 +1023,7 @@ scsiPrintSSMedia(scsi_device * device)
     if ((err = scsiLogSense(device, SS_MEDIA_LPAGE, 0, gBuf,
                             LOG_RESP_LONG_LEN, 0))) {
         print_on();
-        pout("scsiPrintSSMedia Failed [%s]\n", scsiErrString(err));
+        pout("%s: Failed [%s]\n", __func__, scsiErrString(err));
         print_off();
         return FAILSMART;
     }
@@ -1358,7 +1366,7 @@ scsiPrintSasPhy(scsi_device * device, int reset)
     if ((err = scsiLogSense(device, PROTOCOL_SPECIFIC_LPAGE, 0, gBuf,
                             LOG_RESP_LONG_LEN, 0))) {
         print_on();
-        pout("scsiPrintSasPhy Log Sense Failed [%s]\n\n", scsiErrString(err));
+        pout("%s Log Sense Failed [%s]\n\n", __func__, scsiErrString(err));
         print_off();
         return FAILSMART;
     }
@@ -1380,7 +1388,7 @@ scsiPrintSasPhy(scsi_device * device, int reset)
         if ((err = scsiLogSelect(device, 1 /* pcr */, 0 /* sp */, 0 /* pc */,
                                  PROTOCOL_SPECIFIC_LPAGE, 0, NULL, 0))) {
             print_on();
-            pout("scsiPrintSasPhy Log Select (reset) Failed [%s]\n\n",
+            pout("%s Log Select (reset) Failed [%s]\n\n", __func__,
                  scsiErrString(err));
             print_off();
             return FAILSMART;
@@ -1390,7 +1398,7 @@ scsiPrintSasPhy(scsi_device * device, int reset)
 }
 
 
-static const char * peripheral_dt_arr[] = {
+static const char * peripheral_dt_arr[32] = {
         "disk",
         "tape",
         "printer",
@@ -1406,23 +1414,23 @@ static const char * peripheral_dt_arr[] = {
         "storage array",
         "enclosure",
         "simplified disk",
-        "optical card reader"
-        "reserved [0x10]"
-        "object based storage"
-        "automation/driver interface"
-        "security manager device"
-        "host managed zoned block device"
-        "reserved [0x15]"
-        "reserved [0x16]"
-        "reserved [0x17]"
-        "reserved [0x18]"
-        "reserved [0x19]"
-        "reserved [0x1a]"
-        "reserved [0x1b]"
-        "reserved [0x1c]"
-        "reserved [0x1d]"
-        "well known logical unit"
-        "unknown or no device type"
+        "optical card reader",
+        "reserved [0x10]",
+        "object based storage",
+        "automation/driver interface",
+        "security manager device",
+        "host managed zoned block device",
+        "reserved [0x15]",
+        "reserved [0x16]",
+        "reserved [0x17]",
+        "reserved [0x18]",
+        "reserved [0x19]",
+        "reserved [0x1a]",
+        "reserved [0x1b]",
+        "reserved [0x1c]",
+        "reserved [0x1d]",
+        "well known logical unit",
+        "unknown or no device type",
 };
 
 static const char * transport_proto_arr[] = {
@@ -1580,16 +1588,31 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
                 lbprz = !! (rc16_12[2] & 0x40);
             }
         }
+        /* Thin Provisioning VPD page renamed Logical Block Provisioning VPD
+         * page in sbc3r25; some fields changed their meaning so that the
+         * new page covered both thin and resource provisioned LUs. */
         if (0 == scsiInquiryVpd(device, SCSI_VPD_LOGICAL_BLOCK_PROVISIONING,
                                 lb_prov_resp, sizeof(lb_prov_resp))) {
-            int prov_type = lb_prov_resp[6] & 0x7;
+            int prov_type = lb_prov_resp[6] & 0x7;      /* added sbc3r27 */
+            int vpd_lbprz = ((lb_prov_resp[5]  >> 2) & 0x7);  /* sbc4r07 */
 
             if (-1 == lbprz)
-                lbprz = !! (lb_prov_resp[5] & 0x4);
+                lbprz = vpd_lbprz;
+            else if ((0 == vpd_lbprz) && (1 == lbprz))
+                ;  /* vpd_lbprz introduced in sbc3r27, expanded in sbc4r07 */
+            else
+                lbprz = vpd_lbprz;
             switch (prov_type) {
             case 0:
-                pout("LB provisioning type: unreported, LBPME=%d, LBPRZ=%d\n",
-                     lbpme, lbprz);
+                if (lbpme <= 0) {
+                    pout("LU is fully provisioned");
+                    if (lbprz)
+                        pout(" [LBPRZ=%d]\n", lbprz);
+                    else
+                        pout("\n");
+                } else
+                     pout("LB provisioning type: not reported [LBPME=1, "
+                          "LBPRZ=%d]\n", lbprz);
                 break;
             case 1:
                 pout("LU is resource provisioned, LBPRZ=%d\n", lbprz);
@@ -1602,8 +1625,11 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
                      prov_type, lbprz);
                 break;
             }
-        } else if (1 == lbpme)
+        } else if (1 == lbpme) {
+            if (scsi_debugmode > 0)
+                pout("rcap_16 sets LBPME but no LB provisioning VPD page\n");
             pout("Logical block provisioning enabled, LBPRZ=%d\n", lbprz);
+        }
 
         int rpm = scsiGetRPM(device, modese_len, &form_factor, &haw_zbc);
         if (rpm >= 0) {
@@ -1717,11 +1743,14 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
             else
                 pout("device is NOT READY (e.g. no tape)\n");
             print_off();
-         } else if (SIMPLE_ERR_NO_MEDIUM == err) {
+        } else if (SIMPLE_ERR_NO_MEDIUM == err) {
             print_on();
-            pout("NO MEDIUM present on device\n");
+            if (is_tape)
+                pout("NO tape present in drive\n");
+            else
+                pout("NO MEDIUM present in device\n");
             print_off();
-         } else if (SIMPLE_ERR_BECOMING_READY == err) {
+        } else if (SIMPLE_ERR_BECOMING_READY == err) {
             print_on();
             pout("device becoming ready (wait)\n");
             print_off();
@@ -1730,8 +1759,11 @@ scsiGetDriveInfo(scsi_device * device, UINT8 * peripheral_type, bool all)
             pout("device Test Unit Ready  [%s]\n", scsiErrString(err));
             print_off();
         }
-        int returnval = 0; // TODO: exit with FAILID if failuretest returns
-        failuretest(MANDATORY_CMD, returnval|=FAILID);
+        if (! is_tape) {
+            int returnval = 0; // TODO: exit with FAILID if failuretest returns
+
+            failuretest(MANDATORY_CMD, returnval|=FAILID);
+        }
     }
 
     if (iec_err) {
@@ -1833,22 +1865,21 @@ scsiSmartDisable(scsi_device * device)
 static void
 scsiPrintTemp(scsi_device * device)
 {
-    UINT8 temp = 0;
-    UINT8 trip = 0;
+    UINT8 temp = 255;
+    UINT8 trip = 255;
 
     if (scsiGetTemp(device, &temp, &trip))
         return;
 
-    if (temp) {
-        if (255 != temp)
-            pout("Current Drive Temperature:     %d C\n", temp);
-        else
-            pout("Current Drive Temperature:     <not available>\n");
-    }
-    if (trip)
+    if (255 == temp)
+        pout("Current Drive Temperature:     <not available>\n");
+    else
+        pout("Current Drive Temperature:     %d C\n", temp);
+    if (255 == trip)
+        pout("Drive Trip Temperature:        <not available>\n");
+    else
         pout("Drive Trip Temperature:        %d C\n", trip);
-    if (temp || trip)
-        pout("\n");
+    pout("\n");
 }
 
 /* Main entry point used by smartctl command. Return 0 for success */
@@ -2049,7 +2080,7 @@ scsiPrintMain(scsi_device * device, const scsi_print_options & options)
             failuretest(OPTIONAL_CMD, returnval|=res);
         any_output = true;
     }
-    if (options.smart_background_log) {
+    if (options.smart_background_log && is_disk) {
         if (! checkedSupportedLogPages)
             scsiGetSupportedLogPages(device);
         res = 0;
