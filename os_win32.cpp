@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2004-16 Christian Franke
+ * Copyright (C) 2004-17 Christian Franke
  *
  * Original AACRaid code:
  *  Copyright (C) 2015    Nidhi Malhotra <nidhi.malhotra@pmcs.com>
@@ -112,7 +112,7 @@
 #define strnicmp strncasecmp
 #endif
 
-const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 4293 2016-04-14 19:33:05Z chrfranke $";
+const char * os_win32_cpp_cvsid = "$Id: os_win32.cpp 4559 2017-10-22 16:17:50Z chrfranke $";
 
 /////////////////////////////////////////////////////////////////////////////
 // Windows I/O-controls, some declarations are missing in the include files
@@ -274,6 +274,45 @@ typedef struct _STORAGE_PROPERTY_QUERY {
 ASSERT_CONST(IOCTL_STORAGE_QUERY_PROPERTY, 0x002d1400);
 ASSERT_SIZEOF(STORAGE_DEVICE_DESCRIPTOR, 36+1+3);
 ASSERT_SIZEOF(STORAGE_PROPERTY_QUERY, 8+1+3);
+
+
+// IOCTL_STORAGE_QUERY_PROPERTY: Windows 10 enhancements
+
+namespace win10 {
+
+  // enum STORAGE_PROPERTY_ID: new values
+  const STORAGE_PROPERTY_ID StorageAdapterProtocolSpecificProperty = (STORAGE_PROPERTY_ID)49;
+  const STORAGE_PROPERTY_ID StorageDeviceProtocolSpecificProperty = (STORAGE_PROPERTY_ID)50;
+
+  typedef enum _STORAGE_PROTOCOL_TYPE {
+    ProtocolTypeUnknown = 0,
+    ProtocolTypeScsi,
+    ProtocolTypeAta,
+    ProtocolTypeNvme,
+    ProtocolTypeSd
+  } STORAGE_PROTOCOL_TYPE;
+
+  typedef enum _STORAGE_PROTOCOL_NVME_DATA_TYPE {
+    NVMeDataTypeUnknown = 0,
+    NVMeDataTypeIdentify,
+    NVMeDataTypeLogPage,
+    NVMeDataTypeFeature
+  } STORAGE_PROTOCOL_NVME_DATA_TYPE;
+
+  typedef struct _STORAGE_PROTOCOL_SPECIFIC_DATA {
+    STORAGE_PROTOCOL_TYPE ProtocolType;
+    ULONG DataType;
+    ULONG ProtocolDataRequestValue;
+    ULONG ProtocolDataRequestSubValue;
+    ULONG ProtocolDataOffset;
+    ULONG ProtocolDataLength;
+    ULONG FixedProtocolReturnData;
+    ULONG Reserved[3];
+  } STORAGE_PROTOCOL_SPECIFIC_DATA;
+
+  ASSERT_SIZEOF(STORAGE_PROTOCOL_SPECIFIC_DATA, 40);
+
+} // namespace win10
 
 
 // IOCTL_STORAGE_PREDICT_FAILURE
@@ -1958,6 +1997,8 @@ class csmi_device
 : virtual public /*extends*/ smart_device
 {
 public:
+  enum { max_number_of_ports = 32 };
+
   /// Get bitmask of used ports
   unsigned get_ports_used();
 
@@ -1966,8 +2007,10 @@ protected:
     : smart_device(never_called)
     { memset(&m_phy_ent, 0, sizeof(m_phy_ent)); }
 
-  /// Get phy info
-  bool get_phy_info(CSMI_SAS_PHY_INFO & phy_info);
+  typedef signed char port_2_index_map[max_number_of_ports];
+
+  /// Get phy info and port mapping, return #ports or -1 on error
+  int get_phy_info(CSMI_SAS_PHY_INFO & phy_info, port_2_index_map & p2i);
 
   /// Select physical drive
   bool select_port(int port);
@@ -1987,13 +2030,18 @@ private:
 
 /////////////////////////////////////////////////////////////////////////////
 
-bool csmi_device::get_phy_info(CSMI_SAS_PHY_INFO & phy_info)
+int csmi_device::get_phy_info(CSMI_SAS_PHY_INFO & phy_info, port_2_index_map & p2i)
 {
+  // max_number_of_ports must match CSMI_SAS_PHY_INFO.Phy[] array size
+  typedef char ASSERT_phy_info_size[
+    (int)(sizeof(phy_info.Phy) / sizeof(phy_info.Phy[0])) == max_number_of_ports ? 1 : -1]
+    ATTR_UNUSED;
+
   // Get driver info to check CSMI support
   CSMI_SAS_DRIVER_INFO_BUFFER driver_info_buf;
   memset(&driver_info_buf, 0, sizeof(driver_info_buf));
   if (!csmi_ioctl(CC_CSMI_SAS_GET_DRIVER_INFO, &driver_info_buf.IoctlHeader, sizeof(driver_info_buf)))
-    return false;
+    return -1;
 
   if (scsi_debugmode > 1) {
     const CSMI_SAS_DRIVER_INFO & driver_info = driver_info_buf.Information;
@@ -2007,26 +2055,78 @@ bool csmi_device::get_phy_info(CSMI_SAS_PHY_INFO & phy_info)
   CSMI_SAS_PHY_INFO_BUFFER phy_info_buf;
   memset(&phy_info_buf, 0, sizeof(phy_info_buf));
   if (!csmi_ioctl(CC_CSMI_SAS_GET_PHY_INFO, &phy_info_buf.IoctlHeader, sizeof(phy_info_buf)))
-    return false;
+    return -1;
 
   phy_info = phy_info_buf.Information;
 
-  const int max_number_of_phys = sizeof(phy_info.Phy) / sizeof(phy_info.Phy[0]);
-  if (phy_info.bNumberOfPhys > max_number_of_phys)
-    return set_err(EIO, "CSMI_SAS_PHY_INFO: Bogus NumberOfPhys=%d", phy_info.bNumberOfPhys);
+  if (phy_info.bNumberOfPhys > max_number_of_ports) {
+    set_err(EIO, "CSMI_SAS_PHY_INFO: Bogus NumberOfPhys=%d", phy_info.bNumberOfPhys);
+    return -1;
+  }
+
+  // Create port -> index map
+  //                                 IRST Release
+  // Phy[i].Value               9.x   10.4   14.8   15.2
+  // ---------------------------------------------------
+  // bPortIdentifier           0xff   0xff   port   0x00
+  // Identify.bPhyIdentifier   port   port   port   port
+  // Attached.bPhyIdentifier   0x00   0x00   0x00   port
+  // Empty ports in Phy[]?     no     ?      yes    yes
+
+  int number_of_ports;
+  for (int mode = 0; ; mode++) {
+     for (int i = 0; i < max_number_of_ports; i++)
+       p2i[i] = -1;
+
+     number_of_ports = 0;
+     bool unique = true;
+     for (int i = 0; i < max_number_of_ports; i++) {
+        const CSMI_SAS_PHY_ENTITY & pe = phy_info.Phy[i];
+        if (pe.Identify.bDeviceType == CSMI_SAS_NO_DEVICE_ATTACHED)
+          continue;
+
+        // Use a bPhyIdentifier or the bPortIdentifier if unique,
+        // otherwise use table index
+        int port;
+        switch (mode) {
+          case 0:  port = pe.Attached.bPhyIdentifier; break;
+          case 1:  port = pe.Identify.bPhyIdentifier; break;
+          case 2:  port = pe.bPortIdentifier; break;
+          default: port = i; break;
+        }
+        if (!(port < max_number_of_ports && p2i[port] == -1)) {
+          unique = false;
+          break;
+        }
+
+        p2i[port] = i;
+        if (number_of_ports <= port)
+          number_of_ports = port + 1;
+     }
+
+     if (unique || mode > 2)
+       break;
+  }
 
   if (scsi_debugmode > 1) {
     pout("CSMI_SAS_PHY_INFO: NumberOfPhys=%d\n", phy_info.bNumberOfPhys);
-    for (int i = 0; i < max_number_of_phys; i++) {
+    for (int i = 0; i < max_number_of_ports; i++) {
       const CSMI_SAS_PHY_ENTITY & pe = phy_info.Phy[i];
       const CSMI_SAS_IDENTIFY & id = pe.Identify, & at = pe.Attached;
       if (id.bDeviceType == CSMI_SAS_NO_DEVICE_ATTACHED)
         continue;
 
-      pout("Phy[%d] Port:   0x%02x\n", i, pe.bPortIdentifier);
+      int port = -1;
+      for (int p = 0; p < max_number_of_ports && port < 0; p++) {
+        if (p2i[p] == i)
+          port = p;
+      }
+
+      pout("Phy[%d] Port:   %d\n", i, port);
       pout("  Type:        0x%02x, 0x%02x\n", id.bDeviceType, at.bDeviceType);
       pout("  InitProto:   0x%02x, 0x%02x\n", id.bInitiatorPortProtocol, at.bInitiatorPortProtocol);
       pout("  TargetProto: 0x%02x, 0x%02x\n", id.bTargetPortProtocol, at.bTargetPortProtocol);
+      pout("  PortIdent:   0x%02x\n", pe.bPortIdentifier);
       pout("  PhyIdent:    0x%02x, 0x%02x\n", id.bPhyIdentifier, at.bPhyIdentifier);
       const unsigned char * b = id.bSASAddress;
       pout("  SASAddress:  %02x %02x %02x %02x %02x %02x %02x %02x, ",
@@ -2037,20 +2137,23 @@ bool csmi_device::get_phy_info(CSMI_SAS_PHY_INFO & phy_info)
     }
   }
 
-  return true;
+  return number_of_ports;
 }
 
 unsigned csmi_device::get_ports_used()
 {
   CSMI_SAS_PHY_INFO phy_info;
-  if (!get_phy_info(phy_info))
+  port_2_index_map p2i;
+  int number_of_ports = get_phy_info(phy_info, p2i);
+  if (number_of_ports < 0)
     return 0;
 
   unsigned ports_used = 0;
-  for (unsigned i = 0; i < sizeof(phy_info.Phy) / sizeof(phy_info.Phy[0]); i++) {
-    const CSMI_SAS_PHY_ENTITY & pe = phy_info.Phy[i];
-    if (pe.Identify.bDeviceType == CSMI_SAS_NO_DEVICE_ATTACHED)
+  for (int p = 0; p < max_number_of_ports; p++) {
+    int i = p2i[p];
+    if (i < 0)
       continue;
+    const CSMI_SAS_PHY_ENTITY & pe = phy_info.Phy[i];
     if (pe.Attached.bDeviceType == CSMI_SAS_NO_DEVICE_ATTACHED)
       continue;
     switch (pe.Attached.bTargetPortProtocol) {
@@ -2061,55 +2164,30 @@ unsigned csmi_device::get_ports_used()
         continue;
     }
 
-    if (pe.bPortIdentifier == 0xff)
-      // Older (<= 9.*) Intel RST driver
-      ports_used |= (1 << i);
-    else
-      ports_used |= (1 << pe.bPortIdentifier);
+    ports_used |= (1 << p);
   }
 
   return ports_used;
 }
 
-
 bool csmi_device::select_port(int port)
 {
+  if (!(0 <= port && port < max_number_of_ports))
+    return set_err(EINVAL, "Invalid port number %d", port);
+
   CSMI_SAS_PHY_INFO phy_info;
-  if (!get_phy_info(phy_info))
+  port_2_index_map p2i;
+  int number_of_ports = get_phy_info(phy_info, p2i);
+  if (number_of_ports < 0)
     return false;
 
-  // Find port
-  int max_port = -1, port_index = -1;
-  for (unsigned i = 0; i < sizeof(phy_info.Phy) / sizeof(phy_info.Phy[0]); i++) {
-    const CSMI_SAS_PHY_ENTITY & pe = phy_info.Phy[i];
-    if (pe.Identify.bDeviceType == CSMI_SAS_NO_DEVICE_ATTACHED)
-      continue;
-
-    if (pe.bPortIdentifier == 0xff) {
-      // Older (<= 9.*) Intel RST driver
-      max_port = phy_info.bNumberOfPhys - 1;
-      if (i >= phy_info.bNumberOfPhys)
-        break;
-      if ((int)i != port)
-        continue;
-    }
-    else {
-      if (pe.bPortIdentifier > max_port)
-        max_port = pe.bPortIdentifier;
-      if (pe.bPortIdentifier != port)
-        continue;
-    }
-
-    port_index = i;
-    break;
-  }
-
+  int port_index = p2i[port];
   if (port_index < 0) {
-    if (port <= max_port)
+    if (port < number_of_ports)
       return set_err(ENOENT, "Port %d is disabled", port);
     else
       return set_err(ENOENT, "Port %d does not exist (#ports: %d)", port,
-        max_port + 1);
+        number_of_ports);
   }
 
   const CSMI_SAS_PHY_ENTITY & phy_ent = phy_info.Phy[port_index];
@@ -2155,7 +2233,7 @@ bool csmi_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & out)
     ata_device::supports_output_regs |
     ata_device::supports_multi_sector |
     ata_device::supports_48bit,
-    "CMSI")
+    "CSMI")
   )
     return false;
 
@@ -3422,7 +3500,7 @@ bool win_aacraid_device::scsi_pass_through(struct scsi_cmnd_io *iop)
       }
     else
       j += snprintf(&buff[j], (sz > j ? (sz - j) : 0), "]\n");
-      pout("buff %s\n",buff);
+    pout("buff %s\n",buff);
   }
 
   char ioBuffer[1000];
@@ -3674,7 +3752,7 @@ bool win_nvme_device::nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & o
 
   // Set NVMe command
   pthru->SrbIoCtrl.HeaderLength = sizeof(SRB_IO_CONTROL);
-  memcpy(pthru->SrbIoCtrl.Signature, NVME_SIG_STR, sizeof(NVME_SIG_STR));
+  memcpy(pthru->SrbIoCtrl.Signature, NVME_SIG_STR, sizeof(NVME_SIG_STR)-1);
   pthru->SrbIoCtrl.Timeout = 60;
   pthru->SrbIoCtrl.ControlCode = NVME_PASS_THROUGH_SRB_IO_CODE;
   pthru->SrbIoCtrl.ReturnCode = 0;
@@ -3717,6 +3795,169 @@ bool win_nvme_device::nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & o
     memcpy(in.buffer, pthru->DataBuffer, in.size);
 
   out.result = pthru->CplEntry[0];
+  return true;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// win10_nvme_device
+
+class win10_nvme_device
+: public /*implements*/ nvme_device,
+  public /*extends*/ win_smart_device
+{
+public:
+  win10_nvme_device(smart_interface * intf, const char * dev_name,
+    const char * req_type, unsigned nsid);
+
+  virtual bool open();
+
+  virtual bool nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & out);
+
+private:
+  bool open(int phydrive);
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+
+win10_nvme_device::win10_nvme_device(smart_interface * intf, const char * dev_name,
+  const char * req_type, unsigned nsid)
+: smart_device(intf, dev_name, "nvme", req_type),
+  nvme_device(nsid)
+{
+}
+
+bool win10_nvme_device::open()
+{
+  // TODO: Use common /dev/ parsing functions
+  const char * name = skipdev(get_dev_name()); int len = strlen(name);
+  // sd[a-z]([a-z])? => Physical drive 0-701
+  char drive[2 + 1] = ""; int n = -1;
+  if (sscanf(name, "sd%2[a-z]%n", drive, &n) == 1 && n == len)
+    return open(sdxy_to_phydrive(drive));
+
+  // pdN => Physical drive N
+  int phydrive = -1; n = -1;
+  if (sscanf(name, "pd%d%n", &phydrive, &n) == 1 && phydrive >= 0 && n == len)
+    return open(phydrive);
+
+  return set_err(EINVAL);
+}
+
+bool win10_nvme_device::open(int phydrive)
+{
+  // TODO: Use common open function for all devices using "\\.\PhysicalDriveN"
+  char devpath[64];
+  snprintf(devpath, sizeof(devpath) - 1, "\\\\.\\PhysicalDrive%d", phydrive);
+
+  // No GENERIC_READ/WRITE access required, this works without admin rights
+  HANDLE h = CreateFileA(devpath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    (SECURITY_ATTRIBUTES *)0, OPEN_EXISTING, 0, (HANDLE)0);
+
+  if (h == INVALID_HANDLE_VALUE) {
+    long err = GetLastError();
+    if (nvme_debugmode > 1)
+      pout("  %s: Open failed, Error=%ld\n", devpath, err);
+    if (err == ERROR_FILE_NOT_FOUND)
+      set_err(ENOENT, "%s: not found", devpath);
+    else if (err == ERROR_ACCESS_DENIED)
+      set_err(EACCES, "%s: access denied", devpath);
+    else
+      set_err(EIO, "%s: Error=%ld", devpath, err);
+    return false;
+  }
+
+  if (nvme_debugmode > 1)
+    pout("  %s: successfully opened\n", devpath);
+
+  set_fh(h);
+
+  // Use broadcast namespace if no NSID specified
+  // TODO: Get NSID of current device
+  if (!get_nsid())
+    set_nsid(0xffffffff);
+  return true;
+}
+
+struct STORAGE_PROTOCOL_SPECIFIC_QUERY_WITH_BUFFER
+{
+  struct { // STORAGE_PROPERTY_QUERY without AdditionalsParameters[1]
+    STORAGE_PROPERTY_ID PropertyId;
+    STORAGE_QUERY_TYPE QueryType;
+  } PropertyQuery;
+  win10::STORAGE_PROTOCOL_SPECIFIC_DATA ProtocolSpecific;
+  BYTE DataBuffer[1];
+};
+
+bool win10_nvme_device::nvme_pass_through(const nvme_cmd_in & in, nvme_cmd_out & out)
+{
+  // Create buffer with appropriate size
+  raw_buffer spsq_raw_buf(offsetof(STORAGE_PROTOCOL_SPECIFIC_QUERY_WITH_BUFFER, DataBuffer) + in.size);
+  STORAGE_PROTOCOL_SPECIFIC_QUERY_WITH_BUFFER * spsq =
+    reinterpret_cast<STORAGE_PROTOCOL_SPECIFIC_QUERY_WITH_BUFFER *>(spsq_raw_buf.data());
+
+  // Set NVMe specifc STORAGE_PROPERTY_QUERY
+  spsq->PropertyQuery.QueryType = PropertyStandardQuery;
+  spsq->ProtocolSpecific.ProtocolType = win10::ProtocolTypeNvme;
+
+  switch (in.opcode) {
+    case smartmontools::nvme_admin_identify:
+      if (!in.nsid) // Identify controller
+        spsq->PropertyQuery.PropertyId = win10::StorageAdapterProtocolSpecificProperty;
+      else
+        spsq->PropertyQuery.PropertyId = win10::StorageDeviceProtocolSpecificProperty;
+      spsq->ProtocolSpecific.DataType = win10::NVMeDataTypeIdentify;
+      spsq->ProtocolSpecific.ProtocolDataRequestValue = in.cdw10;
+      break;
+    case smartmontools::nvme_admin_get_log_page:
+      spsq->PropertyQuery.PropertyId = win10::StorageDeviceProtocolSpecificProperty;
+      spsq->ProtocolSpecific.DataType = win10::NVMeDataTypeLogPage;
+      spsq->ProtocolSpecific.ProtocolDataRequestValue = in.cdw10 & 0xff; // LID only ?
+      break;
+    // TODO: nvme_admin_get_features
+    default:
+      return set_err(ENOSYS, "NVMe admin command 0x%02x not supported", in.opcode);
+  }
+
+  spsq->ProtocolSpecific.ProtocolDataRequestSubValue = in.nsid; // ?
+  spsq->ProtocolSpecific.ProtocolDataOffset = sizeof(spsq->ProtocolSpecific);
+  spsq->ProtocolSpecific.ProtocolDataLength = in.size;
+
+  if (in.direction() & nvme_cmd_in::data_out)
+    memcpy(spsq->DataBuffer, in.buffer, in.size);
+
+  if (nvme_debugmode > 1)
+    pout("  [STORAGE_QUERY_PROPERTY: Id=%u, Type=%u, Value=0x%08x, SubVal=0x%08x]\n",
+         (unsigned)spsq->PropertyQuery.PropertyId,
+         (unsigned)spsq->ProtocolSpecific.DataType,
+         (unsigned)spsq->ProtocolSpecific.ProtocolDataRequestValue,
+         (unsigned)spsq->ProtocolSpecific.ProtocolDataRequestSubValue);
+
+  // Call IOCTL_STORAGE_QUERY_PROPERTY
+  DWORD num_out = 0;
+  long err = 0;
+  if (!DeviceIoControl(get_fh(), IOCTL_STORAGE_QUERY_PROPERTY,
+        spsq, spsq_raw_buf.size(), spsq, spsq_raw_buf.size(),
+        &num_out, (OVERLAPPED*)0)) {
+    err = GetLastError();
+  }
+
+  if (nvme_debugmode > 1)
+    pout("  [STORAGE_QUERY_PROPERTY: ReturnData=0x%08x, Reserved[3]={0x%x, 0x%x, 0x%x}]\n",
+    (unsigned)spsq->ProtocolSpecific.FixedProtocolReturnData,
+      (unsigned)spsq->ProtocolSpecific.Reserved[0],
+      (unsigned)spsq->ProtocolSpecific.Reserved[1],
+      (unsigned)spsq->ProtocolSpecific.Reserved[2]);
+
+  // NVMe status is checked by IOCTL
+  if (err)
+    return set_err(EIO, "IOCTL_STORAGE_QUERY_PROPERTY(NVMe) failed, Error=%ld", err);
+
+  if (in.direction() & nvme_cmd_in::data_in)
+    memcpy(in.buffer, spsq->DataBuffer, in.size);
+
+  out.result = spsq->ProtocolSpecific.FixedProtocolReturnData; // Completion DW0 ?
   return true;
 }
 
@@ -3806,20 +4047,40 @@ std::string win_smart_interface::get_os_version_str()
   }
 
   const char * w = 0;
+  unsigned build = 0;
   if (   vi.dwPlatformId == VER_PLATFORM_WIN32_NT
       && vi.dwMajorVersion <= 0xf && vi.dwMinorVersion <= 0xf) {
-    bool ws = (vi.wProductType <= VER_NT_WORKSTATION);
-    switch (vi.dwMajorVersion << 4 | vi.dwMinorVersion) {
-      case 0x50: w =       "2000";              break;
-      case 0x51: w =       "xp";                break;
-      case 0x52: w = (!GetSystemMetrics(89/*SM_SERVERR2*/)
-                         ? "2003"  : "2003r2"); break;
-      case 0x60: w = (ws ? "vista" : "2008"  ); break;
-      case 0x61: w = (ws ? "win7"  : "2008r2"); break;
-      case 0x62: w = (ws ? "win8"  : "2012"  ); break;
-      case 0x63: w = (ws ? "win8.1": "2012r2"); break;
-      case 0x64: w = (ws ? "w10tp" : "w10tps"); break; //  6.4 = Win 10 Technical Preview
-      case 0xa0: w = (ws ? "win10" : "2016"  ); break; // 10.0 = Win 10 : Win Server 2016 (TP only?)
+    switch (  (vi.dwMajorVersion << 4 | vi.dwMinorVersion) << 1
+            | (vi.wProductType > VER_NT_WORKSTATION ? 1 : 0)   ) {
+      case 0x50<<1    :
+      case 0x50<<1 | 1: w = "2000";     break;
+      case 0x51<<1    : w = "xp";       break;
+      case 0x52<<1    : w = "xp64";     break;
+      case 0x52<<1 | 1: w = (!GetSystemMetrics(89/*SM_SERVERR2*/)
+                          ? "2003"
+                          : "2003r2");  break;
+      case 0x60<<1    : w = "vista";    break;
+      case 0x60<<1 | 1: w = "2008";     break;
+      case 0x61<<1    : w = "win7";     break;
+      case 0x61<<1 | 1: w = "2008r2";   break;
+      case 0x62<<1    : w = "win8";     break;
+      case 0x62<<1 | 1: w = "2012";     break;
+      case 0x63<<1    : w = "win8.1";   break;
+      case 0x63<<1 | 1: w = "2012r2";   break;
+      case 0xa0<<1    :
+        switch (vi.dwBuildNumber) {
+          case 10240:   w = "w10-1507"; break;
+          case 10586:   w = "w10-1511"; break;
+          case 14393:   w = "w10-1607"; break;
+          case 15063:   w = "w10-1703"; break;
+          case 16299:   w = "w10-1709"; break;
+          default:      w = "w10";  build = vi.dwBuildNumber; break;
+        } break;
+      case 0xa0<<1 | 1:
+        switch (vi.dwBuildNumber) {
+          case 14393:   w = "2016-1607"; break;
+          default:      w = "2016"; build = vi.dwBuildNumber; break;
+        } break;
     }
   }
 
@@ -3833,6 +4094,8 @@ std::string win_smart_interface::get_os_version_str()
     snprintf(vptr, vlen, "-%s%u.%u%s",
       (vi.dwPlatformId==VER_PLATFORM_WIN32_NT ? "nt" : "??"),
       (unsigned)vi.dwMajorVersion, (unsigned)vi.dwMinorVersion, w64);
+  else if (build)
+    snprintf(vptr, vlen, "-%s%s-b%u", w, w64, build);
   else if (vi.wServicePackMinor)
     snprintf(vptr, vlen, "-%s%s-sp%u.%u", w, w64, vi.wServicePackMajor, vi.wServicePackMinor);
   else if (vi.wServicePackMajor)
@@ -3885,7 +4148,9 @@ scsi_device * win_smart_interface::get_scsi_device(const char * name, const char
 nvme_device * win_smart_interface::get_nvme_device(const char * name, const char * type,
   unsigned nsid)
 {
-  return new win_nvme_device(this, name, type, nsid);
+  if (str_starts_with(skipdev(name), "nvme"))
+    return new win_nvme_device(this, name, type, nsid);
+  return new win10_nvme_device(this, name, type, nsid);
 }
 
 
@@ -3991,7 +4256,7 @@ std::string win_smart_interface::get_valid_custom_dev_types_str()
 
 
 // Return value for device detection functions
-enum win_dev_type { DEV_UNKNOWN = 0, DEV_ATA, DEV_SCSI, DEV_SAT, DEV_USB };
+enum win_dev_type { DEV_UNKNOWN = 0, DEV_ATA, DEV_SCSI, DEV_SAT, DEV_USB, DEV_NVME };
 
 // Return true if ATA drive behind a SAT layer
 static bool is_sat(const STORAGE_DEVICE_DESCRIPTOR_DATA * data)
@@ -4060,6 +4325,9 @@ static win_dev_type get_controller_type(HANDLE hdevice, bool admin, GETVERSIONIN
 
     case BusTypeUsb:
       return DEV_USB;
+
+    case 0x11: // BusTypeNVMe?
+      return DEV_NVME;
 
     default:
       return DEV_UNKNOWN;
@@ -4188,6 +4456,9 @@ smart_device * win_smart_interface::autodetect_smart_device(const char * name)
   if (type == DEV_USB)
     return get_usb_device(name, phydrive, logdrive);
 
+  if (type == DEV_NVME)
+    return new win10_nvme_device(this, name, "", 0 /* use default nsid */);
+
   return 0;
 }
 
@@ -4251,7 +4522,7 @@ bool win_smart_interface::scan_smart_devices(smart_device_list & devlist,
 
   char name[20];
 
-  if (ata || scsi || sat || usb) {
+  if (ata || scsi || sat || usb || nvme) {
     // Scan up to 128 drives and 2 3ware controllers
     const int max_raid = 2;
     bool raid_seen[max_raid] = {false, false};
@@ -4317,6 +4588,13 @@ bool win_smart_interface::scan_smart_devices(smart_device_list & devlist,
           if (!dev)
             // Unknown or unsupported USB ID, return as SCSI
             dev = new win_scsi_device(this, name, "");
+          break;
+
+        case DEV_NVME:
+          // STORAGE_QUERY_PROPERTY returned NVMe
+          if (!nvme)
+            continue;
+          dev = new win10_nvme_device(this, name, "", 0 /* use default nsid */);
           break;
 
         default:

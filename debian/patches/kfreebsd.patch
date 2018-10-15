@@ -1,3 +1,13 @@
+From: Giuseppe Iuculano <iuculano@debian.org>
+Date: Thu, 27 Sep 2018 19:03:07 +0800
+Subject: kfreebsd
+
+---
+ cciss.cpp | 10 +---------
+ 1 file changed, 1 insertion(+), 9 deletions(-)
+
+diff --git a/cciss.cpp b/cciss.cpp
+index f5871dd..62fcba7 100644
 --- a/cciss.cpp
 +++ b/cciss.cpp
 @@ -18,18 +18,10 @@

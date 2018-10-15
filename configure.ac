@@ -1,14 +1,14 @@
 #
-# $Id: configure.ac 4319 2016-05-07 12:14:20Z chrfranke $
+# $Id: configure.ac 4594 2017-11-05 15:21:35Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ([2.60])
-AC_INIT(smartmontools, 6.6, smartmontools-support@lists.sourceforge.net)
+AC_INIT(smartmontools, 6.6, smartmontools-support@listi.jpberlin.de)
 AM_INIT_AUTOMAKE([1.10 foreign])
 
-smartmontools_cvs_tag=`echo '$Id: configure.ac 4319 2016-05-07 12:14:20Z chrfranke $'`
-smartmontools_release_date=2016-05-07
-smartmontools_release_time="11:17:46 UTC"
+smartmontools_cvs_tag=`echo '$Id: configure.ac 4594 2017-11-05 15:21:35Z chrfranke $'`
+smartmontools_release_date=2017-11-05
+smartmontools_release_time="15:20:58 UTC"
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",   [smartmontools Release Date])
@@ -244,12 +244,35 @@ AC_ARG_WITH(drivedbdir,
 AC_SUBST(drivedbdir)
 AM_CONDITIONAL(ENABLE_DRIVEDB, [test -n "$drivedbdir"])
 
+drivedb_version=$VERSION
 AC_ARG_WITH(update-smart_drivedb,
-  [AS_HELP_STRING([--with-update-smart-drivedb@<:@=yes|no@:>@], [Install update-smart-drivedb script [yes]])],
-  [], [with_update_smart_drivedb=yes])
+  [AS_HELP_STRING([--with-update-smart-drivedb@<:@=yes|no|X.Y@:>@],
+    [Install update-smart-drivedb script (and backport it to branches/RELEASE_X_Y_DRIVEDB) [yes]])],
+  [ case "$withval" in
+      yes|no) ;;
+      5.4[[0-3]]|6.[[0-9]]) drivedb_version=$withval; with_update_smart_drivedb=yes ;;
+      *) AC_MSG_ERROR([Invalid drivedb branch version: $withval]) ;;
+    esac
+  ],
+  [with_update_smart_drivedb=yes])
 test -n "$drivedbdir" || with_update_smart_drivedb=no
 AC_SUBST(with_update_smart_drivedb)
 AM_CONDITIONAL(ENABLE_UPDATE_SMART_DRIVEDB, [test "$with_update_smart_drivedb" = "yes"])
+
+gnupg="gpg"
+# Also check for '--with-gnupg[=yes]' because 'yes' is a valid command with infinite output
+AC_ARG_WITH(gnupg,
+  [AS_HELP_STRING([--with-gnupg@<:@=FILE|yes|no@:>@], [GnuPG used to verify drivedb.h [gpg]])],
+  [case "$withval" in yes) ;; no) gnupg= ;; *) gnupg="$withval" ;; esac], [])
+AC_SUBST(gnupg)
+
+case "$with_update_smart_drivedb:$gnupg" in
+  no:?*)
+    AC_MSG_ERROR([
+'--without-update-smart-drivedb' now requires '--without-gnupg'.
+NEWS: update-smart-drivedb now verifies the downloaded drivedb.h file with GnuPG.])
+    ;;
+esac
 
 AC_ARG_WITH(smartdscriptdir,
   [AS_HELP_STRING([--with-smartdscriptdir=DIR], [Location of smartd_warning.sh script [SYSCONFDIR]])],
@@ -262,6 +285,14 @@ AC_ARG_WITH(smartdplugindir,
   [smartdplugindir=; test "$withval" != "no" && smartdplugindir="$withval"],
   [smartdplugindir='${smartdscriptdir}/smartd_warning.d'])
 AC_SUBST(smartdplugindir)
+
+AC_ARG_WITH(scriptpath,
+  [AS_HELP_STRING([--with-scriptpath=@<:@PATH|no@:>@],
+    [PATH variable set within scripts [/usr/bin:/bin]])],
+  [scriptpath=; test "$withval" != "no" && scriptpath="$withval"],
+  [scriptpath="/usr/bin:/bin"])
+AC_SUBST(scriptpath)
+AM_CONDITIONAL(ENABLE_SCRIPTPATH, [test -n "$scriptpath"])
 
 savestates=
 AC_ARG_WITH(savestates,
@@ -392,11 +423,45 @@ if test "$libc_have_working_snprintf" = "yes"; then
   AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane.]) dnl `vim syntax
 fi
 
+AC_ARG_WITH(mingw-aslr,
+  [AS_HELP_STRING([--with-mingw-aslr@<:@=auto|yes|low|no@:>@], [Enable ASLR for MinGW executables [auto]])],
+  [], [with_mingw_aslr=auto])
+
+case "$host:${LDFLAGS+set}" in
+  *-*-mingw*:) # MinGW defaults: link statically and indicate DEP and TS compatibility
+    LDFLAGS="-static -Wl,--nxcompat,--tsaware" ;;
+esac
+
+case "$host:$with_mingw_aslr" in
+  x86_64-*-mingw*:auto)
+    AC_MSG_CHECKING([whether $CXX supports --high-entropy-va])
+    save_LDFLAGS=$LDFLAGS
+    LDFLAGS="$LDFLAGS -pie -Wl,--dynamicbase,-emainCRTStartup,--high-entropy-va,--image-base,0x140000000"
+    # Link libstdc++ to detect MinGW 6.3.0 problems with high --image-base
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+        #include <string>
+        std::string s(42, '.');]])],
+      [with_mingw_aslr=yes], [with_mingw_aslr=no])
+    LDFLAGS=$save_LDFLAGS
+    AC_MSG_RESULT([$with_mingw_aslr])
+    test "$with_mingw_aslr" = "yes" || with_mingw_aslr=low
+    ;;
+esac
+
+case "$host:$with_mingw_aslr" in
+  x86_64-*-mingw*:yes)
+    LDFLAGS="$LDFLAGS -pie -Wl,--dynamicbase,-emainCRTStartup,--high-entropy-va,--image-base,0x140000000" ;;
+  x86_64-*-mingw*:low)
+    LDFLAGS="$LDFLAGS -pie -Wl,--dynamicbase,-emainCRTStartup" ;;
+  *-*-mingw*:auto|*-*-mingw*:yes|*-*-mingw*:low)
+    LDFLAGS="$LDFLAGS -pie -Wl,--dynamicbase,-e_mainCRTStartup" ;;
+esac
+
 os_win32_manifest=
 case "$host" in
   *-*-mingw*)
     # Newer MinGW may add a default manifest
-    AC_MSG_CHECKING([whether $CC adds an application manifest])
+    AC_MSG_CHECKING([whether $CXX adds an application manifest])
     cc_adds_manifest=no
     AC_LINK_IFELSE([AC_LANG_PROGRAM()], [
         if "$WINDRES" -O rc conftest.exe 2>/dev/null | grep '^1.*RT_MANIFEST' >/dev/null 2>&1; then
@@ -408,24 +473,62 @@ case "$host" in
         fi],
       [AC_MSG_ERROR([test compile failed])])
     AC_MSG_RESULT([$cc_adds_manifest])
-    test "$cc_adds_manifest" = "yes" || os_win32_manifest='default.manifest.o'
+    test "$cc_adds_manifest" = "yes" || os_win32_manifest='os_win32/default.manifest'
     ;;
 esac
 
-# TODO: Remove after smartmontools 6.5
-AC_ARG_WITH(docdir,
-  [AS_HELP_STRING([--with-docdir=DIR], [(removed, use --docdir=DIR instead)])],
-  [AC_MSG_ERROR([--with-docdir is no longer supported, use --docdir instead])])
-AC_ARG_ENABLE(drivedb,
-  [AS_HELP_STRING([--disable-drivedb], [(removed, use --without-drivedbdir instead)])])
-AC_ARG_ENABLE(savestates,
-  [AS_HELP_STRING([--enable-savestates], [(removed, use --with-savestates@<:@=yes@:>@ instead)])])
-AC_ARG_ENABLE(attributelog,
-  [AS_HELP_STRING([--enable-attributelog], [(removed, use --with-attributelog@<:@=yes@:>@ instead)])])
-if test -n "${enable_drivedb+set}${enable_savestates+set}${enable_attributelog+set}"; then
-  AC_MSG_ERROR([Options --disable-drivedb, --enable-savestates, --enable-attributelog are no longer supported.
-Use --without-drivedbdir, --with-savestates, --with-attributelog instead.])
-fi
+AC_ARG_WITH(cxx11-option,
+  [AS_HELP_STRING([--with-cxx11-option@<:@=OPTION|auto|no@:>@],
+    [Compiler option to enable C++11 support for future versions of smartmontools, 'no' if unsupported [auto]])],
+  [], [with_cxx11_option=auto])
+
+check_cxx11_support()
+{
+  save_CXXFLAGS=$CXXFLAGS
+  CXXFLAGS=$1
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+      #if __cplusplus < 201103L
+      #error false
+      #endif
+      // use some C++11 features (and return v * 42 :-)
+      auto cxx11(long v) noexcept -> decltype(v) {
+        typedef decltype(v) t; t r = v;
+        static const t a[] = { -7, -1, 1, 2, 3 };
+        static_assert(sizeof(r) == sizeof(a[0]), "fail");
+        auto f = [](t x, t y){ return x * y; };
+        for (const auto & e : a) r = f(r, e);
+        return r;
+      }]])],
+    [CXXFLAGS=$save_CXXFLAGS; return 0], [CXXFLAGS=$save_CXXFLAGS; return 1])
+}
+
+case "$with_cxx11_option" in
+  no) ;;
+  auto)
+    AC_MSG_CHECKING([for $CXX option to accept C++11])
+    with_cxx11_option=unknown
+    for option in "" "-std=gnu++11" "-std=gnu++0x" "-std=c++11" "-std=c++0x"; do
+      if check_cxx11_support "$option"; then with_cxx11_option=$option; break; fi
+    done
+    AC_MSG_RESULT([${with_cxx11_option:-none needed}])
+    test "$with_cxx11_option" != "unknown" || AC_MSG_ERROR([
+This version of smartmontools does not use C++11 features, but future
+versions possibly will.
+This script was unable to determine a compiler option to enable C++11.
+Use option '--with-cxx11-option=OPTION' to specify the compiler option
+(it will be checked, but not used in the actual build).
+Use option '--without-cxx11-option' to suppress this error message if the
+compiler lacks C++11 support.
+In both cases, please send info about compiler and platform to
+$PACKAGE_BUGREPORT - Thanks!])
+    ;;
+  *)
+    AC_MSG_CHECKING([whether $CXX $with_cxx11_option accepts C++11])
+    res=no; check_cxx11_support "$with_cxx11_option" && res=yes
+    AC_MSG_RESULT([$res])
+    test "$res" = "yes" || AC_MSG_ERROR([$CXX $with_cxx11_option does not accept C++11])
+    ;;
+esac
 
 
 AC_SUBST(releaseversion,['${PACKAGE}-${VERSION}'])
@@ -515,6 +618,9 @@ case "${host}" in
   *-*-nto-qnx*)
     os_deps='os_qnxnto.o'
     ;;
+  *-*-os2-*)
+    os_deps='os_os2.o'
+    ;;
   *)
     os_deps='os_generic.o'
     ;;
@@ -546,10 +652,10 @@ AC_SUBST([os_man_filter])
 AC_SUBST([os_win32_manifest])
 
 # Create drivedb.h update branch name from version: 5.41[.X] -> RELEASE_5_41_DRIVEDB
-DRIVEDB_BRANCH=`echo $VERSION | sed 's,^\([[0-9]]*\.[[0-9]]*\)\..*$,\1,' \
+DRIVEDB_BRANCH=`echo "$drivedb_version" | sed 's,^\([[0-9]]*\.[[0-9]]*\)\..*$,\1,' \
                 | sed -n 's,^\([[0-9]][[0-9]]*\)\.\([[0-9]][[0-9]]*\)$,RELEASE_\1_\2_DRIVEDB,p'`
 if test -z "$DRIVEDB_BRANCH"; then
-  AC_MSG_ERROR([Unable to create DRIVEDB_BRANCH from VERSION=$VERSION])
+  AC_MSG_ERROR([Unable to create DRIVEDB_BRANCH for version: $drivedb_version])
 fi
 AC_SUBST([DRIVEDB_BRANCH])
 
@@ -561,37 +667,53 @@ AM_CONDITIONAL(OS_WIN32_MINGW, [test "$os_win32_mingw" = "yes"])
 AM_CONDITIONAL(OS_WIN32_NSIS, [test -n "$MAKENSIS"])
 AM_CONDITIONAL(OS_WIN64, [test "$os_win64" = "yes"])
 
-dnl Add -Wall and -W if using g++ and its not already specified.
 if test "$GXX" = "yes"; then
-  if test -z "`echo "$CXXFLAGS" | grep "\-Wall" 2> /dev/null`" ; then
-      CXXFLAGS="$CXXFLAGS -Wall"
-  fi
-# In the next line, do NOT delete the 2 spaces inside double quotes.
-  if test -z "`echo "$CXXFLAGS " | grep "\-W " 2> /dev/null`" ; then
-      CXXFLAGS="$CXXFLAGS -W"
-  fi
-
+  # Add -Wall and -W[extra] if its not already specified
+  case " $CXXFLAGS " in
+    *\ -Wall\ *) ;;
+    *) CXXFLAGS="$CXXFLAGS -Wall" ;;
+  esac
+  case " $CXXFLAGS " in
+    *\ -W\ *|*\ -Wextra\ *) ;;
+    *) CXXFLAGS="$CXXFLAGS -W" ;;
+  esac
+  # Add -Wformat=2 (GCC 3.0) -fstack-protector[-strong] (GCC 4.1[4.9]) if supported
+  # and CXXFLAGS was not set in configure cmdline (TODO: -Wformat-signedness)
+  case "${ac_test_CXXFLAGS+set}:$ac_test_CXXFLAGS" in
+    set:)
+      for option in "-Wformat=2" "-fstack-protector-strong" "-fstack-protector"; do
+        case " $CXXFLAGS:$option" in *\ -fstack-p*:-fstack-p*) continue ;; esac
+        AC_MSG_CHECKING([whether $CXX supports $option])
+        save_CXXFLAGS=$CXXFLAGS
+        CXXFLAGS="$CXXFLAGS $option"
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM()], [res=yes], [res=no; CXXFLAGS=$save_CXXFLAGS])
+        AC_MSG_RESULT([$res])
+      done
+      ;;
+  esac
 else
- dnl We are NOT using gcc, so enable host-specific compiler flags
- case "${host}" in
-	sparc*-*-solaris*) 
-          dnl set CXXFLAGS for Solaris/SPARC C++ compiler
-          if test -z "`echo "$CXXFLAGS" | grep "\-xmemalign" 2> /dev/null`" ; then
-            dnl we have to tell the compilers about packed ATA structures
-            CXXFLAGS="-xmemalign=1i $CXXFLAGS"
-          fi
- esac
- case "${host}" in
-	*-*-solaris*) 
-          if test -z "`echo "$CXXFLAGS" | grep "\-xO" 2> /dev/null`" ; then
-            dnl turn on optimization if user has not explicitly set its value
-            CXXFLAGS="-xO2 $CXXFLAGS"
-          fi
-          if test -z "`echo "$CXXFLAGS" | grep "\-erroff" 2> /dev/null`" ; then
-	    dnl suppress trivial warnings
-	    CXXFLAGS="-erroff=%none,wbadinitl,wbadasgl,badargtypel2w,badargtype2w $CXXFLAGS"
-	  fi
- esac
+  # We are NOT using gcc, so enable host-specific compiler flags
+  case "${host}" in
+    sparc*-*-solaris*)
+      # Tell the Solaris/SPARC C++ compiler about packed ATA structures
+      case " $CXXFLAGS" in
+        *\ -xmemalign*) ;;
+        *) CXXFLAGS="-xmemalign=1i $CXXFLAGS" ;;
+      esac ;;
+  esac
+  case "${host}" in
+    *-*-solaris*)
+      # Turn on optimization if user has not explicitly set its value
+      case " $CXXFLAGS" in
+        *\ -xO*) ;;
+        *) CXXFLAGS="-xO2 $CXXFLAGS" ;;
+      esac
+      # Suppress trivial warnings
+      case " $CXXFLAGS" in
+        *\ -erroff*) ;;
+        *) CXXFLAGS="-erroff=%none,wbadinitl,wbadasgl,badargtypel2w,badargtype2w $CXXFLAGS" ;;
+      esac ;;
+  esac
 fi
 
 AC_DEFINE_UNQUOTED(SMARTMONTOOLS_BUILD_HOST,     "${host}",                       [smartmontools Build Host])
@@ -647,7 +769,15 @@ info=`
         echo "drive database file:    \`eval eval eval echo $drivedbdir\`/drivedb.h"
         if test "$with_update_smart_drivedb" = "yes"; then
           echo "database update script: \`eval eval eval echo $sbindir\`/update-smart-drivedb"
+          if test "$drivedb_version" != "$VERSION"; then
+            echo "... backported to:      branches/$DRIVEDB_BRANCH"
+          fi
           echo "download tools:         \`eval eval eval echo $os_dltools\`"
+          if test -n "$gnupg"; then
+            echo "GnuPG for verification: \`eval eval eval echo $gnupg\`"
+          else
+            echo "GnuPG for verification: [[disabled]]"
+          fi
         else
           echo "database update script: [[disabled]]"
         fi
@@ -661,6 +791,11 @@ info=`
         echo "smartd plugin path:     \`eval eval eval echo $smartdplugindir\`"
       else
         echo "smartd plugin path:     [[disabled]]"
+      fi
+      if test -n "$scriptpath"; then
+        echo "PATH within scripts:    \`eval eval eval echo $scriptpath\`"
+      else
+        echo "PATH within scripts:    [[inherited]]"
       fi
       if test -n "$initddir"; then
         echo "smartd initd script:    \`eval eval eval echo $initddir\`/${initdfile}"
@@ -690,7 +825,8 @@ info=`
         linux*) echo "SELinux support:        ${with_selinux-no}" ;;
       esac
       case "$host_os" in
-        linux*|cygwin*) echo "NVMe DEVICESCAN:        ${with_nvme_devicescan-no}" ;;
+        linux*|darwin*|netbsd*|cygwin*)
+          echo "NVMe DEVICESCAN:        ${with_nvme_devicescan-no}" ;;
       esac
       ;;
   esac
@@ -703,17 +839,18 @@ $info
 
 # TODO: Remove when NVMe support is no longer EXPERIMENTAL
 case "$host_os:${with_nvme_devicescan+set}" in
-  linux*:|cygwin*:|mingw*:)
+  linux*:|darwin*:|netbsd*:|cygwin*:|mingw*:)
     AC_MSG_WARN([
 This version of smartmontools provides NVMe support which is still
 EXPERIMENTAL.  NVMe devices are not yet included in smartd.conf
 'DEVICESCAN' and 'smartctl --scan' unless '-d nvme' is specified.
 Use option '--with-nvme-devicescan' to include NVMe devices.
-Use option '--without-nvme-devicescan' to suppress this warning.])
+Use option '--without-nvme-devicescan' to suppress this warning.
+])
     ;;
 esac
 
-# TODO: Remove after smartmontools 6.5
+# TODO: Remove after smartmontools 6.6
 case "$host:${with_solaris_sparc_ata+set}" in
   sparc-*-solaris*:)
     AC_MSG_WARN([
@@ -721,6 +858,7 @@ Legacy ATA support is no longer enabled by default on Solaris SPARC.
 The required source file 'os_solaris_ata.s' is no longer included in
 the source tarball but still available in the SVN repository.
 Use option '--with-solaris-sparc-ata' to enable legacy ATA support.
-Use option '--without-solaris-sparc-ata' to suppress this warning.])
+Use option '--without-solaris-sparc-ata' to suppress this warning.
+])
     ;;
 esac

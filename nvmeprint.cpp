@@ -3,7 +3,7 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2016 Christian Franke
+ * Copyright (C) 2016-17 Christian Franke
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #include "config.h"
 #include "nvmeprint.h"
 
-const char * nvmeprint_cvsid = "$Id: nvmeprint.cpp 4311 2016-04-27 21:03:01Z chrfranke $"
+const char * nvmeprint_cvsid = "$Id: nvmeprint.cpp 4580 2017-11-03 19:41:14Z chrfranke $"
   NVMEPRINT_H_CVSID;
 
 #include "int64.h"
@@ -156,6 +156,11 @@ static void print_drive_info(const nvme_id_ctrl & id_ctrl, const nvme_id_ns & id
            lbacap_to_str(buf, id_ns.nuse, fmt_lba_bits));
 
     pout("Namespace %u Formatted LBA Size:   %s%u\n", nsid, align, (1U << fmt_lba_bits));
+
+    if (show_all || nonempty(id_ns.eui64, sizeof(id_ns.eui64)))
+      pout("Namespace %u IEEE EUI-64:          %s%02x%02x%02x %02x%02x%02x%02x%02x\n",
+           nsid, align, id_ns.eui64[0], id_ns.eui64[1], id_ns.eui64[2], id_ns.eui64[3],
+           id_ns.eui64[4], id_ns.eui64[5], id_ns.eui64[6], id_ns.eui64[7]);
   }
 
   char td[DATEANDEPOCHLEN]; dateandtimezone(td);
@@ -187,16 +192,21 @@ static void print_drive_capabilities(const nvme_id_ctrl & id_ctrl, const nvme_id
        ((id_ctrl.frmw & 0x10) ? ", no Reset required" : ""));
 
   if (show_all || id_ctrl.oacs)
-    pout("Optional Admin Commands (0x%04x):  %s%s%s%s%s%s\n", id_ctrl.oacs,
+    pout("Optional Admin Commands (0x%04x):  %s%s%s%s%s%s%s%s%s%s%s\n", id_ctrl.oacs,
          (!id_ctrl.oacs ? " -" : ""),
          ((id_ctrl.oacs & 0x0001) ? " Security" : ""),
          ((id_ctrl.oacs & 0x0002) ? " Format" : ""),
          ((id_ctrl.oacs & 0x0004) ? " Frmw_DL" : ""),
          ((id_ctrl.oacs & 0x0008) ? " NS_Mngmt" : ""),
-         ((id_ctrl.oacs & ~0x000f) ? " *Other*" : ""));
+         ((id_ctrl.oacs & 0x0010) ? " Self_Test" : ""), // NVMe 1.3 ...
+         ((id_ctrl.oacs & 0x0020) ? " Directvs" : ""),
+         ((id_ctrl.oacs & 0x0040) ? " MI_Snd/Rec" : ""),
+         ((id_ctrl.oacs & 0x0080) ? " Vrt_Mngmt" : ""),
+         ((id_ctrl.oacs & 0x0100) ? " Drbl_Bf_Cfg" : ""),
+         ((id_ctrl.oacs & ~0x01ff) ? " *Other*" : ""));
 
   if (show_all || id_ctrl.oncs)
-    pout("Optional NVM Commands (0x%04x):    %s%s%s%s%s%s%s%s\n", id_ctrl.oncs,
+    pout("Optional NVM Commands (0x%04x):    %s%s%s%s%s%s%s%s%s\n", id_ctrl.oncs,
          (!id_ctrl.oncs ? " -" : ""),
          ((id_ctrl.oncs & 0x0001) ? " Comp" : ""),
          ((id_ctrl.oncs & 0x0002) ? " Wr_Unc" : ""),
@@ -204,7 +214,8 @@ static void print_drive_capabilities(const nvme_id_ctrl & id_ctrl, const nvme_id
          ((id_ctrl.oncs & 0x0008) ? " Wr_Zero" : ""),
          ((id_ctrl.oncs & 0x0010) ? " Sav/Sel_Feat" : ""),
          ((id_ctrl.oncs & 0x0020) ? " Resv" : ""),
-         ((id_ctrl.oncs & ~0x003f) ? " *Other*" : ""));
+         ((id_ctrl.oncs & 0x0040) ? " Timestmp" : ""), // NVMe 1.3
+         ((id_ctrl.oncs & ~0x007f) ? " *Other*" : ""));
 
   if (id_ctrl.mdts)
     pout("Maximum Data Transfer Size:         %u Pages\n", (1U << id_ctrl.mdts));
@@ -220,12 +231,13 @@ static void print_drive_capabilities(const nvme_id_ctrl & id_ctrl, const nvme_id
 
   if (nsid && (show_all || id_ns.nsfeat)) {
     const char * align = &("  "[nsid < 10 ? 0 : (nsid < 100 ? 1 : 2)]);
-    pout("Namespace %u Features (0x%02x):     %s%s%s%s%s%s\n", nsid, id_ns.nsfeat, align,
+    pout("Namespace %u Features (0x%02x):     %s%s%s%s%s%s%s\n", nsid, id_ns.nsfeat, align,
          (!id_ns.nsfeat ? " -" : ""),
          ((id_ns.nsfeat & 0x01) ? " Thin_Prov" : ""),
          ((id_ns.nsfeat & 0x02) ? " NA_Fields" : ""),
          ((id_ns.nsfeat & 0x04) ? " Dea/Unw_Error" : ""),
-         ((id_ns.nsfeat & ~0x07) ? " *Other*" : ""));
+         ((id_ns.nsfeat & 0x08) ? " No_ID_Reuse" : ""), // NVMe 1.3
+         ((id_ns.nsfeat & ~0x0f) ? " *Other*" : ""));
   }
 
   // Print Power States
@@ -313,6 +325,14 @@ static void print_smart_log(const nvme_smart_log & smart_log, unsigned nsid,
       pout("Temperature Sensor %d:               %s\n", i + 1,
            kelvin_to_str(buf, smart_log.temp_sensor[i]));
   }
+  if (show_all || smart_log.thm_temp1_trans_count)
+    pout("Thermal Temp. 1 Transition Count:   %d\n", smart_log.thm_temp1_trans_count);
+  if (show_all || smart_log.thm_temp2_trans_count)
+    pout("Thermal Temp. 2 Transition Count:   %d\n", smart_log.thm_temp2_trans_count);
+  if (show_all || smart_log.thm_temp1_total_time)
+    pout("Thermal Temp. 1 Total Time:         %d\n", smart_log.thm_temp1_total_time);
+  if (show_all || smart_log.thm_temp2_total_time)
+    pout("Thermal Temp. 2 Total Time:         %d\n", smart_log.thm_temp2_total_time);
   pout("\n");
 }
 

@@ -3,7 +3,7 @@
 ;
 ; Home page of code is: http://www.smartmontools.org
 ;
-; Copyright (C) 2006-15 Christian Franke
+; Copyright (C) 2006-17 Christian Franke
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 ; You should have received a copy of the GNU General Public License
 ; (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
 ;
-; $Id: installer.nsi 4174 2015-11-22 16:19:29Z chrfranke $
+; $Id: installer.nsi 4575 2017-10-29 16:06:18Z chrfranke $
 ;
 
 
@@ -153,6 +153,8 @@ SectionGroup "!Program files"
       MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Replace existing configuration file$\n$INSTDIR\bin\smartd.conf ?" /SD IDNO IDYES 0 IDNO +2
         File "${INPDIR}\doc\smartd.conf"
 
+    File "${INPDIR}\bin\smartd_mailer.ps1"
+    File "${INPDIR}\bin\smartd_mailer.conf.sample.ps1"
     File "${INPDIR}\bin\smartd_warning.cmd"
     !insertmacro FileExe "bin\wtssendmsg.exe" ""
 
@@ -208,12 +210,15 @@ Section "!Documentation" DOC_SECTION
   File "${INPDIR}\doc\checksums??.txt"
 !endif
   File "${INPDIR}\doc\smartctl.8.html"
-  File "${INPDIR}\doc\smartctl.8.txt"
+  File "${INPDIR}\doc\smartctl.8.pdf"
+  Delete "$INSTDIR\doc\smartctl.8.txt" ; TODO: Remove after smartmontools 6.6
   File "${INPDIR}\doc\smartd.8.html"
-  File "${INPDIR}\doc\smartd.8.txt"
+  File "${INPDIR}\doc\smartd.8.pdf"
+  Delete "$INSTDIR\doc\smartd.8.txt" ; TODO: Remove after smartmontools 6.6
   File "${INPDIR}\doc\smartd.conf"
   File "${INPDIR}\doc\smartd.conf.5.html"
-  File "${INPDIR}\doc\smartd.conf.5.txt"
+  File "${INPDIR}\doc\smartd.conf.5.pdf"
+  Delete "$INSTDIR\doc\smartd.conf.5.txt" ; TODO: Remove after smartmontools 6.6
 
 SectionEnd
 
@@ -240,8 +245,8 @@ Section "Uninstaller" UNINST_SECTION
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "UninstallString" '"$INSTDIR\uninst-smartmontools.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "Publisher"     "smartmontools.org"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLInfoAbout"  "https://www.smartmontools.org/"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "HelpLink"      "http://sourceforge.net/projects/smartmontools/support"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLUpdateInfo" "http://builds.smartmontools.org/"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "HelpLink"      "https://www.smartmontools.org/wiki/Help"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "URLUpdateInfo" "https://builds.smartmontools.org/"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools" "NoRepair" 1
   WriteUninstaller "uninst-smartmontools.exe"
@@ -302,9 +307,11 @@ Section "Start Menu Shortcuts" MENU_SECTION
     !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\Daemon stop.lnk"                        "$INSTDIR\bin\runcmdu.exe" "smartd stop"
     !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\Do all tests once (-q onecheck).lnk"    "$INSTDIR\bin\runcmdu.exe" "smartd -q onecheck"
     !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\Debug mode (-d).lnk"                    "$INSTDIR\bin\runcmdu.exe" "smartd -d"
-    !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.conf (edit).lnk" "$EDITOR" "$INSTDIR\bin\smartd.conf"
-    CreateShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.conf (view).lnk"                   "$EDITOR" "$INSTDIR\bin\smartd.conf"
-    CreateShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.log (view).lnk"                    "$EDITOR" "$INSTDIR\bin\smartd.log"
+    !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.conf (edit).lnk" "$EDITOR" '"$INSTDIR\bin\smartd.conf"'
+    CreateShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.conf (view).lnk"                   "$EDITOR" '"$INSTDIR\bin\smartd.conf"'
+    CreateShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd.log (view).lnk"                    "$EDITOR" '"$INSTDIR\bin\smartd.log"'
+    CreateShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd_mailer.conf.sample.ps1 (view).lnk" "$EDITOR" '"$INSTDIR\bin\smartd_mailer.conf.sample.ps1"'
+    !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\smartd_mailer.conf.ps1 (create, edit).lnk" "$EDITOR" '"$INSTDIR\bin\smartd_mailer.conf.ps1"'
 
     ; smartd service
     !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\smartd Examples\Service install, eventlog, 30min.lnk"   "$INSTDIR\bin\runcmdu.exe" "smartd install"
@@ -322,13 +329,13 @@ Section "Start Menu Shortcuts" MENU_SECTION
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartctl manual page (html).lnk"    "$INSTDIR\doc\smartctl.8.html"
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd manual page (html).lnk"      "$INSTDIR\doc\smartd.8.html"
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd.conf manual page (html).lnk" "$INSTDIR\doc\smartd.conf.5.html"
-    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartctl manual page (txt).lnk"     "$INSTDIR\doc\smartctl.8.txt"
-    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd manual page (txt).lnk"       "$INSTDIR\doc\smartd.8.txt"
-    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd.conf manual page (txt).lnk"  "$INSTDIR\doc\smartd.conf.5.txt"
-    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd.conf sample.lnk" "$EDITOR" "$INSTDIR\doc\smartd.conf"
+    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartctl manual page (pdf).lnk"     "$INSTDIR\doc\smartctl.8.pdf"
+    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd manual page (pdf).lnk"       "$INSTDIR\doc\smartd.8.pdf"
+    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd.conf manual page (pdf).lnk"  "$INSTDIR\doc\smartd.conf.5.pdf"
+    CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\smartd.conf sample.lnk" "$EDITOR" '"$INSTDIR\doc\smartd.conf"'
     ${If} ${FileExists} "$INSTDIR\bin\drivedb.h"
-        CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\drivedb.h (view).lnk" "$EDITOR" "$INSTDIR\bin\drivedb.h"
-        !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\Documentation\drivedb-add.h (create, edit).lnk" "$EDITOR" "$INSTDIR\bin\drivedb-add.h"
+      CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\drivedb.h (view).lnk" "$EDITOR" '"$INSTDIR\bin\drivedb.h"'
+      !insertmacro CreateAdminShortCut "$SMPROGRAMS\smartmontools\Documentation\drivedb-add.h (create, edit).lnk" "$EDITOR" '"$INSTDIR\bin\drivedb-add.h"'
     ${EndIf}
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\ChangeLog.lnk" "$INSTDIR\doc\ChangeLog.txt"
     CreateShortCut "$SMPROGRAMS\smartmontools\Documentation\COPYING.lnk"   "$INSTDIR\doc\COPYING.txt"
@@ -337,7 +344,7 @@ Section "Start Menu Shortcuts" MENU_SECTION
 
   ; Homepage
   CreateShortCut "$SMPROGRAMS\smartmontools\smartmontools Home Page.lnk" "https://www.smartmontools.org/"
-  CreateShortCut "$SMPROGRAMS\smartmontools\smartmontools Daily Builds.lnk" "http://builds.smartmontools.org/"
+  CreateShortCut "$SMPROGRAMS\smartmontools\smartmontools Daily Builds.lnk" "https://builds.smartmontools.org/"
 
   ; drivedb.h update
   ${If} ${FileExists} "$INSTDIR\bin\update-smart-drivedb.exe"
@@ -438,19 +445,24 @@ Section "Uninstall"
       Delete "$INSTDIR\bin\drivedb-add.h"
   ${EndIf}
 
+  ; Remove smartd_mailer.conf.ps1 file ?
+  ${If} ${FileExists} "$INSTDIR\bin\smartd_mailer.conf.ps1"
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Delete mailer configuration file$\n$INSTDIR\bin\smartd_mailer.conf.ps1 ?" /SD IDNO IDYES 0 IDNO +2
+      Delete "$INSTDIR\bin\smartd_mailer.conf.ps1"
+  ${EndIf}
+
   ; Remove files
   Delete "$INSTDIR\bin\smartctl.exe"
   Delete "$INSTDIR\bin\smartctl-nc.exe"
   Delete "$INSTDIR\bin\smartd.exe"
+  Delete "$INSTDIR\bin\smartd_mailer.ps1"
+  Delete "$INSTDIR\bin\smartd_mailer.conf.sample.ps1"
   Delete "$INSTDIR\bin\smartd_warning.cmd" ; TODO: Check for modifications?
   Delete "$INSTDIR\bin\drivedb.h"
   Delete "$INSTDIR\bin\drivedb.h.error"
   Delete "$INSTDIR\bin\drivedb.h.lastcheck"
   Delete "$INSTDIR\bin\drivedb.h.old"
   Delete "$INSTDIR\bin\update-smart-drivedb.exe"
-  Delete "$INSTDIR\bin\smartctl-run.bat"
-  Delete "$INSTDIR\bin\smartd-run.bat"
-  Delete "$INSTDIR\bin\net-run.bat"
   Delete "$INSTDIR\bin\runcmda.exe"
   Delete "$INSTDIR\bin\runcmda.exe.manifest" ; TODO: Remove after smartmontools 6.5
   Delete "$INSTDIR\bin\runcmdu.exe"
@@ -466,12 +478,15 @@ Section "Uninstall"
   Delete "$INSTDIR\doc\TODO.txt"
   Delete "$INSTDIR\doc\checksums*.txt"
   Delete "$INSTDIR\doc\smartctl.8.html"
-  Delete "$INSTDIR\doc\smartctl.8.txt"
+  Delete "$INSTDIR\doc\smartctl.8.pdf"
+  Delete "$INSTDIR\doc\smartctl.8.txt" ; TODO: Remove after smartmontools 6.6
   Delete "$INSTDIR\doc\smartd.8.html"
-  Delete "$INSTDIR\doc\smartd.8.txt"
+  Delete "$INSTDIR\doc\smartd.8.pdf"
+  Delete "$INSTDIR\doc\smartd.8.txt"  ; TODO: Remove after smartmontools 6.6
   Delete "$INSTDIR\doc\smartd.conf"
   Delete "$INSTDIR\doc\smartd.conf.5.html"
-  Delete "$INSTDIR\doc\smartd.conf.5.txt"
+  Delete "$INSTDIR\doc\smartd.conf.5.pdf"
+  Delete "$INSTDIR\doc\smartd.conf.5.txt" ; TODO: Remove after smartmontools 6.6
   Delete "$INSTDIR\uninst-smartmontools.exe"
 
   ; Remove shortcuts

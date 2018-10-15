@@ -3,8 +3,8 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2002-9 Bruce Allen <smartmontools-support@lists.sourceforge.net>
- * Copyright (C) 2008-12 Christian Franke <smartmontools-support@lists.sourceforge.net>
+ * Copyright (C) 2002-09 Bruce Allen
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,7 @@
 #ifndef ATAPRINT_H_
 #define ATAPRINT_H_
 
-#define ATAPRINT_H_CVSID "$Id: ataprint.h 4120 2015-08-27 16:12:21Z samm2 $\n"
+#define ATAPRINT_H_CVSID "$Id: ataprint.h 4572 2017-10-29 14:36:00Z chrfranke $\n"
 
 #include <vector>
 
@@ -64,6 +64,9 @@ struct ata_print_options
   bool devstat_all_pages, devstat_ssd_page;
   std::vector<int> devstat_pages;
 
+  bool pending_defects_info;
+  unsigned pending_defects_log;
+
   bool sct_temp_sts, sct_temp_hist;
   bool sct_erc_get;
   bool sct_erc_set;
@@ -92,6 +95,7 @@ struct ata_print_options
   bool ignore_presets; // Ignore presets from drive database
   bool show_presets; // Show presets and exit
   unsigned char powermode; // Skip check, if disk in idle or standby mode
+  unsigned char powerexit; // exit() code for low power mode
 
   bool get_set_used; // true if any get/set command is used
   bool get_aam; // print Automatic Acoustic Management status
@@ -108,6 +112,12 @@ struct ata_print_options
   int set_wcache; // disable(-1), enable(1) write cache
   bool sct_wcache_reorder_get; // print write cache reordering status
   int sct_wcache_reorder_set; // disable(-1), enable(1) write cache reordering
+  bool sct_wcache_reorder_set_pers;
+  bool sct_wcache_sct_get; // print SCT Feature Control of write cache status
+  int sct_wcache_sct_set; // determined by ata set features command(1), force enable(2), force disable(3)
+  bool sct_wcache_sct_set_pers; // persistent or volatile
+  bool get_dsn; // print DSN status
+  int set_dsn; // disable(02h), enable(01h) DSN
 
   ata_print_options()
     : drive_info(false),
@@ -123,6 +133,7 @@ struct ata_print_options
       smart_ext_selftest_log(0),
       retry_error_log(false), retry_selftest_log(false),
       devstat_all_pages(false), devstat_ssd_page(false),
+      pending_defects_info(false), pending_defects_log(0),
       sct_temp_sts(false), sct_temp_hist(false),
       sct_erc_get(false),
       sct_erc_set(false),
@@ -137,7 +148,7 @@ struct ata_print_options
       fix_swapped_id(false),
       ignore_presets(false),
       show_presets(false),
-      powermode(0),
+      powermode(0), powerexit(0),
       get_set_used(false),
       get_aam(false), set_aam(0),
       get_apm(false), set_apm(0),
@@ -145,7 +156,11 @@ struct ata_print_options
       set_standby(0), set_standby_now(false),
       get_security(false), set_security_freeze(false),
       get_wcache(false), set_wcache(0),
-      sct_wcache_reorder_get(false), sct_wcache_reorder_set(0)
+      sct_wcache_reorder_get(false), sct_wcache_reorder_set(0),
+      sct_wcache_reorder_set_pers(false),
+      sct_wcache_sct_get(false), sct_wcache_sct_set(0),
+      sct_wcache_sct_set_pers(false),
+      get_dsn(false), set_dsn(0)
     { }
 };
 

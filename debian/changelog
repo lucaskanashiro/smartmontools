@@ -1,3 +1,33 @@
+smartmontools (6.6-1) unstable; urgency=medium
+
+  [ Jonathan Dowland ]
+  * Update Vcs-* headers in control file: replace Alioth/anonscm URIs
+    with salsa.debian.org.
+  * new upstream version. Closes: #889033.
+  Patches refreshed:
+    - 61_cciss-doc.patch
+    Patches removed:
+    - 50_manpage_improvements.diff
+    - 3w-sas (merged by upstream)
+    - 60_remove-redhatism.diff (removed by upstream)
+
+  [ SZ Lin (林上智) ]
+  Patches refreshed:
+    - 52_remove-pragma.diff
+    - 53_use-smartd-runner-by-default.diff
+    - 54_remove-Id-from-smartd.conf.diff
+    - 61_cciss-doc.patch
+    - 63_removable.patch
+    - kfreebsd.patch
+    - manpage.diff
+    - removesyslogtarget.patch
+
+  [ Jonathan Dowland ]
+  * Bump debhelper dependency to 11, remove dh-systemd (deprecated)
+    in favour of dh_installsystemd
+
+ -- Jonathan Dowland <jmtd@debian.org>  Mon, 15 Oct 2018 21:03:35 +0100
+
 smartmontools (6.5+svn4324-1) unstable; urgency=low
 
   * [a86ec89] Imported Upstream version 6.5+svn43204 (Closes: #831504)

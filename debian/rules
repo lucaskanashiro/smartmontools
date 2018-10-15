@@ -116,9 +116,8 @@ binary-arch: build install
 	dh_installlogrotate
 	dh_install
 	dh_link
-	dh_systemd_enable
+	dh_installsystemd
 	dh_installinit
-	dh_systemd_start
 	dh_installcron
 	dh_installinfo
 	dh_lintian

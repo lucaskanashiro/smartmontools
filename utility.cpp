@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-12 Bruce Allen
- * Copyright (C) 2008-16 Christian Franke
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -52,7 +52,7 @@
 #include "atacmds.h"
 #include "dev_interface.h"
 
-const char * utility_cpp_cvsid = "$Id: utility.cpp 4309 2016-04-24 14:59:15Z chrfranke $"
+const char * utility_cpp_cvsid = "$Id: utility.cpp 4583 2017-11-03 21:10:09Z chrfranke $"
                                  UTILITY_H_CVSID INT64_H_CVSID;
 
 const char * packet_types[] = {
@@ -90,7 +90,7 @@ std::string format_version_info(const char * prog_name, bool full /*= false*/)
       "(build date " __DATE__ ")" // checkout without expansion of Id keywords
 #endif
       " [%s] " BUILD_INFO "\n"
-    "Copyright (C) 2002-16, Bruce Allen, Christian Franke, www.smartmontools.org\n",
+    "Copyright (C) 2002-17, Bruce Allen, Christian Franke, www.smartmontools.org\n",
     prog_name, smi()->get_os_version_str().c_str()
   );
   if (!full)
@@ -314,7 +314,12 @@ void dateandtimezoneepoch(char *buffer, time_t tval){
   // Remove newline
   lenm1=strlen(datebuffer)-1;
   datebuffer[lenm1>=0?lenm1:0]='\0';
-  
+
+#if defined(_WIN32) && defined(_MSC_VER)
+  // tzname is missing in MSVC14
+  #define tzname _tzname
+#endif
+
   // correct timezone name
   if (tmval->tm_isdst==0)
     // standard time zone
@@ -733,7 +738,7 @@ const char * format_capacity(char * str, int strsize, uint64_t val,
 }
 
 // return (v)sprintf() formatted std::string
-
+__attribute_format_printf(1, 0)
 std::string vstrprintf(const char * fmt, va_list ap)
 {
   char buf[512];
@@ -782,7 +787,14 @@ int safe_snprintf(char *buf, int size, const char *fmt, ...)
   return i;
 }
 
-#else // HAVE_WORKING_SNPRINTF
+static void check_snprintf() {}
+
+#elif defined(__GNUC__) && (__GNUC__ >= 7)
+
+// G++ 7+: Assume sane implementation and avoid -Wformat-truncation warning
+static void check_snprintf() {}
+
+#else
 
 static void check_snprintf()
 {
@@ -790,8 +802,7 @@ static void check_snprintf()
   int n1 = snprintf(buf, 8, "123456789");
   int n2 = snprintf(buf, 0, "X");
   if (!(!strcmp(buf, "1234567") && n1 == 9 && n2 == 1))
-    throw std::logic_error("Function snprintf() does not conform to C99,\n"
-                           "please contact " PACKAGE_BUGREPORT);
+    throw std::logic_error("Function snprintf() does not conform to C99");
 }
 
 #endif // HAVE_WORKING_SNPRINTF
@@ -800,7 +811,5 @@ static void check_snprintf()
 void check_config()
 {
   check_endianness();
-#ifdef HAVE_WORKING_SNPRINTF
   check_snprintf();
-#endif
 }

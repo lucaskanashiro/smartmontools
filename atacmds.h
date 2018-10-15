@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-15 Christian Franke
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,7 @@
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 4162 2015-10-31 16:36:16Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 4419 2017-04-17 13:20:31Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -74,7 +74,10 @@ typedef enum {
 #define ATA_IDLE                        0xe3
 #define ATA_SMART_CMD                   0xb0
 #define ATA_SECURITY_FREEZE_LOCK        0xf5
+#ifndef ATA_SET_FEATURES
 #define ATA_SET_FEATURES                0xef
+#endif
+#define ATA_STANDBY                     0xe2
 #define ATA_STANDBY_IMMEDIATE           0xe0
 
 // SET_FEATURES subcommands
@@ -86,9 +89,11 @@ typedef enum {
 #define ATA_ENABLE_APM                  0x05
 #define ATA_ENABLE_WRITE_CACHE          0x02
 #define ATA_ENABLE_READ_LOOK_AHEAD      0xaa
+#define ATA_ENABLE_DISABLE_DSN          0x63
 
 // 48-bit commands
 #define ATA_READ_LOG_EXT                0x2F
+#define ATA_WRITE_LOG_EXT               0x3F
 
 // ATA Specification Feature Register Values (SMART Subcommands).
 // Note that some are obsolete as of ATA-7.
@@ -546,7 +551,8 @@ struct ata_sct_status_response
   unsigned int over_limit_count;    // 206-209: # intervals since last reset with temperature > Max Op Limit
   unsigned int under_limit_count;   // 210-213: # intervals since last reset with temperature < Min Op Limit
   unsigned short smart_status;      // 214-215: LBA(32:8) of SMART RETURN STATUS (0, 0x2cf4, 0xc24f) (ACS-4)
-  unsigned char bytes216_479[479-216+1]; // 216-479: reserved
+  unsigned short min_erc_time;      // 216-217: Minimum supported value for ERC (ACS-4)
+  unsigned char bytes216_479[479-218+1]; // 218-479: reserved
   unsigned char vendor_specific[32];// 480-511: vendor specific
 } ATTR_PACKED;
 #pragma pack()
@@ -779,6 +785,10 @@ int ataReadSelfTestLog(ata_device * device, ata_smart_selftestlog * data,
 int ataReadSelectiveSelfTestLog(ata_device * device, struct ata_selective_self_test_log *data);
 int ataReadLogDirectory(ata_device * device, ata_smart_log_directory *, bool gpl);
 
+// Write GP Log page(s)
+bool ataWriteLogExt(ata_device * device, unsigned char logaddr,
+                    unsigned page, void * data, unsigned nsectors);
+
 // Read GP Log page(s)
 bool ataReadLogExt(ata_device * device, unsigned char logaddr,
                    unsigned char features, unsigned page,
@@ -843,6 +853,12 @@ int ataSmartSupport(const ata_identify_device * drive);
 //  2: Write Cache Reordering disabled
 // -1: error
 int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool persistent, bool set);
+
+// Return values:
+// 1: Write cache controled by ATA Set Features command
+// 2: Force enable write cache
+// 3: Force disable write cache
+int ataGetSetSCTWriteCache(ata_device * device, unsigned short state, bool persistent, bool set);
 
 // Return values:
 //  1: SMART enabled

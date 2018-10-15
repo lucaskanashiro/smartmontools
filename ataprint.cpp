@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-16 Christian Franke
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -40,7 +40,7 @@
 #include "utility.h"
 #include "knowndrives.h"
 
-const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 4256 2016-03-27 16:51:32Z chrfranke $"
+const char * ataprint_cpp_cvsid = "$Id: ataprint.cpp 4573 2017-10-29 15:13:58Z chrfranke $"
                                   ATAPRINT_H_CVSID;
 
 
@@ -440,7 +440,13 @@ static int find_msb(unsigned short word)
 
 static const char * get_ata_major_version(const ata_identify_device * drive)
 {
+  // Table 13 of T13/1153D (ATA/ATAPI-4) revision 18, August 19, 1998
+  // Table 48 of T13/BSR INCITS 529 (ACS-4) Revision 16, February 21, 2017
   switch (find_msb(drive->major_rev_num)) {
+    case 14: return "ACS >4 (14)";
+    case 13: return "ACS >4 (13)";
+    case 12: return "ACS >4 (12)";
+    case 11: return "ACS-4";
     case 10: return "ACS-3";
     case  9: return "ACS-2";
     case  8: return "ATA8-ACS";
@@ -540,20 +546,22 @@ static const char * get_pata_version(unsigned short word222, char (& buf)[32])
   }
 }
 
-static const char * get_sata_version(unsigned short word222, char (& buf)[32])
+static const char * get_sata_version(unsigned short word222)
 {
   switch (find_msb(word222 & 0x0fff)) {
-    default: snprintf(buf, sizeof(buf),
-                    "SATA >3.2 (0x%03x)", word222 & 0x0fff); return buf;
-    case 7:  return "SATA 3.2";
-    case 6:  return "SATA 3.1";
-    case 5:  return "SATA 3.0";
-    case 4:  return "SATA 2.6";
-    case 3:  return "SATA 2.5";
-    case 2:  return "SATA II Ext";
-    case 1:  return "SATA 1.0a";
-    case 0:  return "ATA8-AST";
-    case -1: return "Unknown";
+    case 11: return "SATA >3.3 (11)";
+    case 10: return "SATA >3.3 (10)";
+    case  9: return "SATA >3.3 (9)";
+    case  8: return "SATA 3.3";
+    case  7: return "SATA 3.2";
+    case  6: return "SATA 3.1";
+    case  5: return "SATA 3.0";
+    case  4: return "SATA 2.6";
+    case  3: return "SATA 2.5";
+    case  2: return "SATA II Ext";
+    case  1: return "SATA 1.0a";
+    case  0: return "ATA8-AST";
+    default: return "Unknown";
   }
 }
 
@@ -697,16 +705,17 @@ static void print_drive_info(const ata_identify_device * drive,
   pout("ATA Version is:   %s\n", infofound(ataver.c_str()));
 
   // Print Transport specific version
-    // cppcheck-suppress variableScope
-  char buf[32] = "";
   unsigned short word222 = drive->words088_255[222-88];
   if (word222 != 0x0000 && word222 != 0xffff) switch (word222 >> 12) {
     case 0x0: // PATA
-      pout("Transport Type:   Parallel, %s\n", get_pata_version(word222, buf));
+      {
+        char buf[32] = "";
+        pout("Transport Type:   Parallel, %s\n", get_pata_version(word222, buf));
+      }
       break;
     case 0x1: // SATA
       {
-        const char * sataver = get_sata_version(word222, buf);
+        const char * sataver = get_sata_version(word222);
         const char * maxspeed = get_sata_maxspeed(drive);
         const char * curspeed = get_sata_curspeed(drive);
         pout("SATA Version is:  %s%s%s%s%s%s\n", sataver,
@@ -1183,8 +1192,10 @@ static unsigned GetNumLogSectors(const ata_smart_log_directory * logdir, unsigne
 // Get name of log.
 static const char * GetLogName(unsigned logaddr)
 {
-    // Table 205 of T13/BSR INCITS 529 (ACS-4) Revision 08, April 28, 2015
+    // Table A.2 of T13/2015-D (ACS-2) Revision 7, June 22, 2011
     // Table 112 of Serial ATA Revision 3.2, August 7, 2013
+    // Table A.2 of T13/2161-D (ACS-3) Revision 5, October 28, 2013
+    // Table 204 of T13/BSR INCITS 529 (ACS-4) Revision 16, February 21, 2017
     switch (logaddr) {
       case 0x00: return "Log Directory";
       case 0x01: return "Summary SMART error log";
@@ -1200,15 +1211,15 @@ static const char * GetLogName(unsigned logaddr)
       case 0x0b: return "Reserved for CFA"; // ACS-3
       case 0x0c: return "Pending Defects log"; // ACS-4
       case 0x0d: return "LPS Mis-alignment log"; // ACS-2
-
+      case 0x0e: return "Reserved for ZAC-2"; // ACS-4
       case 0x0f: return "Sense Data for Successful NCQ Cmds log"; // ACS-4
-      case 0x10: return "SATA NCQ Queued Error log";
+      case 0x10: return "NCQ Command Error log";
       case 0x11: return "SATA Phy Event Counters log";
-    //case 0x12: return "SATA NCQ Queue Management log"; // SATA 3.0/3.1
-      case 0x12: return "SATA NCQ NON-DATA log"; // SATA 3.2
-      case 0x13: return "SATA NCQ Send and Receive log"; // SATA 3.1
-      case 0x14: return "SATA Hybrid Information log"; // SATA 3.2
-      case 0x15: return "SATA Rebuild Assist log"; // SATA 3.2
+    //case 0x12: return "SATA NCQ Queue Management log"; // SATA 3.0/3.1, ACS-3
+      case 0x12: return "SATA NCQ Non-Data log"; // SATA 3.2, ACS-4
+      case 0x13: return "SATA NCQ Send and Receive log"; // SATA 3.1, ACS-3
+      case 0x14: return "Hybrid Information log"; // SATA 3.2, ACS-4
+      case 0x15: return "Rebuild Assist log"; // SATA 3.2, ACS-4
       case 0x16:
       case 0x17: return "Reserved for Serial ATA";
 
@@ -1221,6 +1232,7 @@ static const char * GetLogName(unsigned logaddr)
       case 0x24: return "Current Device Internal Status Data log"; // ACS-3
       case 0x25: return "Saved Device Internal Status Data log"; // ACS-3
 
+      case 0x2f: return "Set Sector Configuration";; // ACS-4
       case 0x30: return "IDENTIFY DEVICE data log"; // ACS-3
 
       case 0xe0: return "SCT Command/Status";
@@ -1371,7 +1383,7 @@ static void PrintLogPages(const char * type, const unsigned char * data,
 // Device statistics (Log 0x04)
 
 // Section A.5 of T13/2161-D (ACS-3) Revision 5, October 28, 2013
-// Section 9.5 of T13/BSR INCITS 529 (ACS-4) Revision 08, April 28, 2015
+// Section 9.5 of T13/BSR INCITS 529 (ACS-4) Revision 20, October 26, 2017
 
 struct devstat_entry_info
 {
@@ -1396,6 +1408,8 @@ const devstat_entry_info devstat_info_0x01[] = {
   {  4, "Pending Error Count" }, // ACS-4
   {  2, "Workload Utilization" }, // ACS-4
   {  6, "Utilization Usage Rate" }, // ACS-4 (TODO: field provides 3 values)
+  {  2, "Resource Availability" }, // ACS-4
+  {  1, "Random Write Resources Used" }, // ACS-4
   {  0, 0 }
 };
 
@@ -1424,6 +1438,7 @@ const devstat_entry_info devstat_info_0x04[] = {
   {  4, "Number of Reported Uncorrectable Errors" },
 //{  4, "Number of Resets Between Command Acceptance and Command Completion" },
   {  4, "Resets Between Cmd Acceptance and Completion" },
+  {  4, "Physical Element Status Changed" }, // ACS-4
   {  0, 0 }
 };
 
@@ -1468,6 +1483,7 @@ const devstat_entry_info * devstat_infos[] = {
   devstat_info_0x05,
   devstat_info_0x06,
   devstat_info_0x07
+  // TODO: 0x08 Zoned Device Statistics (T13/f16136r7, January 2017)
 };
 
 const int num_devstat_infos = sizeof(devstat_infos)/sizeof(devstat_infos[0]);
@@ -1655,6 +1671,79 @@ static bool print_device_statistics(ata_device * device, unsigned nsectors,
     pout("%32s|___ N normalized value\n\n", "");
   }
 
+  return true;
+}
+
+
+///////////////////////////////////////////////////////////////////////
+// Pending Defects log (Log 0x0c)
+
+// Section 9.26 of T13/BSR INCITS 529 (ACS-4) Revision 20, October 26, 2017
+
+// TODO: Move to utility.h:
+static inline unsigned le32_to_uint(const unsigned char * val)
+{
+  return (   (unsigned)val[0]
+          | ((unsigned)val[1] <<  8)
+          | ((unsigned)val[2] << 16)
+          | ((unsigned)val[3] << 24));
+}
+
+static inline uint64_t le64_to_uint(const unsigned char * val)
+{
+  return (le32_to_uint(val) | ((uint64_t)le32_to_uint(val + 4) << 32));
+}
+
+static bool print_pending_defects_log(ata_device * device, unsigned nsectors,
+  unsigned max_entries)
+{
+  // Read #entries from page 0
+  unsigned char page_buf[512] = {0, };
+  if (!ataReadLogExt(device, 0x0c, 0, 0, page_buf, 1)) {
+    pout("Read Pending Defects log page 0x00 failed\n\n");
+    return false;
+  }
+
+  pout("Pending Defects log (GP Log 0x0c)\n");
+  unsigned nentries = le32_to_uint(page_buf);
+  if (!nentries) {
+    pout("No Defects Logged\n\n");
+    return true;
+  }
+
+  // Print entries
+  pout("Index                LBA    Hours\n");
+  for (unsigned i = 0, pi = 1, page = 0; i < nentries && i < max_entries; i++, pi++) {
+    // Read new page if required
+    if (pi >= 32) {
+      if (++page >= nsectors) {
+        pout("Pending Defects count %u exceeds log size (#pages=%u)\n\n",
+             nentries, nsectors);
+        return false;
+      }
+      if (!ataReadLogExt(device, 0x0c, 0, page, page_buf, 1)) {
+        pout("Read Pending Defects log page 0x%02x failed\n\n", page);
+        return false;
+      }
+      pi = 0;
+    }
+
+    const unsigned char * entry = page_buf + 16 * pi;
+    unsigned hours = le32_to_uint(entry);
+    char hourstr[32];
+    if (hours != 0xffffffffU)
+      snprintf(hourstr, sizeof(hourstr), "%u", hours);
+    else
+      hourstr[0] = '-', hourstr[1] = 0;
+    uint64_t lba = le64_to_uint(entry + 8);
+    pout("%5u %18" PRIu64 " %8s\n", i, lba, hourstr);
+  }
+
+  if (nentries > max_entries)
+    pout("... (%u entries not shown)\n", nentries - max_entries);
+  // TODO: Remove when no longer EXPERIMENTAL
+  pout("Please send sample output of above table to:\n" PACKAGE_BUGREPORT "\n");
+  pout("\n");
   return true;
 }
 
@@ -2310,7 +2399,8 @@ static int ataPrintSCTStatus(const ata_sct_status_response * sts)
     // T13/e06152r0-3 (Additional SCT Temperature Statistics), August - October 2006
     // Table 60 of T13/1699-D (ATA8-ACS) Revision 3f, December 2006  (format version 2)
     // Table 80 of T13/1699-D (ATA8-ACS) Revision 6a, September 2008 (format version 3)
-    // Table 182 of T13/BSR INCITS 529 (ACS-4) Revision 02a, May 22, 2014 (smart_status field)
+    // Table 185 of T13/BSR INCITS 529 (ACS-4) Revision 16, February 21, 2017
+    // (smart_status, min_erc_time)
     pout("Current Temperature:                    %s Celsius\n",
       sct_ptemp(sts->hda_temp, buf1));
     pout("Power Cycle Min/Max Temperature:     %s/%s Celsius\n",
@@ -2327,6 +2417,10 @@ static int ataPrintSCTStatus(const ata_sct_status_response * sts)
       pout("SMART Status:                        0x%04x (%s)\n", sts->smart_status,
            (sts->smart_status == 0x2cf4 ? "FAILED" :
             sts->smart_status == 0xc24f ? "PASSED" : "Reserved"));
+
+    if (sts->min_erc_time) // ACS-4
+      pout("Minimum supported ERC Time Limit:    %d (%0.1f seconds)\n",
+           sts->min_erc_time, sts->min_erc_time/10.0);
 
     if (nonempty(sts->vendor_specific, sizeof(sts->vendor_specific))) {
       pout("Vendor specific:\n");
@@ -2468,7 +2562,7 @@ static void print_ata_security_status(const char * msg, unsigned short state)
     }
     else {
       s1 = "ENABLED, PW level ";
-      if (!(state & 0x0020))
+      if (!(state & 0x0100))
         s2 = "HIGH";
       else
         s2 = "MAX";
@@ -2568,8 +2662,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
     if (powername) {
       if (options.powermode >= powerlimit) {
-        pout("Device is in %s mode, exit(%d)\n", powername, FAILPOWER);
-        return FAILPOWER;
+        pout("Device is in %s mode, exit(%d)\n", powername, options.powerexit);
+        return options.powerexit;
       }
       powerchg = (powermode != 0xff); // SMART tests will spin up drives
     }
@@ -2619,6 +2713,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        || options.devstat_all_pages
        || options.devstat_ssd_page
        || !options.devstat_pages.empty()
+       || options.pending_defects_log
   );
 
   unsigned i;
@@ -2638,6 +2733,8 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        || options.sct_erc_set
        || options.sct_wcache_reorder_get
        || options.sct_wcache_reorder_set
+       || options.sct_wcache_sct_get
+       || options.sct_wcache_sct_set
   );
 
   // Exit if no further options specified
@@ -2793,6 +2890,20 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
        !(drive.cfs_enable_1 & 0x0020) ? "Disabled" : "Enabled"); // word085
   }
 
+  // Print DSN status
+  unsigned short word120 = drive.words088_255[120-88];
+  unsigned short word119 = drive.words088_255[119-88];
+  if (options.get_dsn) {
+    if (!(drive.word086 & 0x8000) // word086
+       || ((word119 & 0xc200) != 0x4200) // word119
+       || ((word120 & 0xc000) != 0x4000)) // word120
+      pout("DSN feature is:   Unavailable\n");
+    else if (word120 & 0x200) // word120
+      pout("DSN feature is:   Enabled\n");
+    else
+      pout("DSN feature is:   Disabled\n");
+  }
+
   // Check for ATA Security LOCK
   unsigned short word128 = drive.words088_255[128-88];
   bool locked = ((word128 & 0x0007) == 0x0007); // LOCKED|ENABLED|SUPPORTED
@@ -2821,6 +2932,31 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
   }
 
+  const char * sct_write_cache_state_desc[4] = {
+    "Unknown",            // 0: not defined in standard but returned on some drives if not set
+    "Controlled by ATA",  // 1: controlled ATA Set Features command
+    "Force Enabled",      // 2
+    "Force Disabled"      // 3
+  };
+
+  // Print SCT feature control of write cache
+  if (options.sct_wcache_sct_get) {
+    if (!isSCTFeatureControlCapable(&drive))
+      pout("SCT Write Cache Control: Unavailable\n");
+    else if (locked)
+      pout("SCT Write Cache Control: Unknown (SCT not supported if ATA Security is LOCKED)\n");
+    else {
+      int state = ataGetSetSCTWriteCache(device, 1, false /*persistent*/, false /*set*/);
+      if (-1 <= state && state <= 3)
+        pout("SCT Write Cache Control: %s\n",
+             (state == -1 ? "Unknown (SCT Feature Control command failed)" :
+              sct_write_cache_state_desc[state]));
+      else
+        pout("SCT Write Cache Control: Unknown (0x%02x)\n", state);
+    }
+  }
+
+
   // Print remaining drive info
   if (options.drive_info) {
     // Print the (now possibly changed) power mode if available
@@ -2839,7 +2975,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       || options.smart_auto_offl_disable || options.smart_auto_offl_enable
       || options.set_aam || options.set_apm || options.set_lookahead
       || options.set_wcache || options.set_security_freeze || options.set_standby
-      || options.sct_wcache_reorder_set)
+      || options.sct_wcache_reorder_set || options.sct_wcache_sct_set || options.set_dsn)
     pout("=== START OF ENABLE/DISABLE COMMANDS SECTION ===\n");
   
   // Enable/Disable AAM
@@ -2904,6 +3040,17 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       pout("Write cache %sabled\n", (enable ? "en" : "dis"));
   }
 
+  // Enable/Disable DSN
+  if (options.set_dsn) {
+    bool enable = (options.set_dsn > 0);
+    if (!ata_set_features(device, ATA_ENABLE_DISABLE_DSN, (enable ? 0x1 : 0x2))) {
+        pout("DSN %sable failed: %s\n", (enable ? "en" : "dis"), device->get_errmsg());
+        returnval |= FAILSMART;
+    }
+    else
+      pout("DSN %sabled\n", (enable ? "en" : "dis"));
+  }
+
   // Enable/Disable write cache reordering
   if (options.sct_wcache_reorder_set) {
     bool enable = (options.sct_wcache_reorder_set > 0);
@@ -2914,12 +3061,30 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       pout("Write cache reordering %sable failed: SCT not supported if ATA Security is LOCKED\n",
         (enable ? "en" : "dis"));
     else if (ataGetSetSCTWriteCacheReordering(device,
-               enable, false /*persistent*/, true /*set*/) < 0) {
+               enable, options.sct_wcache_reorder_set_pers, true /*set*/) < 0) {
       pout("Write cache reordering %sable failed: %s\n", (enable ? "en" : "dis"), device->get_errmsg());
       returnval |= FAILSMART;
     }
     else
-      pout("Write cache reordering %sabled\n", (enable ? "en" : "dis"));
+      pout("Write cache reordering %sabled (%s)\n", (enable ? "en" : "dis"),
+           (options.sct_wcache_reorder_set_pers ? "persistent" : "volatile"));
+  }
+
+  // Enable/Disable write cache in SCT
+  if (options.sct_wcache_sct_set) {
+    if (!isSCTFeatureControlCapable(&drive))
+      pout("SCT Feature Control of write cache failed: SCT Feature Control command not supported\n");
+    else if (locked)
+      pout("SCT Feature Control of write cache failed: SCT not supported if ATA Security is LOCKED\n");
+    else if (ataGetSetSCTWriteCache(device,
+               options.sct_wcache_sct_set, options.sct_wcache_sct_set_pers, true /*set*/) < 0) {
+      pout("SCT Feature Control of write cache failed: %s\n", device->get_errmsg());
+      returnval |= FAILSMART;
+    }
+    else
+      pout("Write cache SCT Feature Control is set to: %s (%s)\n",
+           sct_write_cache_state_desc[options.sct_wcache_sct_set],
+           (options.sct_wcache_sct_set_pers ? "persistent" : "volatile"));
   }
 
   // Freeze ATA security
@@ -2932,11 +3097,11 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       pout("ATA Security set to frozen mode\n");
   }
 
-  // Set standby timer
-  if (options.set_standby) {
+  // Set standby timer unless immediate standby is also requested
+  if (options.set_standby && !options.set_standby_now) {
     if (!ata_nodata_command(device, ATA_IDLE, options.set_standby-1)) {
-        pout("ATA IDLE command failed: %s\n", device->get_errmsg());
-        returnval |= FAILSMART;
+      pout("ATA IDLE command failed: %s\n", device->get_errmsg());
+      returnval |= FAILSMART;
     }
     else
       print_standby_timer("Standby timer set to ", options.set_standby-1, drive);
@@ -3055,7 +3220,7 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       || options.smart_auto_offl_disable || options.smart_auto_offl_enable
       || options.set_aam || options.set_apm || options.set_lookahead
       || options.set_wcache || options.set_security_freeze || options.set_standby
-      || options.sct_wcache_reorder_set)
+      || options.sct_wcache_reorder_set || options.set_dsn)
     pout("\n");
 
   // START OF READ-ONLY OPTIONS APART FROM -V and -i
@@ -3534,6 +3699,17 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
       failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
   }
 
+  // Print Pending Defects log
+  if (options.pending_defects_log || options.pending_defects_info) {
+    unsigned nsectors = GetNumLogSectors(gplogdir, 0x0c, true);
+    if (!nsectors)
+      pout("Pending Defects log (GP Log 0x0c) not supported\n\n");
+    else if (!options.pending_defects_log) // TODO: Remove when no longer EXPERIMENTAL
+      pout("Pending Defects log (GP Log 0x0c) supported [please try: '-l defects']\n\n");
+    else if (!print_pending_defects_log(device, nsectors, options.pending_defects_log))
+      failuretest(OPTIONAL_CMD, returnval|=FAILSMART);
+  }
+
   // Print SATA Phy Event Counters
   if (options.sataphy) {
     unsigned nsectors = GetNumLogSectors(gplogdir, 0x11, true);
@@ -3556,15 +3732,27 @@ int ataPrintMain (ata_device * device, const ata_print_options & options)
     }
   }
 
-  // Set to standby (spindown) mode
+  // Set to standby (spindown) mode and set standby timer if not done above
   // (Above commands may spinup drive)
   if (options.set_standby_now) {
-    if (!ata_nodata_command(device, ATA_STANDBY_IMMEDIATE)) {
+    if (options.set_standby) {
+      if (!ata_nodata_command(device, ATA_STANDBY, options.set_standby-1)) {
+        pout("ATA STANDBY command failed: %s\n", device->get_errmsg());
+        returnval |= FAILSMART;
+      }
+      else {
+        print_standby_timer("Standby timer set to ", options.set_standby-1, drive);
+        pout("Device placed in STANDBY mode\n");
+      }
+    }
+    else {
+      if (!ata_nodata_command(device, ATA_STANDBY_IMMEDIATE)) {
         pout("ATA STANDBY IMMEDIATE command failed: %s\n", device->get_errmsg());
         returnval |= FAILSMART;
+      }
+      else
+        pout("Device placed in STANDBY mode\n");
     }
-    else
-      pout("Device placed in STANDBY mode\n");
   }
 
   // START OF THE TESTING SECTION OF THE CODE.  IF NO TESTING, RETURN

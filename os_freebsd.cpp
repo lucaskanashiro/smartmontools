@@ -80,7 +80,7 @@
 #define PATHINQ_SETTINGS_SIZE   128
 #endif
 
-const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 4257 2016-03-27 23:32:54Z samm2 $" \
+const char *os_XXXX_c_cvsid="$Id: os_freebsd.cpp 4425 2017-04-24 16:34:16Z samm2 $" \
 ATACMDS_H_CVSID CCISS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_FREEBSD_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 #define NO_RETURN 0
@@ -322,38 +322,6 @@ bool freebsd_ata_device::ata_pass_through(const ata_cmd_in & in, ata_cmd_out & o
   out.out_regs.sector_count_16 = request.u.ata.count;
   out.out_regs.lba_48 = request.u.ata.lba;
 
-
-  // Command specific processing
-  if (in.in_regs.command == ATA_SMART_CMD
-       && in.in_regs.features == ATA_SMART_STATUS
-       && in.out_needed.lba_high)
-  {
-    unsigned const char normal_lo=0x4f, normal_hi=0xc2;
-    unsigned const char failed_lo=0xf4, failed_hi=0x2c;
-
-    // Cyl low and Cyl high unchanged means "Good SMART status"
-    if (!(out.out_regs.lba_mid==normal_lo && out.out_regs.lba_high==normal_hi)
-    // These values mean "Bad SMART status"
-        && !(out.out_regs.lba_mid==failed_lo && out.out_regs.lba_high==failed_hi))
-
-    {
-      // We haven't gotten output that makes sense; print out some debugging info
-      char buf[512];
-      snprintf(buf, sizeof(buf),
-        "CMD=0x%02x\nFR =0x%02x\nNS =0x%02x\nSC =0x%02x\nCL =0x%02x\nCH =0x%02x\nRETURN =0x%04x\n",
-        (int)request.u.ata.command,
-        (int)request.u.ata.feature,
-        (int)request.u.ata.count,
-        (int)((request.u.ata.lba) & 0xff),
-        (int)((request.u.ata.lba>>8) & 0xff),
-        (int)((request.u.ata.lba>>16) & 0xff),
-        (int)request.error);
-      printwarning(BAD_SMART,buf);
-      out.out_regs.lba_high = failed_hi; 
-      out.out_regs.lba_mid = failed_lo;
-    }
-  }
-
   return true;
 }
 
@@ -397,15 +365,16 @@ int freebsd_atacam_device::do_cmd( struct ata_ioc_request* request, bool is_48bi
   union ccb ccb;
   int camflags;
 
-  // FIXME:
   // 48bit commands are broken in ATACAM before r242422/HEAD
   // and may cause system hang
-  // Waiting for MFC to make sure that bug is fixed,
-  // later version check needs to be added
+  // First version with working support should be FreeBSD 9.2.0/RELEASE
+
+#if (FREEBSDVER < 902001)
   if(!strcmp("ata",m_camdev->sim_name) && is_48bit_cmd) {
     set_err(ENOSYS, "48-bit ATA commands not implemented for legacy controllers");
     return -1;
   }
+#endif
 
   memset(&ccb, 0, sizeof(ccb));
 
@@ -1935,6 +1904,8 @@ smart_device * freebsd_smart_interface::autodetect_smart_device(const char * nam
   int bus=-1;
   int i;
   const char * test_name = name;
+
+  memset(&ccb, 0, sizeof(ccb));
 
   // if dev_name null, or string length zero
   if (!name || !*name)

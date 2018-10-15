@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-15 Christian Franke
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2000 Andre Hedrick <andre@linux-ide.org>
  *
@@ -36,7 +36,7 @@
 #include "utility.h"
 #include "dev_ata_cmd_set.h" // for parsed_ata_device
 
-const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 4301 2016-04-16 20:48:29Z chrfranke $"
+const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 4582 2017-11-03 20:54:56Z chrfranke $"
                                  ATACMDS_H_CVSID;
 
 // Print ATA debug messages?
@@ -339,6 +339,16 @@ void swap8(char *location){
   return;
 }
 
+// When using the overloaded swapx() function with member of packed ATA structs,
+// it is required to pass a possibly unaligned pointer as argument.
+// Clang++ 4.0 prints -Waddress-of-packed-member warning in this case.
+// The SWAPV() macro below is a replacement which prevents the use of such pointers.
+template <typename T>
+static T get_swapx_val(T x)
+  { swapx(&x); return x; }
+
+#define SWAPV(x)  ((x) = get_swapx_val(x))
+
 // Invalidate serial number and WWN and adjust checksum in IDENTIFY data
 static void invalidate_serno(ata_identify_device * id)
 {
@@ -355,13 +365,13 @@ static void invalidate_serno(ata_identify_device * id)
 #ifndef __NetBSD__
   bool must_swap = !!isbigendian();
   if (must_swap)
-    swapx(id->words088_255+255-88);
+    SWAPV(id->words088_255[255-88]);
 #endif
   if ((id->words088_255[255-88] & 0x00ff) == 0x00a5)
     id->words088_255[255-88] += sum << 8;
 #ifndef __NetBSD__
   if (must_swap)
-    swapx(id->words088_255+255-88);
+    SWAPV(id->words088_255[255-88]);
 #endif
 }
 
@@ -538,6 +548,7 @@ int smartcommandhandler(ata_device * device, smart_command_set command, int sele
         break;
       case STATUS_CHECK:
         in.out_needed.lba_high = in.out_needed.lba_mid = true; // Status returned here
+        /* FALLTHRU */
       case STATUS:
         in.in_regs.features = ATA_SMART_STATUS;
         break;
@@ -1001,7 +1012,7 @@ int ataReadSmartValues(ata_device * device, struct ata_smart_values *data){
     swap2((char *)&(data->revnumber));
     swap2((char *)&(data->total_time_to_complete_off_line));
     swap2((char *)&(data->smart_capability));
-    swapx(&data->extend_test_completion_time_w);
+    SWAPV(data->extend_test_completion_time_w);
     for (i=0; i<NUMBER_ATA_SMART_ATTRIBUTES; i++){
       struct ata_smart_attribute *x=data->vendor_attributes+i;
       swap2((char *)&(x->flags));
@@ -1088,15 +1099,45 @@ bool ataReadExtSelfTestLog(ata_device * device, ata_smart_extselftestlog * log,
   check_multi_sector_sum(log, nsectors, "SMART Extended Self-test Log Structure");
 
   if (isbigendian()) {
-    swapx(&log->log_desc_index);
+    SWAPV(log->log_desc_index);
     for (unsigned i = 0; i < nsectors; i++) {
       for (unsigned j = 0; j < 19; j++)
-        swapx(&log->log_descs[i].timestamp);
+        SWAPV(log->log_descs[i].timestamp);
     }
   }
   return true;
 }
 
+// Write GP Log page(s)
+bool ataWriteLogExt(ata_device * device, unsigned char logaddr,
+                    unsigned page, void * data, unsigned nsectors)
+{
+  ata_cmd_in in;
+  in.in_regs.command      = ATA_WRITE_LOG_EXT;
+  in.set_data_out(data, nsectors);
+  in.in_regs.lba_low      = logaddr;
+  in.in_regs.lba_mid_16   = page;
+  in.set_data_out(data, nsectors);
+
+  ata_cmd_out out;
+  if (!device->ata_pass_through(in, out)) { // TODO: Debug output
+    if (nsectors <= 1) {
+      pout("ATA_WRITE_LOG_EXT (addr=0x%02x, page=%u, n=%u) failed: %s\n",
+           logaddr, page, nsectors, device->get_errmsg());
+      return false;
+    }
+
+    // Recurse to retry with single sectors,
+    // multi-sector reads may not be supported by ioctl.
+    for (unsigned i = 0; i < nsectors; i++) {
+      if (!ataWriteLogExt(device, logaddr, page + i,
+                         (char *)data + 512*i, 1))
+        return false;
+    }
+  }
+
+  return true;
+}
 
 // Read GP Log page(s)
 bool ataReadLogExt(ata_device * device, unsigned char logaddr,
@@ -1165,7 +1206,7 @@ int ataReadLogDirectory(ata_device * device, ata_smart_log_directory * data, boo
 
   // swap endian order if needed
   if (isbigendian())
-    swapx(&data->logversion);
+    SWAPV(data->logversion);
 
   return 0;
 }
@@ -1488,13 +1529,13 @@ bool ataReadExtErrorLog(ata_device * device, ata_smart_exterrlog * log,
   check_multi_sector_sum(log, nsectors, "SMART Extended Comprehensive Error Log Structure");
 
   if (isbigendian()) {
-    swapx(&log->device_error_count);
-    swapx(&log->error_log_index);
+    SWAPV(log->device_error_count);
+    SWAPV(log->error_log_index);
     for (unsigned i = 0; i < nsectors; i++) {
       for (unsigned j = 0; j < 4; j++) {
         for (unsigned k = 0; k < 5; k++)
-           swapx(&log[i].error_logs[j].commands[k].timestamp);
-        swapx(&log[i].error_logs[j].error.timestamp);
+           SWAPV(log[i].error_logs[j].commands[k].timestamp);
+        SWAPV(log[i].error_logs[j].error.timestamp);
       }
     }
   }
@@ -2227,15 +2268,16 @@ int ataReadSCTStatus(ata_device * device, ata_sct_status_response * sts)
 
   // swap endian order if needed
   if (isbigendian()){
-    swapx(&sts->format_version);
-    swapx(&sts->sct_version);
-    swapx(&sts->sct_spec);
-    swapx(&sts->ext_status_code);
-    swapx(&sts->action_code);
-    swapx(&sts->function_code);
-    swapx(&sts->over_limit_count);
-    swapx(&sts->under_limit_count);
-    swapx(&sts->smart_status);
+    SWAPV(sts->format_version);
+    SWAPV(sts->sct_version);
+    SWAPV(sts->sct_spec);
+    SWAPV(sts->ext_status_code);
+    SWAPV(sts->action_code);
+    SWAPV(sts->function_code);
+    SWAPV(sts->over_limit_count);
+    SWAPV(sts->under_limit_count);
+    SWAPV(sts->smart_status);
+    SWAPV(sts->min_erc_time);
   }
 
   // Check format version
@@ -2268,9 +2310,9 @@ int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * 
 
   // swap endian order if needed
   if (isbigendian()) {
-    swapx(&cmd.action_code);
-    swapx(&cmd.function_code);
-    swapx(&cmd.table_id);
+    SWAPV(cmd.action_code);
+    SWAPV(cmd.function_code);
+    SWAPV(cmd.table_id);
   }
 
   // write command via SMART log page 0xe0
@@ -2298,17 +2340,19 @@ int ataReadSCTTempHist(ata_device * device, ata_sct_temperature_history_table * 
 
   // swap endian order if needed
   if (isbigendian()){
-    swapx(&tmh->format_version);
-    swapx(&tmh->sampling_period);
-    swapx(&tmh->interval);
-    swapx(&tmh->cb_index);
-    swapx(&tmh->cb_size);
+    SWAPV(tmh->format_version);
+    SWAPV(tmh->sampling_period);
+    SWAPV(tmh->interval);
+    SWAPV(tmh->cb_index);
+    SWAPV(tmh->cb_size);
   }
   return 0;
 }
 
-// Get/Set Write Cache Reordering
-int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool persistent, bool set)
+// Common function for Get/Set SCT Feature Control:
+// Write Cache, Write Cache Reordering, etc.
+static int ataGetSetSCTFeatureControl(ata_device * device, unsigned short feature_code,
+                                      unsigned short state, bool persistent, bool set)
 {
   // Check initial status
   ata_sct_status_response sts;
@@ -2327,17 +2371,17 @@ int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool pers
   // CAUTION: DO NOT CHANGE THIS VALUE (SOME ACTION CODES MAY ERASE DISK)
   cmd.action_code   = 4; // Feature Control command
   cmd.function_code  = (set ? 1 : 2); // 1=Set, 2=Get
-  cmd.feature_code  = 2; //  Enable/Disable Write Cache Reordering 
-  cmd.state         = (enable ? 1 : 2); // 1 enable, 2 disable
+  cmd.feature_code  = feature_code;
+  cmd.state         = state;
   cmd.option_flags  = (persistent ? 0x01 : 0x00);
 
   // swap endian order if needed
   if (isbigendian()) {
-    swapx(&cmd.action_code);
-    swapx(&cmd.function_code);
-    swapx(&cmd.feature_code);
-    swapx(&cmd.state);
-    swapx(&cmd.option_flags);
+    SWAPV(cmd.action_code);
+    SWAPV(cmd.function_code);
+    SWAPV(cmd.feature_code);
+    SWAPV(cmd.state);
+    SWAPV(cmd.option_flags);
   }
 
   // write command via SMART log page 0xe0
@@ -2359,7 +2403,7 @@ int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool pers
       (!set ? 'G' : 'S'), device->get_errmsg());
     return -1;
   }
-  int state = out.out_regs.sector_count | (out.out_regs.lba_low << 8);
+  state = out.out_regs.sector_count | (out.out_regs.lba_low << 8);
 
   // re-read and check SCT status
   if (ataReadSCTStatus(device, &sts))
@@ -2373,6 +2417,19 @@ int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool pers
   return state;
 }
 
+// Get/Set Write Cache Reordering
+int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool persistent, bool set)
+{
+  return ataGetSetSCTFeatureControl(device, 2 /* Enable/Disable Write Cache Reordering */,
+                                    (enable ? 1 : 2), persistent, set);
+}
+
+// Get/Set Write Cache (force enable, force disable,
+int ataGetSetSCTWriteCache(ata_device * device, unsigned short state, bool persistent, bool set)
+{
+  return ataGetSetSCTFeatureControl(device, 1 /* Enable/Disable Write Cache */,
+                                    state, persistent, set);
+}
 
 // Set SCT Temperature Logging Interval
 int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persistent)
@@ -2400,11 +2457,11 @@ int ataSetSCTTempInterval(ata_device * device, unsigned interval, bool persisten
 
   // swap endian order if needed
   if (isbigendian()) {
-    swapx(&cmd.action_code);
-    swapx(&cmd.function_code);
-    swapx(&cmd.feature_code);
-    swapx(&cmd.state);
-    swapx(&cmd.option_flags);
+    SWAPV(cmd.action_code);
+    SWAPV(cmd.function_code);
+    SWAPV(cmd.feature_code);
+    SWAPV(cmd.state);
+    SWAPV(cmd.option_flags);
   }
 
   // write command via SMART log page 0xe0
@@ -2452,10 +2509,10 @@ static int ataGetSetSCTErrorRecoveryControltime(ata_device * device, unsigned ty
 
   // swap endian order if needed
   if (isbigendian()) {
-    swapx(&cmd.action_code);
-    swapx(&cmd.function_code);
-    swapx(&cmd.selection_code);
-    swapx(&cmd.time_limit);
+    SWAPV(cmd.action_code);
+    SWAPV(cmd.function_code);
+    SWAPV(cmd.selection_code);
+    SWAPV(cmd.time_limit);
   }
 
   // write command via SMART log page 0xe0

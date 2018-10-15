@@ -4,7 +4,7 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-16 Christian Franke
+ * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 2000 Michael Cornwell <cornwell@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -52,7 +52,7 @@
 #include "smartctl.h"
 #include "utility.h"
 
-const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 4311 2016-04-27 21:03:01Z chrfranke $"
+const char * smartctl_cpp_cvsid = "$Id: smartctl.cpp 4585 2017-11-04 13:41:03Z chrfranke $"
   CONFIG_H_CVSID SMARTCTL_H_CVSID;
 
 // Globals to control printing
@@ -87,7 +87,8 @@ static void Usage()
 "  --identify[=[w][nvb]]\n"
 "         Show words and bits from IDENTIFY DEVICE data                (ATA)\n\n"
 "  -g NAME, --get=NAME\n"
-"        Get device setting: all, aam, apm, lookahead, security, wcache, rcache, wcreorder\n\n"
+"        Get device setting: all, aam, apm, dsn, lookahead, security,\n"
+"        wcache, rcache, wcreorder, wcache-sct\n\n"
 "  -a, --all\n"
 "         Show all SMART information for device\n\n"
 "  -x, --xall\n"
@@ -102,14 +103,15 @@ static void Usage()
 "  -q TYPE, --quietmode=TYPE                                           (ATA)\n"
 "         Set smartctl quiet mode to one of: errorsonly, silent, noserial\n\n"
 "  -d TYPE, --device=TYPE\n"
-"         Specify device type to one of: %s\n\n"
+"         Specify device type to one of:\n"
+"         %s\n\n" // TODO: fold this string
 "  -T TYPE, --tolerance=TYPE                                           (ATA)\n"
 "         Tolerance: normal, conservative, permissive, verypermissive\n\n"
 "  -b TYPE, --badsum=TYPE                                              (ATA)\n"
 "         Set action on bad checksum to one of: warn, exit, ignore\n\n"
 "  -r TYPE, --report=TYPE\n"
 "         Report transactions (see man page)\n\n"
-"  -n MODE, --nocheck=MODE                                             (ATA)\n"
+"  -n MODE[,STATUS], --nocheck=MODE[,STATUS]                           (ATA)\n"
 "         No check if: never, sleep, standby, idle (see man page)\n\n",
   getvalidarglist('d').c_str()); // TODO: Use this function also for other options ?
   printf(
@@ -122,8 +124,9 @@ static void Usage()
 "        Enable/disable Attribute autosave on device (on/off)\n\n"
 "  -s NAME[,VALUE], --set=NAME[,VALUE]\n"
 "        Enable/disable/change device setting: aam,[N|off], apm,[N|off],\n"
-"        lookahead,[on|off], security-freeze, standby,[N|off|now],\n"
-"        wcache,[on|off], rcache,[on|off], wcreorder,[on|off]\n\n"
+"        dsn,[on|off], lookahead,[on|off], security-freeze,\n"
+"        standby,[N|off|now], wcache,[on|off], rcache,[on|off],\n"
+"        wcreorder,[on|off[,p]], wcache-sct,[ata|on|off[,p]]\n\n"
   );
   printf(
 "======================================= READ AND DISPLAY DATA OPTIONS =====\n\n"
@@ -137,12 +140,10 @@ static void Usage()
 "        Set output format for attributes: old, brief, hex[,id|val]\n\n"
 "  -l TYPE, --log=TYPE\n"
 "        Show device log. TYPE: error, selftest, selective, directory[,g|s],\n"
-"                               xerror[,N][,error], xselftest[,N][,selftest],\n"
-"                               background, sasphy[,reset], sataphy[,reset],\n"
-"                               scttemp[sts,hist], scttempint,N[,p],\n"
-"                               scterc[,N,M], devstat[,N], ssd,\n"
-"                               gplog,N[,RANGE], smartlog,N[,RANGE],\n"
-"                               nvmelog,N,SIZE\n\n"
+"        xerror[,N][,error], xselftest[,N][,selftest], background,\n"
+"        sasphy[,reset], sataphy[,reset], scttemp[sts,hist],\n"
+"        scttempint,N[,p], scterc[,N,M], devstat[,N], defects[,N], ssd,\n"
+"        gplog,N[,RANGE], smartlog,N[,RANGE], nvmelog,N,SIZE\n\n"
 "  -v N,OPTION , --vendorattribute=N,OPTION                            (ATA)\n"
 "        Set display OPTION for vendor Attribute N (see man page)\n\n"
 "  -F TYPE, --firmwarebug=TYPE                                         (ATA)\n"
@@ -195,6 +196,8 @@ static std::string getvalidarglist(int opt)
     return "normal, conservative, permissive, verypermissive";
   case 'b':
     return "warn, exit, ignore";
+  case 'B':
+    return "[+]<FILE_NAME>";
   case 'r':
     return "ioctl[,N], ataioctl[,N], scsiioctl[,N], nvmeioctl[,N]";
   case opt_smart:
@@ -206,7 +209,7 @@ static std::string getvalidarglist(int opt)
            "xerror[,N][,error], xselftest[,N][,selftest], "
            "background, sasphy[,reset], sataphy[,reset], "
            "scttemp[sts,hist], scttempint,N[,p], "
-           "scterc[,N,M], devstat[,N], ssd, "
+           "scterc[,N,M], devstat[,N], defects[,N], ssd, "
            "gplog,N[,RANGE], smartlog,N[,RANGE], "
            "nvmelog,N,SIZE";
   case 'P':
@@ -217,14 +220,15 @@ static std::string getvalidarglist(int opt)
   case 'F':
     return std::string(get_valid_firmwarebug_args()) + ", swapid";
   case 'n':
-    return "never, sleep, standby, idle";
+    return "never, sleep[,STATUS], standby[,STATUS], idle[,STATUS]";
   case 'f':
     return "old, brief, hex[,id|val]";
   case 'g':
-    return "aam, apm, lookahead, security, wcache, rcache, wcreorder";
+    return "aam, apm, dsn, lookahead, security, wcache, rcache, wcreorder, wcache-sct";
   case opt_set:
-    return "aam,[N|off], apm,[N|off], lookahead,[on|off], security-freeze, "
-           "standby,[N|off|now], wcache,[on|off], rcache,[on|off], wcreorder,[on|off]";
+    return "aam,[N|off], apm,[N|off], dsn,[on|off], lookahead,[on|off], security-freeze, "
+           "standby,[N|off|now], wcache,[on|off], rcache,[on|off], wcreorder,[on|off[,p]], "
+           "wcache-sct,[ata|on|off[,p]]";
   case 's':
     return getvalidarglist(opt_smart)+", "+getvalidarglist(opt_set);
   case opt_identify:
@@ -526,6 +530,17 @@ static const char * parse_options(int argc, char** argv,
               badarg = true;
         }
 
+      } else if (str_starts_with(optarg, "defects")) {
+        int n1 = -1, n2 = -1, len = strlen(optarg);
+        unsigned val = ~0;
+        sscanf(optarg, "defects%n,%u%n", &n1, &val, &n2);
+        if (n1 == len)
+          ataopts.pending_defects_log = 31; // Entries of first page
+        else if (n2 == len && val <= 0xffff * 32 - 1)
+          ataopts.pending_defects_log = val;
+        else
+          badarg = true;
+
       } else if (!strncmp(optarg, "xerror", sizeof("xerror")-1)) {
         int n1 = -1, n2 = -1, len = strlen(optarg);
         unsigned val = 8;
@@ -662,11 +677,14 @@ static const char * parse_options(int argc, char** argv,
       ataopts.sct_erc_get = true;
       ataopts.sct_wcache_reorder_get = true;
       ataopts.devstat_all_pages = true;
+      // ataopts.pending_defects_log = 31; // TODO: Add if no longer EXPERIMENTAL
+      ataopts.pending_defects_info = true; // TODO: Remove then
       ataopts.sataphy = true;
       ataopts.get_set_used = true;
       ataopts.get_aam = ataopts.get_apm = true;
       ataopts.get_security = true;
       ataopts.get_lookahead = ataopts.get_wcache = true;
+      ataopts.get_dsn = true;
       scsiopts.get_rcd = scsiopts.get_wce = true;
       scsiopts.smart_background_log = true;
       scsiopts.smart_ss_media_log = true;
@@ -798,16 +816,25 @@ static const char * parse_options(int argc, char** argv,
       break;
     case 'n':
       // skip disk check if in low-power mode
-      if (!strcmp(optarg, "never"))
+      if (!strcmp(optarg, "never")) {
         ataopts.powermode = 1; // do not skip, but print mode
-      else if (!strcmp(optarg, "sleep"))
-        ataopts.powermode = 2;
-      else if (!strcmp(optarg, "standby"))
-        ataopts.powermode = 3;
-      else if (!strcmp(optarg, "idle"))
-        ataopts.powermode = 4;
-      else
-        badarg = true;
+      }
+      else {
+        int n1 = -1, n2 = -1, len = strlen(optarg);
+        char s[7+1]; unsigned i = FAILPOWER;
+        sscanf(optarg, "%9[a-z]%n,%u%n", s, &n1, &i, &n2);
+        if (!((n1 == len || n2 == len) && i <= 255))
+          badarg = true;
+        else if (!strcmp(s, "sleep"))
+          ataopts.powermode = 2;
+        else if (!strcmp(s, "standby"))
+          ataopts.powermode = 3;
+        else if (!strcmp(s, "idle"))
+          ataopts.powermode = 4;
+        else
+          badarg = true;
+        ataopts.powerexit = i;
+      }
       break;
     case 'f':
       if (!strcmp(optarg, "old")) {
@@ -856,8 +883,28 @@ static const char * parse_options(int argc, char** argv,
         int n1 = -1, n2 = -1, n3 = -1, len = strlen(optarg);
         if (sscanf(optarg, "%16[^,=]%n%*[,=]%n%u%n", name, &n1, &n2, &val, &n3) >= 1
             && (n1 == len || (!get && n2 > 0))) {
-          bool on  = (n2 > 0 && !strcmp(optarg+n2, "on"));
-          bool off = (n2 > 0 && !strcmp(optarg+n2, "off"));
+          bool on  = false;
+          bool off = false;
+          bool ata = false;
+          bool persistent = false;
+
+          if (n2 > 0) {
+            int len2 = strlen(optarg + n2);
+            char * tmp = strstr(optarg+n2, ",p");
+            // handle ",p" in persistent options like: wcache-sct,[ata|on|off],p
+            if (tmp && (strlen(tmp) == 2)) {
+              persistent = true;
+              len2 = strlen(optarg+n2) - 2;
+
+              // the ,p option only works for set of SCT Feature Control command
+              if (strcmp(name, "wcache-sct") != 0 &&
+                  strcmp(name, "wcreorder") != 0)
+                badarg = true;
+            }
+            on  = !strncmp(optarg+n2, "on", len2);
+            off = !strncmp(optarg+n2, "off", len2);
+            ata = !strncmp(optarg+n2, "ata", len2);
+          }
           if (n3 != len)
             val = ~0U;
 
@@ -865,6 +912,7 @@ static const char * parse_options(int argc, char** argv,
             ataopts.get_aam = ataopts.get_apm = true;
             ataopts.get_security = true;
             ataopts.get_lookahead = ataopts.get_wcache = true;
+            ataopts.get_dsn = true;
             scsiopts.get_rcd = scsiopts.get_wce = true;
           }
           else if (!strcmp(name, "aam")) {
@@ -903,6 +951,7 @@ static const char * parse_options(int argc, char** argv,
               badarg = true;
           }
           else if (!strcmp(name, "wcreorder")) {
+            ataopts.sct_wcache_reorder_set_pers = persistent;
             if (get) {
               ataopts.sct_wcache_reorder_get = true;
             }
@@ -910,6 +959,20 @@ static const char * parse_options(int argc, char** argv,
               ataopts.sct_wcache_reorder_set = -1;
             else if (on)
               ataopts.sct_wcache_reorder_set = 1;
+            else
+              badarg = true;
+          }
+          else if (!strcmp(name, "wcache-sct")) {
+            ataopts.sct_wcache_sct_set_pers = persistent;
+            if (get) {
+              ataopts.sct_wcache_sct_get = true;
+            }
+            else if (off)
+              ataopts.sct_wcache_sct_set = 3;
+            else if (on)
+              ataopts.sct_wcache_sct_set = 2;
+            else if (ata)
+              ataopts.sct_wcache_sct_set = 1;
             else
               badarg = true;
           }
@@ -954,6 +1017,19 @@ static const char * parse_options(int argc, char** argv,
             else if (on) {
               ataopts.set_wcache = 1;
               scsiopts.set_wce = 1;
+            }
+            else
+              badarg = true;
+          }
+          else if (!strcmp(name, "dsn")) {
+            if (get) {
+              ataopts.get_dsn = true;
+            }
+            else if (off) {
+              ataopts.set_dsn = -1;
+            }
+            else if (on) {
+              ataopts.set_dsn = 1;
             }
             else
               badarg = true;
@@ -1305,8 +1381,8 @@ static int main_worker(int argc, char **argv)
          dev->get_info_name(), dev->get_dev_type(), get_protocol_info(dev.get()));
 
   if (dev->is_ata() && ataopts.powermode>=2 && dev->is_powered_down()) {
-    pout( "%s: Device is in %s mode, exit(%d)\n", dev->get_info_name(), "STANDBY (OS)", FAILPOWER );
-    return FAILPOWER;
+    pout("Device is in STANDBY (OS) mode, exit(%d)\n", ataopts.powerexit);
+    return ataopts.powerexit;
   }
 
   // Open device
