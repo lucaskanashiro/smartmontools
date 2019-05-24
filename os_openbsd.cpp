@@ -7,19 +7,11 @@
  *
  * Derived from os_netbsd.cpp by Sergey Svishchev, Copyright (C) 2003-8
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
-#include "int64.h"
+
 #include "atacmds.h"
 #include "scsicmds.h"
 #include "utility.h"
@@ -27,7 +19,7 @@
 
 #include <errno.h>
 
-const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 4431 2017-08-08 19:38:15Z chrfranke $"
+const char * os_openbsd_cpp_cvsid = "$Id: os_openbsd.cpp 4842 2018-12-02 16:07:26Z chrfranke $"
   OS_OPENBSD_H_CVSID;
 
 enum warnings {
@@ -41,7 +33,7 @@ printwarning(int msgNo, const char *extra)
   static int printed[] = {0, 0};
   static const char *message[] = {
     "Error: SMART Status command failed.\nPlease get assistance from \n" PACKAGE_HOMEPAGE "\nRegister values returned from SMART Status command are:\n",
-    PACKAGE_STRING " does not currentlly support twe(4) devices (3ware Escalade)\n",
+    PACKAGE_STRING " does not currently support twe(4) devices (3ware Escalade)\n",
   };
 
   if (msgNo >= 0 && msgNo <= MAX_MSG) {
@@ -420,9 +412,8 @@ print_smartctl_examples()
   char p;
 
   p = 'a' + getrawpartition();
-  printf("=================================================== SMARTCTL EXAMPLES =====\n\n");
-#ifdef HAVE_GETOPT_LONG
   printf(
+    "=================================================== SMARTCTL EXAMPLES =====\n\n"
     "  smartctl -a /dev/wd0%c                      (Prints all SMART information)\n\n"
     "  smartctl --smart=on --offlineauto=on --saveauto=on /dev/wd0%c\n"
     "                                              (Enables SMART on first disk)\n\n"
@@ -431,15 +422,5 @@ print_smartctl_examples()
     "                                      (Prints Self-Test & Attribute errors)\n",
     p, p, p, p
     );
-#else
-  printf(
-    "  smartctl -a /dev/wd0%c                     (Prints all SMART information)\n"
-    "  smartctl -s on -o on -S on /dev/wd0%c        (Enables SMART on first disk)\n"
-    "  smartctl -t long /dev/wd0%c            (Executes extended disk self-test)\n"
-    "  smartctl -A -l selftest -q errorsonly /dev/wd0%c"
-    "                                      (Prints Self-Test & Attribute errors)\n",
-    p, p, p, p
-    );
-#endif
   return;
 }

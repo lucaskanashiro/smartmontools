@@ -3,24 +3,18 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2008-16 Christian Franke
+ * Copyright (C) 2008-18 Christian Franke
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
-#include "int64.h"
+
 #include "dev_interface.h"
 #include "dev_intelliprop.h"
 #include "dev_tunnelled.h"
 #include "atacmds.h" // ATA_SMART_CMD/STATUS
+#include "scsicmds.h" // scsi_cmnd_io
 #include "utility.h"
 
 #include <errno.h>
@@ -33,7 +27,7 @@
 #include <sys/timeb.h>
 #endif
 
-const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp 4431 2017-08-08 19:38:15Z chrfranke $"
+const char * dev_interface_cpp_cvsid = "$Id: dev_interface.cpp 4848 2018-12-05 18:30:46Z chrfranke $"
   DEV_INTERFACE_H_CVSID;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -203,6 +197,38 @@ bool ata_device::ata_identify_is_cached() const
   return false;
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// scsi_device
+
+bool scsi_device::scsi_pass_through_and_check(scsi_cmnd_io * iop,
+                                              const char * msg)
+{
+  // Provide sense buffer
+  unsigned char sense[32] = {0, };
+  iop->sensep = sense;
+  iop->max_sense_len = sizeof(sense);
+  iop->timeout = SCSI_TIMEOUT_DEFAULT;
+
+  // Run cmd
+  if (!scsi_pass_through(iop)) {
+    if (scsi_debugmode > 0)
+      pout("%sscsi_pass_through() failed, errno=%d [%s]\n",
+           msg, get_errno(), get_errmsg());
+    return false;
+  }
+
+  // Check sense
+  scsi_sense_disect sinfo;
+  scsi_do_sense_disect(iop, &sinfo);
+  int err = scsiSimpleSenseFilter(&sinfo);
+  if (err) {
+    if (scsi_debugmode > 0)
+      pout("%sscsi error: %s\n", msg, scsiErrString(err));
+    return set_err(EIO, "scsi error %s", scsiErrString(err));
+  }
+
+  return true;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // nvme_device
@@ -282,8 +308,9 @@ std::string smart_interface::get_valid_dev_types_str()
 {
   // default
   std::string s =
-    "ata, scsi, nvme[,NSID], sat[,auto][,N][+TYPE], usbcypress[,X], "
-    "usbjmicron[,p][,x][,N], usbprolific, usbsunplus, intelliprop,N[+TYPE]";
+    "ata, scsi[+TYPE], nvme[,NSID], sat[,auto][,N][+TYPE], usbcypress[,X], "
+    "usbjmicron[,p][,x][,N], usbprolific, usbsunplus, sntjmicron[,NSID], "
+    "intelliprop,N[+TYPE]";
   // append custom
   std::string s2 = get_valid_custom_dev_types_str();
   if (!s2.empty()) {
@@ -400,8 +427,9 @@ smart_device * smart_interface::get_smart_device(const char * name, const char *
     dev = get_nvme_device(name, type, nsid);
   }
 
-  else if (  ((!strncmp(type, "sat", 3) && (!type[3] || strchr(",+", type[3])))
-           || (!strncmp(type, "usb", 3)))) {
+  else if (  (str_starts_with(type, "sat") && (!type[3] || strchr(",+", type[3])))
+           || str_starts_with(type, "scsi+")
+           || str_starts_with(type, "usb")                                        ) {
     // Split "sat...+base..." -> ("sat...", "base...")
     unsigned satlen = strcspn(type, "+");
     std::string sattype(type, satlen);
@@ -421,6 +449,16 @@ smart_device * smart_interface::get_smart_device(const char * name, const char *
     }
     // Attach SAT tunnel
     return get_sat_device(sattype.c_str(), basedev.release()->to_scsi());
+  }
+
+  else if (str_starts_with(type, "snt")) {
+    smart_device_auto_ptr basedev( get_smart_device(name, "scsi") );
+    if (!basedev) {
+      set_err(EINVAL, "Type '%s': %s", type, get_errmsg());
+      return 0;
+    }
+
+    return get_snt_device(type, basedev.release()->to_scsi());
   }
 
   else if (str_starts_with(type, "intelliprop")) {
@@ -457,6 +495,12 @@ smart_device * smart_interface::get_smart_device(const char * name, const char *
   return dev;
 }
 
+bool smart_interface::scan_smart_devices(smart_device_list & /*devlist*/,
+  const char * /*type*/, const char * /*pattern*/ /* = 0 */)
+{
+  return set_err(ENOSYS);
+}
+
 bool smart_interface::scan_smart_devices(smart_device_list & devlist,
   const smart_devtype_list & types, const char * pattern /* = 0 */)
 {
@@ -490,4 +534,13 @@ smart_device * smart_interface::get_custom_smart_device(const char * /*name*/, c
 std::string smart_interface::get_valid_custom_dev_types_str()
 {
   return "";
+}
+
+smart_device * smart_interface::get_scsi_passthrough_device(const char * type, scsi_device * scsidev)
+{
+  if (!strncmp(type, "snt", 3)) {
+    return get_snt_device(type, scsidev);
+  }
+
+  return get_sat_device(type, scsidev);
 }

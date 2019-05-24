@@ -4,28 +4,16 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-09 Bruce Allen
- * Copyright (C) 2008-17 Christian Franke
+ * Copyright (C) 2008-18 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
- * This code was originally developed as a Senior Thesis by Michael Cornwell
- * at the Concurrent Systems Laboratory (now part of the Storage Systems
- * Research Center), Jack Baskin School of Engineering, University of
- * California, Santa Cruz. http://ssrc.soe.ucsc.edu/
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef ATAPRINT_H_
 #define ATAPRINT_H_
 
-#define ATAPRINT_H_CVSID "$Id: ataprint.h 4572 2017-10-29 14:36:00Z chrfranke $\n"
+#define ATAPRINT_H_CVSID "$Id: ataprint.h 4826 2018-11-02 20:09:12Z chrfranke $\n"
 
 #include <vector>
 
@@ -64,7 +52,6 @@ struct ata_print_options
   bool devstat_all_pages, devstat_ssd_page;
   std::vector<int> devstat_pages;
 
-  bool pending_defects_info;
   unsigned pending_defects_log;
 
   bool sct_temp_sts, sct_temp_hist;
@@ -133,7 +120,7 @@ struct ata_print_options
       smart_ext_selftest_log(0),
       retry_error_log(false), retry_selftest_log(false),
       devstat_all_pages(false), devstat_ssd_page(false),
-      pending_defects_info(false), pending_defects_log(0),
+      pending_defects_log(0),
       sct_temp_sts(false), sct_temp_hist(false),
       sct_erc_get(false),
       sct_erc_set(false),

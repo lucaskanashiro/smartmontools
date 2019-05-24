@@ -7,25 +7,13 @@
  * Copyright (C) 2008-17 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
- * This code was originally developed as a Senior Thesis by Michael Cornwell
- * at the Concurrent Systems Laboratory (now part of the Storage Systems
- * Research Center), Jack Baskin School of Engineering, University of
- * California, Santa Cruz. http://ssrc.soe.ucsc.edu/
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef ATACMDS_H_
 #define ATACMDS_H_
 
-#define ATACMDS_H_CVSID "$Id: atacmds.h 4419 2017-04-17 13:20:31Z chrfranke $"
+#define ATACMDS_H_CVSID "$Id: atacmds.h 4848 2018-12-05 18:30:46Z chrfranke $"
 
 #include "dev_interface.h" // ata_device
 
@@ -93,7 +81,7 @@ typedef enum {
 
 // 48-bit commands
 #define ATA_READ_LOG_EXT                0x2F
-#define ATA_WRITE_LOG_EXT               0x3F
+#define ATA_WRITE_LOG_EXT               0x3f
 
 // ATA Specification Feature Register Values (SMART Subcommands).
 // Note that some are obsolete as of ATA-7.
@@ -220,7 +208,7 @@ struct ata_smart_values {
   unsigned char offline_data_collection_status;
   unsigned char self_test_exec_status;  //IBM # segments for offline collection
   unsigned short int total_time_to_complete_off_line; // IBM different
-  unsigned char vendor_specific_366; // Maxtor & IBM curent segment pointer
+  unsigned char vendor_specific_366; // Maxtor & IBM current segment pointer
   unsigned char offline_data_collection_capability;
   unsigned short int smart_capability;
   unsigned char errorlog_capability;
@@ -526,7 +514,7 @@ ASSERT_SIZEOF_STRUCT(ata_selective_self_test_log, 512);
 //   T13/1699-D Revision 3f (Working Draft), December 11, 2006.
 
 // SCT Status response (read with SMART_READ_LOG page 0xe0)
-// Table 182 of T13/BSR INCITS 529 (ACS-4) Revision 04, August 25, 2014
+// Table 194 of T13/BSR INCITS 529 (ACS-4) Revision 20, October 26, 2017
 #pragma pack(1)
 struct ata_sct_status_response
 {
@@ -547,7 +535,7 @@ struct ata_sct_status_response
   signed char max_temp;             // 202: Maximum temperature this power cycle
   signed char life_min_temp;        // 203: Minimum lifetime temperature
   signed char life_max_temp;        // 204: Maximum lifetime temperature
-  unsigned char byte205;            // 205: reserved (T13/e06152r0-2: Average lifetime temperature)
+  signed char max_op_limit;         // 205: Specified maximum operating temperature (ACS-4)
   unsigned int over_limit_count;    // 206-209: # intervals since last reset with temperature > Max Op Limit
   unsigned int under_limit_count;   // 210-213: # intervals since last reset with temperature < Min Op Limit
   unsigned short smart_status;      // 214-215: LBA(32:8) of SMART RETURN STATUS (0, 0x2cf4, 0xc24f) (ACS-4)
@@ -855,7 +843,7 @@ int ataSmartSupport(const ata_identify_device * drive);
 int ataGetSetSCTWriteCacheReordering(ata_device * device, bool enable, bool persistent, bool set);
 
 // Return values:
-// 1: Write cache controled by ATA Set Features command
+// 1: Write cache controlled by ATA Set Features command
 // 2: Force enable write cache
 // 3: Force disable write cache
 int ataGetSetSCTWriteCache(ata_device * device, unsigned short state, bool persistent, bool set);
@@ -868,25 +856,39 @@ int ataIsSmartEnabled(const ata_identify_device * drive);
 
 int ataSmartStatus2(ata_device * device);
 
-int isSmartErrorLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
+bool isSmartErrorLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
 
-int isSmartTestLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
+bool isSmartTestLogCapable(const ata_smart_values * data, const ata_identify_device * identity);
 
-int isGeneralPurposeLoggingCapable(const ata_identify_device * identity);
+bool isGeneralPurposeLoggingCapable(const ata_identify_device * identity);
 
-int isSupportExecuteOfflineImmediate(const ata_smart_values * data);
+// SMART self-test capability is also indicated in bit 1 of DEVICE
+// IDENTIFY word 87 (if top two bits of word 87 match pattern 01).
+// However this was only introduced in ATA-6 (but self-test log was in
+// ATA-5).
+inline bool isSupportExecuteOfflineImmediate(const ata_smart_values *data)
+  { return !!(data->offline_data_collection_capability & 0x01); }
 
-int isSupportAutomaticTimer(const ata_smart_values * data);
+// TODO: Remove uses of this check.  Bit 1 is vendor specific since ATA-4.
+// Automatic timer support was only documented for very old IBM drives
+// (for example IBM Travelstar 40GNX).
+inline bool isSupportAutomaticTimer(const ata_smart_values * data)
+  { return !!(data->offline_data_collection_capability & 0x02); }
 
-int isSupportOfflineAbort(const ata_smart_values * data);
+inline bool isSupportOfflineAbort(const ata_smart_values *data)
+  { return !!(data->offline_data_collection_capability & 0x04); }
 
-int isSupportOfflineSurfaceScan(const ata_smart_values * data);
+inline bool isSupportOfflineSurfaceScan(const ata_smart_values * data)
+  { return !!(data->offline_data_collection_capability & 0x08); }
 
-int isSupportSelfTest(const ata_smart_values * data);
+inline bool isSupportSelfTest(const ata_smart_values * data)
+  { return !!(data->offline_data_collection_capability & 0x10); }
 
-int isSupportConveyanceSelfTest(const ata_smart_values * data);
+inline bool isSupportConveyanceSelfTest(const ata_smart_values * data)
+  { return !!(data->offline_data_collection_capability & 0x20); }
 
-int isSupportSelectiveSelfTest(const ata_smart_values * data);
+inline bool isSupportSelectiveSelfTest(const ata_smart_values * data)
+  { return !!(data->offline_data_collection_capability & 0x40); }
 
 inline bool isSCTCapable(const ata_identify_device *drive)
   { return !!(drive->words088_255[206-88] & 0x01); } // 0x01 = SCT support
@@ -984,21 +986,6 @@ const char * get_valid_firmwarebug_args();
 // This function is exported to give low-level capability
 int smartcommandhandler(ata_device * device, smart_command_set command, int select, char *data);
 
-// Print one self-test log entry.
-// Returns:
-// -1: failed self-test
-//  1: extended self-test completed without error
-//  0: otherwise
-int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
-                               unsigned char test_status,
-                               unsigned short timestamp,
-                               uint64_t failing_lba,
-                               bool print_error_only, bool & print_header);
-
-// Print Smart self-test log, used by smartctl and smartd.
-int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
-                             firmwarebug_defs firmwarebugs);
-
 // Get capacity and sector sizes from IDENTIFY data
 struct ata_size_info
 {
@@ -1016,17 +1003,6 @@ void ata_format_id_string(char * out, const unsigned char * in, int n);
 
 // Utility routines.
 unsigned char checksum(const void * data);
-
-void swap2(char *location);
-void swap4(char *location);
-void swap8(char *location);
-// Typesafe variants using overloading
-inline void swapx(unsigned short * p)
-  { swap2((char*)p); }
-inline void swapx(unsigned int * p)
-  { swap4((char*)p); }
-inline void swapx(uint64_t * p)
-  { swap8((char*)p); }
 
 // Return pseudo-device to parse "smartctl -r ataioctl,2 ..." output
 // and simulate an ATA device with same behaviour

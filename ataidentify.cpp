@@ -3,27 +3,22 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2012-17 Christian Franke
+ * Copyright (C) 2012-18 Christian Franke
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
+#define __STDC_FORMAT_MACROS 1 // enable PRI* for C++
+
 #include "ataidentify.h"
 
-const char * ataidentify_cpp_cvsid = "$Id: ataidentify.cpp 4573 2017-10-29 15:13:58Z chrfranke $"
+const char * ataidentify_cpp_cvsid = "$Id: ataidentify.cpp 4760 2018-08-19 18:45:53Z chrfranke $"
   ATAIDENTIFY_H_CVSID;
 
-#include "int64.h"
 #include "utility.h"
 
+#include <inttypes.h>
 
 // Table 12 of X3T10/0948D (ATA-2) Revision 4c, March 18, 1996
 // Table 9 of X3T13/2008D (ATA-3) Revision 7b, January 27, 1997
