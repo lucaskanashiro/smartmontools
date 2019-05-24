@@ -7,11 +7,9 @@ Fixed example path in man pages
  smartd.conf.5.in | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 4c1f453..e2c2396 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -1671,7 +1671,7 @@ sleep 30
+@@ -1650,7 +1650,7 @@ sleep 30
  .Ve
  .Sp
  Some example scripts are distributed with the smartmontools package,

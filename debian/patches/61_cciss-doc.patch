@@ -13,11 +13,9 @@ Refreshed by jmtd@debian.org 2018-08-10
  smartd.conf.5.in | 10 ++++++++++
  2 files changed, 16 insertions(+)
 
-diff --git a/smartd.conf b/smartd.conf
-index 5490bde..59addd4 100644
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
+@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /u
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -30,11 +28,9 @@ index 5490bde..59addd4 100644
  
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 0afba1b..4c1f453 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -162,6 +162,12 @@ Section below!
+@@ -151,6 +151,12 @@ Section below!
  .\" %ENDIF OS FreeBSD
  .\" %IF OS FreeBSD Linux
  #
@@ -47,7 +43,7 @@ index 0afba1b..4c1f453 100644
  # Three SATA disks on a HighPoint RocketRAID controller.
  # Start short self\-tests daily between 1\-2, 2\-3, and
  # 3\-4 am.
-@@ -1553,6 +1559,10 @@ configuration file Directives might be:
+@@ -1592,6 +1598,10 @@ configuration file Directives might be:
  If you want more frequent information, use: \fB\-a\fP.
  .Sp
  .TP
@@ -55,6 +51,6 @@ index 0afba1b..4c1f453 100644
 +then the corresponding block device (/dev/cciss/c?d?) must be listed,
 +along with the \'\-d cciss,N\' Directive (see below).
 +.TP
- .B ADDITIONAL DETAILS ABOUT DEVICESCAN
- If a non-comment entry in the configuration file is the text
- string \fBDEVICESCAN\fP in capital letters, then \fBsmartd\fP will
+ .B EXAMPLES OF SHELL SCRIPTS FOR \*(Aq\-M exec\*(Aq
+ These are two examples of shell scripts that can be used with the \*(Aq\-M
+ exec PATH\*(Aq Directive described previously.  The paths to these scripts

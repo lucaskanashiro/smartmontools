@@ -1,3 +1,13 @@
+/*
+ * cciss.cpp
+ *
+ * Home page of code is: http://www.smartmontools.org
+ *
+ * Copyright (C) 2007 Sergey Svishchev
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -18,27 +28,18 @@
 #  ifndef be32toh
 #    define be32toh __be32_to_cpu
 #  endif
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
 #  include <sys/endian.h>
-#  include CISS_LOCATION
-#  define _HAVE_CCISS
-#elif defined(__FreeBSD_kernel__)
-#  include <endian.h>
-#  ifdef __GLIBC__
-#  include <bsd/sys/cdefs.h>
-#  include <stdint.h>
-#  endif
 #  include CISS_LOCATION
 #  define _HAVE_CCISS
 #endif
 
 #ifdef _HAVE_CCISS
 #include "cciss.h"
-#include "int64.h"
 #include "scsicmds.h"
 #include "utility.h"
 
-const char * cciss_cpp_cvsid = "$Id: cciss.cpp 4156 2015-10-18 12:20:40Z samm2 $"
+const char * cciss_cpp_cvsid = "$Id: cciss.cpp 4858 2018-12-16 17:59:59Z chrfranke $"
   CCISS_H_CVSID;
 
 typedef struct _ReportLUNdata_struct
@@ -98,7 +99,7 @@ int cciss_io_interface(int device, int target, struct scsi_cmnd_io * iop, int re
                  int trunc = (iop->dxfer_len > 256) ? 1 : 0;
                  printf("  Incoming data, len=%d%s:\n", (int)iop->dxfer_len,
                       (trunc ? " [only first 256 bytes shown]" : ""));
-                 dStrHex((const char*)iop->dxferp, (trunc ? 256 : iop->dxfer_len) , 1);
+                 dStrHex(iop->dxferp, (trunc ? 256 : iop->dxfer_len) , 1);
              }
          }
          return 0;
@@ -116,7 +117,7 @@ int cciss_io_interface(int device, int target, struct scsi_cmnd_io * iop, int re
          if (report > 1)
          {
              printf("  >>> Sense buffer, len=%d:\n", (int)len);
-             dStrHex((const char *)pBuf, len , 1);
+             dStrHex((const uint8_t *)pBuf, len , 1);
          }
      }
      if (report)

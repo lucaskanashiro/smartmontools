@@ -3,22 +3,15 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2004-12 Christian Franke
+ * Copyright (C) 2004-18 Christian Franke
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef DAEMON_WIN32_H
 #define DAEMON_WIN32_H
 
-#define DAEMON_WIN32_H_CVSID "$Id: daemon_win32.h 4431 2017-08-08 19:38:15Z chrfranke $"
+#define DAEMON_WIN32_H_CVSID "$Id: daemon_win32.h 4818 2018-10-17 05:32:17Z chrfranke $"
 
 #include <signal.h>
 
@@ -58,10 +51,5 @@ int daemon_enable_console(const char * title);
 
 // Detach from console
 int daemon_detach(const char * ident);
-
-// Spawn a process and redirect stdio
-int daemon_spawn(const char * cmd,
-                 const char * inpbuf, int inpsize,
-                 char *       outbuf, int outsize );
 
 #endif // DAEMON_WIN32_H
