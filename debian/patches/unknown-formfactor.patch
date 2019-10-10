@@ -1,0 +1,21 @@
+Last-Update: 2019-10-09
+Forwarded: not-needed
+From: Christian Franke <Christian.Franke@t-online.de>
+Bug-Upstream: https://www.smartmontools.org/ticket/1154
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=918535
+Description: fix regression, as advised by upstream.
+
+--- a/ataprint.cpp
++++ b/ataprint.cpp
+@@ -703,9 +703,10 @@
+       jout("Form Factor:      %s\n", form_factor);
+     else
+       jout("Form Factor:      Unknown (0x%04x)\n", word168);
+     jglb["form_factor"]["ata_value"] = word168;
+-    jglb["form_factor"]["name"] = form_factor;
++    if (form_factor)
++      jglb["form_factor"]["name"] = form_factor;
+   }
+ 
+   // See if drive is recognized
+   jout("Device is:        %s\n", !dbentry ?

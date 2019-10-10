@@ -1,3 +1,39 @@
+smartmontools (7.0-1) unstable; urgency=medium
+
+  [ Jean-Michel Vourgère ]
+  * Update README.Debian. (Closes: #878752).
+
+  [ Dmitry Smirnov ]
+  * New upstream release (Closes: #918535).
+    + NVMe devices support (Closes: #911280).
+    + no longer fails on nvme/Optane (Closes: #924892).
+    + Type=notify for systemd service (Closes: #865912).
+  * Re-introduced "update-smart-drivedb", now with GPG validation;
+    (Closes: #894534, #824795, #804299, #854043, #824149).
+  * Removed obsolete "10powersave-notify" (Closes: #893646).
+  * Added note how to disable the service to README.Debian.
+    No longer use "start_smartd" in defaults. (Closes: #907736, #767569).
+  * Install smartd.service alias (Closes: #808987).
+  * DH & compat to version 12; rules to DH sequence.
+  * Pre-Depends: ${misc:Pre-Depends}
+  * Standards-Version: 4.4.1.
+  * In-depth copyright documentation.
+  * Build-Depends:
+    * automake1.11 --> automake (Closes: #865202).
+    + pkg-config
+    + libsystemd-dev
+  * Demoted MTA from Recommends to Suggests (Closes: #898121).
+  * Suggests += "curl | wget | lynx, gpg".
+  * Addressed some lintian warnings:
+    - maintainer-script-should-not-use-dpkg-maintscript-helper
+    - init.d-script-possible-missing-stop
+  * Added bug-presubj file with information about upstream bug tracker.
+  * watch: fixed and converted to v4; checking upstream signature.
+  * Replaced Giuseppe Iuculano as Maintainer by request of the MIA team
+    (Closes: #866838).
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 10 Oct 2019 12:39:16 +1100
+
 smartmontools (6.6-1) unstable; urgency=medium
 
   [ Jonathan Dowland ]
@@ -549,7 +585,7 @@ smartmontools (5.36-7) unstable; urgency=low
     instead of only explaining what it does
   * /etc/init.d/smartmontools: use LSB logging, patch by David Härdeman
     <david@hardeman.nu> (Closes: #385903)
-  * Bump standards version to 3.7.2 (no other changes necessary) 
+  * Bump standards version to 3.7.2 (no other changes necessary)
 
  -- Guido Guenther <agx@sigxcpu.org>  Mon, 25 Sep 2006 11:41:21 +0200
 
@@ -586,7 +622,7 @@ smartmontools (5.36-3) unstable; urgency=low
 
 smartmontools (5.36-2) unstable; urgency=low
 
-  * Build depend on automake/autoconf since we run autogen.sh 
+  * Build depend on automake/autoconf since we run autogen.sh
     from debian/rules
 
  -- Guido Guenther <agx@sigxcpu.org>  Mon, 24 Apr 2006 16:02:42 +0200
@@ -619,7 +655,7 @@ smartmontools (5.33+5.34cvs20050802-5) experimental; urgency=low
 smartmontools (5.33+5.34cvs20050802-4) unstable; urgency=low
 
   * avoid usage of cat in 10mail (Closes: #327338)
-  * add patch by Aurelin Jano to build on kfreebsd (Closes: #327642) 
+  * add patch by Aurelin Jano to build on kfreebsd (Closes: #327642)
 
  -- Guido Guenther <agx@debian.org>  Tue, 24 Jan 2006 09:56:28 +0100
 
@@ -732,7 +768,7 @@ smartmontools (5.26-4) unstable; urgency=low
 
   * remove sections not relevant on debian systems from smartd.8.in manpage
   * include /etc/smartd.conf again, thanks Wolfram Quester.
-  * change smartd.conf to only use DEVICESCAN 
+  * change smartd.conf to only use DEVICESCAN
 
  -- Guido Guenther <agx@debian.org>  Tue,  3 Feb 2004 15:25:32 +0100
 
@@ -780,7 +816,7 @@ smartmontools (5.1.16-1) unstable; urgency=low
 
   * new upstream version
     - log normal exit at LOG_INFO, not LOG_CRIT (Closes: #201173)
-    - allows to acces disks behind 3ware RAID controllers, maybe 
+    - allows to acces disks behind 3ware RAID controllers, maybe
       closes: #188515, the submitter never specified any details.
   * bump Standards-Version to 3.6.0
   * add NEWS.Debian file
@@ -810,7 +846,7 @@ smartmontools (5.1.10-1) unstable; urgency=low
   * bump debhelper Build-Depends to >=4
   * bump Standards-Version to 3.5.9
   * smartd now writes a pidfile, use it in the init script
-  * add smartd_opts to /etc/defaults/smartmontools 
+  * add smartd_opts to /etc/defaults/smartmontools
   * add cron.daily example
 
  -- Guido Guenther <agx@debian.org>  Mon, 21 Apr 2003 19:32:46 +0200
@@ -839,7 +875,7 @@ smartmontools (5.1.9-1) unstable; urgency=low
   * new upstream version (Closes: #178151)
   * Recommends: mailx | mailutils (Closes: #184890)
   * add '-e' to shebang line of init script
-  * use debian/compat not DH_COMPAT 
+  * use debian/compat not DH_COMPAT
 
  -- Guido Guenther <agx@debian.org>  Sat, 15 Mar 2003 12:40:04 +0100
 
@@ -854,7 +890,7 @@ smartmontools (5.1.4-1) unstable; urgency=low
 
   * new upstream version
   * turn on S.M.A.R.T. for devices listed in enable_smart
-  * honor DEB_BUILD_OPTIONS 
+  * honor DEB_BUILD_OPTIONS
   * bump standards version to 3.5.8
 
  -- Guido Guenther <agx@debian.org>  Sat, 25 Jan 2003 19:40:14 +0100
@@ -879,4 +915,3 @@ smartmontools (5.1.1-1) unstable; urgency=low
   * Initial Release.
 
  -- Guido Guenther <agx@debian.org>  Tue, 14 Jan 2003 12:58:00 +0000
-

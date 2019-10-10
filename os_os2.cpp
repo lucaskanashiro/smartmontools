@@ -5,14 +5,7 @@
  *
  * Copyright (C) 2004-8 Yuri Dario
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 /*
@@ -23,7 +16,6 @@
 
 // These are needed to define prototypes for the functions defined below
 #include "config.h"
-#include "int64.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -35,7 +27,7 @@
 #include "os_os2.h"
 
 // Needed by '-V' option (CVS versioning) of smartd/smartctl
-const char *os_XXXX_c_cvsid="$Id: os_os2.cpp 4431 2017-08-08 19:38:15Z chrfranke $" \
+const char *os_XXXX_c_cvsid="$Id: os_os2.cpp 4842 2018-12-02 16:07:26Z chrfranke $" \
 ATACMDS_H_CVSID OS_XXXX_H_CVSID SCSICMDS_H_CVSID UTILITY_H_CVSID;
 
 // global handle to device driver
@@ -45,9 +37,7 @@ static HFILE hDevice;
 // that the device paths are sensible for your OS, and to eliminate
 // unsupported commands (eg, 3ware controllers).
 void print_smartctl_examples(){
-  printf("=================================================== SMARTCTL EXAMPLES =====\n\n");
-#ifdef HAVE_GETOPT_LONG
-  printf(
+  printf("=================================================== SMARTCTL EXAMPLES =====\n\n"
          "  smartctl -a hd0                       (Prints all SMART information)\n\n"
          "  smartctl --smart=on --offlineauto=on --saveauto=on hd0\n"
          "                                              (Enables SMART on first disk)\n\n"
@@ -55,16 +45,6 @@ void print_smartctl_examples(){
          "  smartctl --attributes --log=selftest --quietmode=errorsonly hd0\n"
          "                                      (Prints Self-Test & Attribute errors)\n"
          );
-#else
-  printf(
-         "  smartctl -a hd0                       (Prints all SMART on first disk with DANIS506)\n"
-         "  smartctl -a ahci0                     (Prints all SMART on first disk with OS2AHCI)\n"
-         "  smartctl -s on -o on -S on hd0         (Enables SMART on first disk)\n"
-         "  smartctl -t long hd0              (Executes extended disk self-test)\n"
-         "  smartctl -A -l selftest -q errorsonly hd0\n"
-         "                                      (Prints Self-Test & Attribute errors)\n"
-         );
-#endif
   return;
 }
 
@@ -394,7 +374,7 @@ static int dani_ioctl( int device, void* arg)
    return 0;
 }
 
-// Interface to ATA devices.  See os_linux.cpp for the cannonical example.
+// Interface to ATA devices.  See os_linux.cpp for the canonical example.
 // DETAILED DESCRIPTION OF ARGUMENTS
 //   device: is the integer handle provided by deviceopen()
 //   command: defines the different operations, see atacmds.h

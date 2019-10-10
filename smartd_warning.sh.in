@@ -6,15 +6,9 @@
 #
 # Copyright (C) 2012-16 Christian Franke
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2, or (at your option)
-# any later version.
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
-# You should have received a copy of the GNU General Public License
-# (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
-#
-# $Id: smartd_warning.sh.in 4351 2016-10-17 18:53:40Z chrfranke $
+# $Id: smartd_warning.sh.in 4839 2018-11-27 18:26:08Z chrfranke $
 #
 
 set -e
@@ -45,7 +39,7 @@ smartd $VERSION warning message script
 
 Usage:
   export SMARTD_MAILER='Path to external script, empty for "$os_mailer"'
-  export SMARTD_ADDRESS='Space separated mail adresses, empty if none'
+  export SMARTD_ADDRESS='Space separated mail addresses, empty if none'
   export SMARTD_MESSAGE='Error Message'
   export SMARTD_FAILTYPE='Type of failure, "EMailTest" for tests'
   export SMARTD_TFIRST='Date of first message sent, empty if none'

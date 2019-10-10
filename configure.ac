@@ -1,20 +1,23 @@
 #
-# $Id: configure.ac 4594 2017-11-05 15:21:35Z chrfranke $
+# $Id: configure.ac 4883 2018-12-30 14:48:54Z chrfranke $
 #
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ([2.60])
-AC_INIT(smartmontools, 6.6, smartmontools-support@listi.jpberlin.de)
+AC_INIT([smartmontools], [7.0], [smartmontools-support@listi.jpberlin.de])
 AM_INIT_AUTOMAKE([1.10 foreign])
 
-smartmontools_cvs_tag=`echo '$Id: configure.ac 4594 2017-11-05 15:21:35Z chrfranke $'`
-smartmontools_release_date=2017-11-05
-smartmontools_release_time="15:20:58 UTC"
+# Version of drive database branch
+smartmontools_drivedb_version=7.0
 
-AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",            [smartmontools Configure Arguments])
-AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",   [smartmontools Release Date])
-AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_TIME,   "$smartmontools_release_time",   [smartmontools Release Time])
-AC_DEFINE_UNQUOTED(CONFIG_H_CVSID,               "$smartmontools_cvs_tag",        [smartmontools CVS Tag])
-AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "http://www.smartmontools.org/", [smartmontools Home Page])
+smartmontools_cvs_tag=`echo '$Id: configure.ac 4883 2018-12-30 14:48:54Z chrfranke $'`
+smartmontools_release_date=2018-12-30
+smartmontools_release_time="14:47:55 UTC"
+
+AC_DEFINE_UNQUOTED(SMARTMONTOOLS_CONFIGURE_ARGS, "$ac_configure_args",             [smartmontools Configure Arguments])
+AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_DATE,   "$smartmontools_release_date",    [smartmontools Release Date])
+AC_DEFINE_UNQUOTED(SMARTMONTOOLS_RELEASE_TIME,   "$smartmontools_release_time",    [smartmontools Release Time])
+AC_DEFINE_UNQUOTED(CONFIG_H_CVSID,               "$smartmontools_cvs_tag",         [smartmontools CVS Tag])
+AC_DEFINE_UNQUOTED(PACKAGE_HOMEPAGE,             "https://www.smartmontools.org/", [smartmontools Home Page])
 
 AC_CONFIG_SRCDIR([smartctl.cpp])
 AC_CONFIG_HEADER([config.h])
@@ -77,53 +80,51 @@ AM_CONDITIONAL(IS_SVN_BUILD, [test "$is_svn_build" = "yes"])
 AC_MSG_RESULT([$is_svn_build])
 
 # Note: On Linux, clock_gettime() requires -lrt which implies -lpthreads
-# Check ommitted for now, gettimeofday() provides reasonable precision
+# Check omitted for now, gettimeofday() provides reasonable precision
 # AC_SEARCH_LIBS(clock_gettime, rt)
 
-dnl Checks for header files.
+# Checks for header files.
 AC_CHECK_HEADERS([locale.h])
-AC_CHECK_HEADERS([dev/ata/atavar.h])
-dnl we need [u]int64_t and friends.
-AC_CHECK_HEADERS([inttypes.h])		dnl C99, UNIX98, solaris 2.6+
-AC_CHECK_HEADERS([stdint.h])		dnl C99
-AC_CHECK_HEADERS([sys/inttypes.h])	dnl pre-UNIX98
-AC_CHECK_HEADERS([sys/int_types.h])	dnl pre-UNIX98, solaris 2.6+
-dnl Check for FreeBSD twe include files...currently missing on 5.2, but should be there
-AC_CHECK_HEADERS([sys/tweio.h])
-AC_CHECK_HEADERS([sys/twereg.h])
-dnl Check for FreeBSD twa include files...
-AC_CHECK_HEADERS([sys/tw_osl_ioctl.h])
-dnl This header file is needed for cciss_ioctl.h at least on SuSE LINUX
-AC_CHECK_HEADERS([linux/compiler.h])
-dnl Check for the FreeBSD CCISS system header and use internal one if not found
-AC_CHECK_HEADERS([dev/ciss/cissio.h],
-    [AC_DEFINE([CISS_LOCATION],[<dev/ciss/cissio.h>],[freebsd ciss header location])],
-    [AC_DEFINE([CISS_LOCATION],["cissio_freebsd.h"],[freebsd ciss header location])]
-    )
-dnl Check for Linux CCISS include file
-AC_CHECK_HEADERS([linux/cciss_ioctl.h], [], [], [AC_INCLUDES_DEFAULT
+AC_CHECK_HEADERS([byteswap.h], [], [], [])
+
+case "$host" in
+  *-*-freebsd*|*-*-dragonfly*|*-*-kfreebsd*-gnu*)
+    # Check for FreeBSD twe and twa include files
+    AC_CHECK_HEADERS([sys/tweio.h sys/twereg.h sys/tw_osl_ioctl.h])
+    # Check for the FreeBSD CCISS system header and use internal one if not found
+    AC_CHECK_HEADERS([dev/ciss/cissio.h],
+      [AC_DEFINE([CISS_LOCATION],[<dev/ciss/cissio.h>],[freebsd ciss header location])],
+      [AC_DEFINE([CISS_LOCATION],["cissio_freebsd.h"],[freebsd ciss header location])])
+    ;;
+  *-*-linux*)
+    # <linux/compiler.h> is needed for cciss_ioctl.h at least on SuSE LINUX
+    AC_CHECK_HEADERS([sys/sysmacros.h linux/compiler.h])
+    # Check for Linux CCISS include file
+    AC_CHECK_HEADERS([linux/cciss_ioctl.h], [], [], [AC_INCLUDES_DEFAULT
 #ifdef HAVE_LINUX_COMPILER_H
 # include <linux/compiler.h>
 #endif
 ])
-dnl Check for Windows DDK and WMI header files
-AC_CHECK_HEADERS([ntdddisk.h ddk/ntdddisk.h], [], [], [AC_INCLUDES_DEFAULT
+    ;;
+  *-*-netbsd*|*-*-openbsd*)
+    AC_CHECK_HEADERS([dev/ata/atavar.h])
+    ;;
+  *-*-cygwin*|*-*-mingw*)
+    # Check for Windows DDK header files
+    AC_CHECK_HEADERS([ntdddisk.h ddk/ntdddisk.h], [], [], [AC_INCLUDES_DEFAULT
 #include <windows.h>
 ])
-AC_CHECK_HEADERS([wbemcli.h])
+    ;;
+esac
 
-dnl Checks for typedefs, structures, and compiler characteristics.
-AC_CHECK_TYPES([int64_t, uint64_t])
+# Checks for typedefs, and compiler characteristics.
+AC_CHECK_TYPES([__int128])
+AC_TYPE_LONG_DOUBLE_WIDER
 
-dnl Checks for library functions.
+# Checks for library functions.
 AC_CHECK_FUNCS([getopt_long], [need_getopt_long=no], [need_getopt_long=yes])
 AM_CONDITIONAL(NEED_GETOPT_LONG, [test "$need_getopt_long" = "yes"])
-AC_CHECK_FUNCS([regcomp], [need_regex=no], [need_regex=yes])
-AM_CONDITIONAL(NEED_REGEX, [test "$need_regex" = "yes"])
 
-AC_CHECK_FUNCS([sigset])
-AC_CHECK_FUNCS([strtoull])
-AC_CHECK_FUNCS([uname])
 AC_CHECK_FUNCS([clock_gettime ftime gettimeofday])
 
 # Check byte ordering (defines WORDS_BIGENDIAN)
@@ -147,74 +148,15 @@ AC_SUBST(CPPFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(ASFLAGS)
 
-AC_ARG_WITH(systemdsystemunitdir,
-  [AS_HELP_STRING([--with-systemdsystemunitdir@<:@=DIR|auto|yes|no@:>@], [Location of systemd service files [auto]])],
-  [], [with_systemdsystemunitdir=auto])
-
-systemdsystemunitdir=
-case "$with_systemdsystemunitdir" in
- auto|yes)
-   if test -n "$PKG_CONFIG"; then
-     AC_MSG_CHECKING([for systemdsystemunitdir])
-     systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd 2>/dev/null`
-     AC_MSG_RESULT([${systemdsystemunitdir:-no}])
-   fi
-   case "$with_systemdsystemunitdir:$sysconfdir:$systemdsystemunitdir" in
-     yes:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
-     yes:*:*|auto:*:|auto:/etc:*) ;;
-     *) systemdsystemunitdir='${prefix}'$systemdsystemunitdir ;;
-   esac ;;
- no) ;;
- *) systemdsystemunitdir="$with_systemdsystemunitdir" ;;
-esac
-AC_SUBST(systemdsystemunitdir)
-AM_CONDITIONAL(INSTALL_SYSTEMDUNIT, [test -n "$systemdsystemunitdir"])
-
-AC_ARG_WITH(systemdenvfile,
-  [AS_HELP_STRING([--with-systemdenvfile@<:@=FILE|auto|yes|no@:>@], [Path of systemd EnvironmentFile [auto]])],
-  [], [with_systemdenvfile=auto])
-
-systemdenvfile=
-case "$with_systemdenvfile:$cross_compiling:$systemdsystemunitdir" in
-  auto:no:?*|yes:*:?*)
-    AC_MSG_CHECKING([for path of systemd EnvironmentFile])
-    for dir in sysconfig default; do
-      if test -d /etc/$dir; then
-        systemdenvfile='${sysconfdir}'/$dir/smartmontools
-        break
-      fi
-    done
-    AC_MSG_RESULT([${systemdenvfile:-no}])
-    case "$with_systemdenvfile:$systemdenvfile" in
-      yes:) AC_MSG_ERROR([Path of systemd EnvironmentFile not found]) ;;
-    esac ;;
-  auto:*|no:*) ;;
-  *:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
-  *) systemdenvfile="$with_systemdenvfile"
-esac
-AC_SUBST(systemdenvfile)
-
-AC_ARG_WITH(initscriptdir,
-  [AS_HELP_STRING([--with-initscriptdir@<:@=DIR|auto|yes|no@:>@], [Location of init scripts [auto]])],
-  [], [with_initscriptdir=auto])
-
 initddir=
-case "$with_initscriptdir:$cross_compiling:$systemdsystemunitdir" in
-  auto:no:|yes:*)
-    AC_MSG_CHECKING([for init (rc) directory])
-    for dir in rc.d/init.d init.d rc.d; do
-      if test -d /etc/$dir; then
-        initddir='${sysconfdir}'/$dir
-        break
-      fi
-    done
-    AC_MSG_RESULT([${initddir:-no}])
-    case "$with_initscriptdir:$initddir" in
-      yes:) AC_MSG_ERROR([Location of init scripts not found]) ;;
-    esac ;;
-  auto:*|no:*) ;;
-  *) initddir="$with_initscriptdir" ;;
-esac
+AC_ARG_WITH(initscriptdir,
+  [AS_HELP_STRING([--with-initscriptdir=@<:@DIR|no@:>@], [Location of init scripts [no]])],
+  [ case "$withval" in
+      auto|yes) AC_MSG_ERROR(['--with-initscriptdir=$withval' is no longer supported]) ;;
+      no) ;;
+      *) initddir="$withval" ;;
+    esac
+  ])
 AC_SUBST(initddir)
 AM_CONDITIONAL(INSTALL_INITSCRIPT, [test -n "$initddir"])
 
@@ -225,6 +167,9 @@ case "${host}" in
     ;;
   *-apple-darwin*)
     initdfile="com.smartmontools.smartd.plist"
+    ;;
+  *-*-cygwin*)
+    initdfile="smartd.cygwin.initd"
     ;;
   *)
     initdfile="smartd.initd"
@@ -244,7 +189,7 @@ AC_ARG_WITH(drivedbdir,
 AC_SUBST(drivedbdir)
 AM_CONDITIONAL(ENABLE_DRIVEDB, [test -n "$drivedbdir"])
 
-drivedb_version=$VERSION
+drivedb_version=$smartmontools_drivedb_version
 AC_ARG_WITH(update-smart_drivedb,
   [AS_HELP_STRING([--with-update-smart-drivedb@<:@=yes|no|X.Y@:>@],
     [Install update-smart-drivedb script (and backport it to branches/RELEASE_X_Y_DRIVEDB) [yes]])],
@@ -288,9 +233,9 @@ AC_SUBST(smartdplugindir)
 
 AC_ARG_WITH(scriptpath,
   [AS_HELP_STRING([--with-scriptpath=@<:@PATH|no@:>@],
-    [PATH variable set within scripts [/usr/bin:/bin]])],
+    [PATH variable set within scripts [/usr/local/bin:/usr/bin:/bin]])],
   [scriptpath=; test "$withval" != "no" && scriptpath="$withval"],
-  [scriptpath="/usr/bin:/bin"])
+  [scriptpath="/usr/local/bin:/usr/bin:/bin"])
 AC_SUBST(scriptpath)
 AM_CONDITIONAL(ENABLE_SCRIPTPATH, [test -n "$scriptpath"])
 
@@ -322,6 +267,20 @@ AC_ARG_ENABLE(sample,
   [smartd_suffix=;])
 AC_SUBST(smartd_suffix)
 
+AC_ARG_ENABLE([scsi-cdb-check],
+  [AS_HELP_STRING([--enable-scsi-cdb-check], [do sanity check on each SCSI cdb])],
+  [ if test "$enableval" = "yes"; then
+      AC_DEFINE(SCSI_CDB_CHECK, 1, [Define to 1 to enable check on each SCSI cdb])
+    fi
+  ],[])
+
+AC_ARG_ENABLE([fast-lebe],
+  [AS_HELP_STRING([--disable-fast-lebe], [use generic little-endian/big-endian code instead])],
+  [ if test "$enableval" = "no"; then
+      AC_DEFINE(IGNORE_FAST_LEBE, 1, [Define to 1 to use generic LE/BE code instead])
+    fi
+  ],[])
+
 AC_ARG_WITH(os-deps,
   [AS_HELP_STRING([--with-os-deps='os_module.o ...'], [Specify OS dependent module(s) [guessed]])],
   [ for x in $with_os_deps; do
@@ -339,40 +298,94 @@ AC_ARG_WITH(selinux,
       AC_CHECK_LIB(selinux, matchpathcon, [], [AC_MSG_ERROR([Missing or incorrect SELinux library files])])
     fi
   ],[])
-AC_SUBST(with_selinux)
-if test "$with_selinux" = "yes"; then
-  AC_DEFINE(WITH_SELINUX, 1, [Define to 1 if SELinux support is enabled])
-fi
 
 AC_ARG_WITH(libcap-ng,
   [AS_HELP_STRING([--with-libcap-ng@<:@=auto|yes|no@:>@], [Add Libcap-ng support to smartd [auto]])],
   [], [with_libcap_ng=auto])
 
 use_libcap_ng=no
-if test "$with_libcap_ng" != "no"; then
-  AC_CHECK_LIB(cap-ng, capng_clear,
-    [AC_DEFINE(HAVE_LIBCAP_NG, 1, [Define to 1 if you have the `cap-ng' library (-lcap-ng).]) dnl `vim syntax
-     CAPNG_LDADD="-lcap-ng"; use_libcap_ng=yes])
-
-  if test "$use_libcap_ng" = "yes"; then
-    AC_CHECK_HEADER(cap-ng.h, [], [AC_MSG_ERROR([libcap-ng libraries found but headers are missing])])
-  elif test "$with_libcap_ng" = "yes"; then
-    AC_MSG_ERROR([libcap-ng support was requested but the library was not found])
-  fi
-fi
-
-AC_MSG_CHECKING([whether to use libcap-ng])
+case "$with_libcap_ng:$host_os" in
+  auto:linux*|yes:*)
+    AC_CHECK_HEADERS([cap-ng.h], [AC_CHECK_LIB([cap-ng], [capng_clear],
+      [AC_DEFINE(HAVE_LIBCAP_NG, 1,
+        [Define to 1 if you have the `cap-ng' library (-lcap-ng).]) dnl `vim syntax
+       CAPNG_LDADD="-lcap-ng"; use_libcap_ng=yes],
+      [AC_MSG_ERROR([libcap-ng headers found but library is missing])])],
+      [test "$with_libcap_ng" != "yes" || AC_MSG_ERROR([Missing libcap-ng header files])])
+    ;;
+esac
 AC_SUBST(CAPNG_LDADD)
-AC_MSG_RESULT([$use_libcap_ng])
+
+AC_ARG_WITH(libsystemd,
+  [AS_HELP_STRING([--with-libsystemd@<:@=auto|yes|no@:>@],
+    [Add systemd 'Type=notify' support to smartd [auto]])],
+  [], [with_libsystemd=auto])
+
+use_libsystemd=no
+case "$with_libsystemd:$host_os" in
+  auto:linux*|yes:*)
+    AC_CHECK_HEADERS([systemd/sd-daemon.h], [AC_CHECK_LIB([systemd], [sd_notify],
+      [AC_DEFINE(HAVE_LIBSYSTEMD, 1,
+        [Define to 1 if you have the `systemd' library (-lsystemd).]) dnl `vim syntax
+       SYSTEMD_LDADD="-lsystemd"; use_libsystemd=yes],
+      [AC_MSG_ERROR([libsystemd headers found but library is missing])])],
+      [test "$with_libsystemd" != "yes" || AC_MSG_ERROR([Missing libsystemd header files])])
+    ;;
+esac
+AC_SUBST(SYSTEMD_LDADD)
+
+AC_ARG_WITH(systemdsystemunitdir,
+  [AS_HELP_STRING([--with-systemdsystemunitdir@<:@=DIR|auto|yes|no@:>@], [Location of systemd service files [auto]])],
+  [], [with_systemdsystemunitdir=auto])
+
+systemdsystemunitdir=
+case "$with_systemdsystemunitdir:$use_libsystemd" in
+  auto:yes|yes:yes)
+    if test -n "$PKG_CONFIG"; then
+      AC_MSG_CHECKING([for systemdsystemunitdir])
+      systemdsystemunitdir=`$PKG_CONFIG --variable=systemdsystemunitdir systemd 2>/dev/null`
+      AC_MSG_RESULT([${systemdsystemunitdir:-no}])
+    fi
+    case "$with_systemdsystemunitdir:$sysconfdir:$systemdsystemunitdir" in
+      yes:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
+      yes:*:*|auto:*:|auto:/etc:*) ;;
+      *) systemdsystemunitdir='${prefix}'$systemdsystemunitdir ;;
+    esac ;;
+  auto:*|no:*) ;;
+  *:yes) systemdsystemunitdir="$with_systemdsystemunitdir" ;;
+  *) AC_MSG_ERROR(['--with-systemdsystemunitdir=$with_systemdsystemunitdir' now requires '--with-libsystemd']) ;;
+esac
+AC_SUBST(systemdsystemunitdir)
+AM_CONDITIONAL(INSTALL_SYSTEMDUNIT, [test -n "$systemdsystemunitdir"])
+
+AC_ARG_WITH(systemdenvfile,
+  [AS_HELP_STRING([--with-systemdenvfile@<:@=FILE|auto|yes|no@:>@], [Path of systemd EnvironmentFile [auto]])],
+  [], [with_systemdenvfile=auto])
+
+systemdenvfile=
+case "$with_systemdenvfile:$cross_compiling:$systemdsystemunitdir" in
+  auto:no:?*|yes:*:?*)
+    AC_MSG_CHECKING([for path of systemd EnvironmentFile])
+    for dir in sysconfig default; do
+      if test -d /etc/$dir; then
+        systemdenvfile='${sysconfdir}'/$dir/smartmontools
+        break
+      fi
+    done
+    AC_MSG_RESULT([${systemdenvfile:-no}])
+    case "$with_systemdenvfile:$systemdenvfile" in
+      yes:) AC_MSG_ERROR([Path of systemd EnvironmentFile not found]) ;;
+    esac ;;
+  auto:*|no:*) ;;
+  *:*:) AC_MSG_ERROR([Location of systemd service files not found]) ;;
+  *) systemdenvfile="$with_systemdenvfile"
+esac
+AC_SUBST(systemdenvfile)
 
 # TODO: Remove when NVMe support is no longer EXPERIMENTAL
 AC_ARG_WITH(nvme-devicescan,
   [AS_HELP_STRING([--with-nvme-devicescan@<:@=yes|no@:>@],
-    [Include NVMe devices in smartd DEVICESCAN [no]])])
-AC_SUBST(with_nvme_devicescan)
-if test "$with_nvme_devicescan" = "yes"; then
-  AC_DEFINE(WITH_NVME_DEVICESCAN, 1, [Define to 1 to include NVMe devices in smartd DEVICESCAN.])
-fi
+    [Include NVMe devices in smartd DEVICESCAN [Linux,Windows:yes;Others:no]])])
 
 AC_ARG_WITH(solaris-sparc-ata,
   [AS_HELP_STRING([--with-solaris-sparc-ata@<:@=yes|no@:>@],
@@ -389,39 +402,63 @@ available in the SVN repository.])
     ;;
 esac
 
-# Assume broken snprintf only on Windows with MSVCRT (MinGW without ANSI stdio support)
-libc_have_working_snprintf=yes
+AC_ARG_WITH(signal-func,
+  [AS_HELP_STRING([--with-signal-func=@<:@sigaction|sigset|signal@:>@],
+    [Function to set signal(2) action [sigaction]])],
+  [], [with_signal_func=sigaction])
 
-case "$host" in
-  *-*-mingw*)
-    case " $CPPFLAGS $CXXFLAGS" in
-      *\ -[[DU]]__USE_MINGW_ANSI_STDIO*)
-        ;;
-      *)
-        # Older MinGW do not properly define PRI?64 if __USE_MINGW_ANSI_STDIO is set
-        # Newer MinGW set __USE_MINGW_ANSI_STDIO in first C++ include which may be too late
-        AC_MSG_CHECKING([whether __USE_MINGW_ANSI_STDIO is defined by C++ includes])
-        AC_PREPROC_IFELSE([AC_LANG_SOURCE([[
-          #undef __USE_MINGW_ANSI_STDIO
-          #include <iostream>
-          #ifndef __USE_MINGW_ANSI_STDIO
-            #error false
-          #endif]])],
-        [CXXFLAGS="-D__USE_MINGW_ANSI_STDIO $CXXFLAGS"],
-        [libc_have_working_snprintf=no])
-        AC_MSG_RESULT([$libc_have_working_snprintf])
-        ;;
-    esac ;;
+case "$host:$with_signal_func" in
+  *-*-mingw*:*) ;;
+  *:sigaction)
+    AC_CHECK_FUNCS([sigaction], [], AC_MSG_ERROR([Missing function 'sigaction()'.
+Try '--with-signal-func=sigset' or '--with-signal-func=signal'.
+Please send info about your system to $PACKAGE_BUGREPORT.])) ;;
+  *:sigset)
+    AC_CHECK_FUNCS([sigset], [], AC_MSG_ERROR([Missing function 'sigset()'])) ;;
+  *:signal) ;;
+  *) AC_MSG_ERROR([Invalid option '--with-signal-func=$with_signal_func']) ;;
 esac
 
+# TODO: Remove after smartmontools 6.7
 AC_ARG_WITH(working-snprintf,
   [AS_HELP_STRING([--with-working-snprintf@<:@=yes|no@:>@],
-    [Function snprintf() handles output truncation as specified by C99 [MinGW:guessed,others:yes]])],
-  [libc_have_working_snprintf=$withval])
+    [Function snprintf() handles output truncation as specified by C99 [yes]])],
+  [], [with_working_snprintf=yes])
 
-if test "$libc_have_working_snprintf" = "yes"; then
+if test "$with_working_snprintf" = "yes"; then
   AC_DEFINE(HAVE_WORKING_SNPRINTF, 1, [Define to 1 if the `snprintf' function is sane.]) dnl `vim syntax
 fi
+
+case "$with_working_snprintf:$host_os: $CPPFLAGS $CXXFLAGS" in
+  yes:mingw*:*\ -[[DU]]__USE_MINGW_ANSI_STDIO*)
+    ;;
+  yes:mingw*:*)
+    # Older MinGW (4.6.3) do not properly define PRI?64 if __USE_MINGW_ANSI_STDIO is set.
+    # Newer MinGW (4.9.1) set __USE_MINGW_ANSI_STDIO in first C++ include which may be too late.
+    # Set __USE_MINGW_ANSI_STDIO always and fail if not fully supported.
+    AC_MSG_CHECKING([whether $CXX supports __USE_MINGW_ANSI_STDIO])
+    save_CXXFLAGS=$CXXFLAGS
+    CXXFLAGS="-Wformat -Werror -D__USE_MINGW_ANSI_STDIO"
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+      #define __STDC_FORMAT_MACROS 1
+      #include <inttypes.h>
+      #include <stdio.h>
+      void f(char * buf1, char * buf2, size_t size) {
+        snprintf(buf1, size, "%lld", 42LL);
+        snprintf(buf2, size, "%" PRId64, (int64_t)42);
+      }]])],
+      [result=yes], [result=no])
+    AC_MSG_RESULT([$result])
+    if test "$result" != "yes"; then
+      AC_MSG_ERROR([
+This version of $CXX does not support __USE_MINGW_ANSI_STDIO.
+Use option '--without-working-snprintf' to skip this check.
+Please send info about your system to $PACKAGE_BUGREPORT.
+])
+    fi
+    CXXFLAGS="-D__USE_MINGW_ANSI_STDIO $save_CXXFLAGS"
+    ;;
+esac
 
 AC_ARG_WITH(mingw-aslr,
   [AS_HELP_STRING([--with-mingw-aslr@<:@=auto|yes|low|no@:>@], [Enable ASLR for MinGW executables [auto]])],
@@ -478,7 +515,7 @@ case "$host" in
 esac
 
 AC_ARG_WITH(cxx11-option,
-  [AS_HELP_STRING([--with-cxx11-option@<:@=OPTION|auto|no@:>@],
+  [AS_HELP_STRING([--with-cxx11-option=@<:@OPTION|auto|no@:>@],
     [Compiler option to enable C++11 support for future versions of smartmontools, 'no' if unsupported [auto]])],
   [], [with_cxx11_option=auto])
 
@@ -516,7 +553,7 @@ This version of smartmontools does not use C++11 features, but future
 versions possibly will.
 This script was unable to determine a compiler option to enable C++11.
 Use option '--with-cxx11-option=OPTION' to specify the compiler option
-(it will be checked, but not used in the actual build).
+(it will be used in the actual build only if '--with-cxx11-regex' is set).
 Use option '--without-cxx11-option' to suppress this error message if the
 compiler lacks C++11 support.
 In both cases, please send info about compiler and platform to
@@ -530,6 +567,22 @@ $PACKAGE_BUGREPORT - Thanks!])
     ;;
 esac
 
+AC_ARG_WITH(cxx11-regex,
+  [AS_HELP_STRING([--with-cxx11-regex@<:@=yes|no@:>@],
+    [Use C++11 std::regex instead of POSIX regex(3) [no]])])
+
+need_regex=no
+if test "$with_cxx11_regex" = "yes"; then
+  AC_DEFINE(WITH_CXX11_REGEX, 1, [Define to 1 to use C++11 std::regex instead of POSIX regex(3)])
+  case "$with_cxx11_option: $CXXFLAGS " in
+    no:*) AC_MSG_ERROR(['--with-cxx11-regex' requires C++11 support]) ;;
+    ?*:*\ $with_cxx11_option\ *) ;;
+    ?*:*) CXXFLAGS="$CXXFLAGS $with_cxx11_option" ;;
+  esac
+else
+  AC_CHECK_FUNCS([regcomp], [], [need_regex=yes])
+fi
+AM_CONDITIONAL(NEED_REGEX, [test "$need_regex" = "yes"])
 
 AC_SUBST(releaseversion,['${PACKAGE}-${VERSION}'])
 AC_SUBST(smartmontools_release_date)
@@ -548,19 +601,22 @@ os_win32=no
 os_win32_mingw=no
 os_win64=no
 os_man_filter=
+os_nvme_devicescan=
 case "${host}" in
   *-*-linux*)
     os_deps='os_linux.o cciss.o dev_areca.o'
     os_dnsdomainname="'dnsdomainname' 'hostname -d'"
     os_nisdomainname="'nisdomainname' 'hostname -y' 'domainname'"
     os_man_filter=Linux
+    os_nvme_devicescan=yes
     ;;
   *-*-freebsd*|*-*-dragonfly*|*-*-kfreebsd*-gnu*)
     os_deps='os_freebsd.o cciss.o dev_areca.o'
-    os_libs='-lcam'
+    os_libs='-lcam -lsbuf'
     os_dltools='curl wget lynx fetch svn'
     AC_CHECK_LIB(usb, libusb20_dev_get_device_desc)
     os_man_filter=FreeBSD
+    os_nvme_devicescan=no
     ;;
   sparc-*-solaris*)
     os_deps='os_solaris.o'
@@ -580,6 +636,7 @@ case "${host}" in
     os_deps='os_netbsd.o'
     os_libs='-lutil'
     os_man_filter=NetBSD
+    os_nvme_devicescan=no
     ;;
   *-*-openbsd*)
     os_deps='os_openbsd.o'
@@ -595,6 +652,7 @@ case "${host}" in
     os_nisdomainname=
     os_win32=yes
     os_man_filter=Cygwin
+    os_nvme_devicescan=yes
     ;;
   x86_64-*-mingw*)
     os_deps='os_win32.o dev_areca.o'
@@ -602,18 +660,21 @@ case "${host}" in
     os_win32_mingw=yes
     os_win64=yes
     os_man_filter=Windows
+    os_nvme_devicescan=yes
     ;;
   *-*-mingw*)
     os_deps='os_win32.o dev_areca.o'
     os_win32=yes
     os_win32_mingw=yes
     os_man_filter=Windows
+    os_nvme_devicescan=yes
     ;;
   *-*-darwin*)
     os_deps='os_darwin.o'
     os_libs='-framework CoreFoundation -framework IOKit'
     os_darwin=yes
     os_man_filter=Darwin
+    os_nvme_devicescan=no
     ;;
   *-*-nto-qnx*)
     os_deps='os_qnxnto.o'
@@ -640,6 +701,19 @@ else
   AC_DEFINE(OLD_INTERFACE, 1, [Define to 1 if os_*.cpp still uses the old interface])
 fi
 AC_MSG_RESULT([$os_new_interface])
+
+# TODO: Remove when NVMe support is no longer EXPERIMENTAL
+case "$os_nvme_devicescan:${with_nvme_devicescan+set}" in
+  no:|yes:)
+    AC_MSG_CHECKING([whether NVMe device scanning could be safely enabled])
+    with_nvme_devicescan=$os_nvme_devicescan
+    AC_MSG_RESULT([$os_nvme_devicescan])
+    os_nvme_devicescan=used ;;
+esac
+AC_SUBST(with_nvme_devicescan)
+if test "$with_nvme_devicescan" = "yes"; then
+  AC_DEFINE(WITH_NVME_DEVICESCAN, 1, [Define to 1 to include NVMe devices in smartd DEVICESCAN.])
+fi
 
 AC_SUBST([os_deps])
 AC_SUBST([os_libs])
@@ -668,6 +742,7 @@ AM_CONDITIONAL(OS_WIN32_NSIS, [test -n "$MAKENSIS"])
 AM_CONDITIONAL(OS_WIN64, [test "$os_win64" = "yes"])
 
 if test "$GXX" = "yes"; then
+  orig_CXXFLAGS=$CXXFLAGS
   # Add -Wall and -W[extra] if its not already specified
   case " $CXXFLAGS " in
     *\ -Wall\ *) ;;
@@ -678,19 +753,16 @@ if test "$GXX" = "yes"; then
     *) CXXFLAGS="$CXXFLAGS -W" ;;
   esac
   # Add -Wformat=2 (GCC 3.0) -fstack-protector[-strong] (GCC 4.1[4.9]) if supported
-  # and CXXFLAGS was not set in configure cmdline (TODO: -Wformat-signedness)
-  case "${ac_test_CXXFLAGS+set}:$ac_test_CXXFLAGS" in
-    set:)
-      for option in "-Wformat=2" "-fstack-protector-strong" "-fstack-protector"; do
-        case " $CXXFLAGS:$option" in *\ -fstack-p*:-fstack-p*) continue ;; esac
-        AC_MSG_CHECKING([whether $CXX supports $option])
-        save_CXXFLAGS=$CXXFLAGS
-        CXXFLAGS="$CXXFLAGS $option"
-        AC_COMPILE_IFELSE([AC_LANG_PROGRAM()], [res=yes], [res=no; CXXFLAGS=$save_CXXFLAGS])
-        AC_MSG_RESULT([$res])
-      done
-      ;;
-  esac
+  # and no -W or -f option was set in configure cmdline (TODO: -Wformat-signedness)
+  for option in "-Wformat=2" "-fstack-protector-strong" "-fstack-protector"; do
+    case " $orig_CXXFLAGS:$option" in *\ -W*:-W*|*\ -f*:-f*) continue ;; esac
+    case " $CXXFLAGS:$option" in *\ -fstack-p*:-fstack-p*) continue ;; esac
+    AC_MSG_CHECKING([whether $CXX supports $option])
+    save_CXXFLAGS=$CXXFLAGS
+    CXXFLAGS="$CXXFLAGS $option"
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM()], [res=yes], [res=no; CXXFLAGS=$save_CXXFLAGS])
+    AC_MSG_RESULT([$res])
+  done
 else
   # We are NOT using gcc, so enable host-specific compiler flags
   case "${host}" in
@@ -769,7 +841,9 @@ info=`
         echo "drive database file:    \`eval eval eval echo $drivedbdir\`/drivedb.h"
         if test "$with_update_smart_drivedb" = "yes"; then
           echo "database update script: \`eval eval eval echo $sbindir\`/update-smart-drivedb"
-          if test "$drivedb_version" != "$VERSION"; then
+          if test "$drivedb_version" = "$smartmontools_drivedb_version"; then
+            echo "database update branch: branches/$DRIVEDB_BRANCH"
+          else
             echo "... backported to:      branches/$DRIVEDB_BRANCH"
           fi
           echo "download tools:         \`eval eval eval echo $os_dltools\`"
@@ -798,12 +872,12 @@ info=`
         echo "PATH within scripts:    [[inherited]]"
       fi
       if test -n "$initddir"; then
-        echo "smartd initd script:    \`eval eval eval echo $initddir\`/${initdfile}"
+        echo "smartd initd script:    \`eval eval eval echo $initddir\`/smartd"
       elif test -z "$systemdsystemunitdir"; then
         echo "smartd initd script:    [[disabled]]"
       fi
       if test -n "$systemdsystemunitdir"; then
-        echo "smartd systemd file:    \`eval eval eval echo $systemdsystemunitdir\`/smartd.service"
+        echo "smartd service file:    \`eval eval eval echo $systemdsystemunitdir\`/smartd.service"
         if test -n "$systemdenvfile"; then
           echo "smartd environ file:    \`eval eval eval echo $systemdenvfile\`"
         else
@@ -820,14 +894,13 @@ info=`
       else
         echo "smartd attribute logs:  [[disabled]]"
       fi
-      echo "libcap-ng support:      $use_libcap_ng"
       case "$host_os" in
-        linux*) echo "SELinux support:        ${with_selinux-no}" ;;
+        linux*)
+          echo "SELinux support:        ${with_selinux-no}"
+          echo "libcap-ng support:      $use_libcap_ng"
+          echo "systemd notify support: $use_libsystemd" ;;
       esac
-      case "$host_os" in
-        linux*|darwin*|netbsd*|cygwin*)
-          echo "NVMe DEVICESCAN:        ${with_nvme_devicescan-no}" ;;
-      esac
+      echo "NVMe DEVICESCAN:        ${with_nvme_devicescan-[[not implemented]]}"
       ;;
   esac
   echo "-----------------------------------------------------------------------------"
@@ -838,27 +911,39 @@ $info
 ])
 
 # TODO: Remove when NVMe support is no longer EXPERIMENTAL
-case "$host_os:${with_nvme_devicescan+set}" in
-  linux*:|darwin*:|netbsd*:|cygwin*:|mingw*:)
-    AC_MSG_WARN([
+case "$os_nvme_devicescan:$with_nvme_devicescan" in
+  used:yes) AC_MSG_WARN([
+The default for the inclusion of NVME devices in smartd.conf
+'DEVICESCAN' and 'smartctl --scan' has been changed to 'yes' on
+this platform.  If '--without-nvme-devicescan' is still needed,
+please inform $PACKAGE_BUGREPORT.
+Use option '--with-nvme-devicescan' to suppress this warning.
+])  ;;
+  used:no) AC_MSG_WARN([
 This version of smartmontools provides NVMe support which is still
 EXPERIMENTAL.  NVMe devices are not yet included in smartd.conf
 'DEVICESCAN' and 'smartctl --scan' unless '-d nvme' is specified.
 Use option '--with-nvme-devicescan' to include NVMe devices.
 Use option '--without-nvme-devicescan' to suppress this warning.
-])
-    ;;
+])  ;;
 esac
 
-# TODO: Remove after smartmontools 6.6
-case "$host:${with_solaris_sparc_ata+set}" in
-  sparc-*-solaris*:)
-    AC_MSG_WARN([
-Legacy ATA support is no longer enabled by default on Solaris SPARC.
-The required source file 'os_solaris_ata.s' is no longer included in
-the source tarball but still available in the SVN repository.
-Use option '--with-solaris-sparc-ata' to enable legacy ATA support.
-Use option '--without-solaris-sparc-ata' to suppress this warning.
+# TODO: Remove after smartmontools 6.7
+if test "$with_working_snprintf" != "yes"; then
+  AC_MSG_WARN([
+The option '--without-working-snprintf' is deprecated and will be removed
+in a future version of smartmontools.  If you still need support for
+pre-C99 snprintf(), please inform $PACKAGE_BUGREPORT.
 ])
-    ;;
+fi
+
+case "$host_os:$with_libsystemd:$use_libsystemd:$PKG_CONFIG" in
+  linux*:auto:no:?*)
+    if $PKG_CONFIG systemd >/dev/null 2>&1; then
+      AC_MSG_WARN([
+systemd(1) is used on this system but smartd systemd notify support will
+not be available because libsystemd-dev[[el]] package is not installed.
+Use option '--without-libsystemd' to suppress this warning.
+])
+    fi ;;
 esac

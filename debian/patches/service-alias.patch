@@ -1,0 +1,13 @@
+Last-Update: 2019-10-10
+Forwarded: not-needed
+Author: Dmitry Smirnov <onlyjob@debian.org>
+Description: register service alias, as per original service name.
+
+--- a/smartd.service.in
++++ b/smartd.service.in
+@@ -10,4 +10,5 @@
+ StandardOutput=syslog
+ 
+ [Install]
+ WantedBy=multi-user.target
++Alias=smartd.service

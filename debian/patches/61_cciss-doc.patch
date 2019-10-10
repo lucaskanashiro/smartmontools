@@ -8,16 +8,16 @@ patch gets things to parity with the 3ware documentation with a couple
 minor exceptions
 
 Refreshed by jmtd@debian.org 2018-08-10
+Refreshed by nirgal@debian.org 2019-09-17
 ---
  smartd.conf      |  6 ++++++
  smartd.conf.5.in | 10 ++++++++++
  2 files changed, 16 insertions(+)
 
-diff --git a/smartd.conf b/smartd.conf
-index 5490bde..59addd4 100644
 --- a/smartd.conf
 +++ b/smartd.conf
-@@ -92,6 +92,12 @@ DEVICESCAN -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
+@@ -91,8 +91,14 @@
+ # disk (port) number is specified in device name.
  # NOTE: On Windows, DEVICESCAN works also for 3ware controllers.
  #/dev/hdc,0 -a -s L/../../2/01
  #/dev/hdc,1 -a -s L/../../2/03
@@ -25,36 +25,39 @@ index 5490bde..59addd4 100644
 +# Monitor 2 disks connected to the first HP SmartArray controller which
 +# uses the cciss driver. Start long tests on Sunday nights and short
 +# self-tests every night and send errors to root
-+#/dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
-+#/dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
++#/dev/sda -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
++#/dev/sda -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
  
  # Monitor 3 ATA disks directly connected to a HighPoint RocketRAID. Start long
  # self-tests Sundays between 1-2, 2-3, and 3-4 am. 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 0afba1b..4c1f453 100644
+ #/dev/sdd -d hpt,1/1 -a -s L/../../7/01
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -162,6 +162,12 @@ Section below!
+@@ -150,8 +150,14 @@
+ /dev/tws0 \-d 3ware,1 \-a \-s L/../../7/02
  .\" %ENDIF OS FreeBSD
  .\" %IF OS FreeBSD Linux
  #
 +# Monitor 2 disks connected to the first HP SmartArray controller which
 +# uses the cciss driver. Start long tests on Sunday nights and short
 +# self-tests every night and send errors to root
-+# \ /dev/cciss/c0d0 -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
-+# \ /dev/cciss/c0d0 -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
++# \ /dev/sda -d cciss,0 -a -s (L/../../7/02|S/../.././02) -m root
++# \ /dev/sda -d cciss,1 -a -s (L/../../7/03|S/../.././03) -m root
 +#
  # Three SATA disks on a HighPoint RocketRAID controller.
  # Start short self\-tests daily between 1\-2, 2\-3, and
  # 3\-4 am.
-@@ -1553,6 +1559,10 @@ configuration file Directives might be:
- If you want more frequent information, use: \fB\-a\fP.
+ .\" %ENDIF OS FreeBSD Linux
+@@ -225,8 +231,12 @@
+ #
+ ################################################
+ .Ve
  .Sp
- .TP
 +.B If a cciss controller is used
-+then the corresponding block device (/dev/cciss/c?d?) must be listed,
++then the corresponding block device (/dev/sd?) must be listed,
 +along with the \'\-d cciss,N\' Directive (see below).
 +.TP
- .B ADDITIONAL DETAILS ABOUT DEVICESCAN
- If a non-comment entry in the configuration file is the text
- string \fBDEVICESCAN\fP in capital letters, then \fBsmartd\fP will
+ .SH DEVICESCAN
+ If a non-comment entry in the configuration file is the text string
+ .B DEVICESCAN
+ in capital letters, then

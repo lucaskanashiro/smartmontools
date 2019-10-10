@@ -7,11 +7,10 @@ Fixed example path in man pages
  smartd.conf.5.in | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/smartd.conf.5.in b/smartd.conf.5.in
-index 4c1f453..e2c2396 100644
 --- a/smartd.conf.5.in
 +++ b/smartd.conf.5.in
-@@ -1671,7 +1671,7 @@ sleep 30
+@@ -1649,9 +1649,9 @@
+ /sbin/shutdown \-hf now
  .Ve
  .Sp
  Some example scripts are distributed with the smartmontools package,
@@ -20,3 +19,4 @@ index 4c1f453..e2c2396 100644
  .Sp
  Please note that these scripts typically run as root, so any files
  that they read/write should not be writable by ordinary users or
+ reside in directories like /tmp that are writable by ordinary users

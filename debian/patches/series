@@ -4,5 +4,5 @@
 61_cciss-doc.patch
 63_removable.patch
 manpage.diff
-kfreebsd.patch
-removesyslogtarget.patch
+service-alias.patch
+unknown-formfactor.patch
