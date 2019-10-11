@@ -49,16 +49,20 @@ override_dh_auto_configure:
 	    --mandir=/usr/share/man \
 	    --with-initscriptdir=no \
 	    --docdir=/usr/share/doc/smartmontools \
-	    --with-savestates=/var/lib/smartmontools/smartd. \
 	    --with-attributelog=/var/lib/smartmontools/attrlog. \
-	    --with-exampledir=/usr/share/doc/smartmontools/examples/ \
 	    --with-drivedbdir=/var/lib/smartmontools/drivedb \
-	    --with-systemdsystemunitdir=/lib/systemd/system --with-libsystemd \
-	    --with-smartdscriptdir=/usr/share/smartmontools \
+	    --with-exampledir=/usr/share/doc/smartmontools/examples/ \
+	    --with-savestates=/var/lib/smartmontools/smartd. \
 	    --with-smartdplugindir=/etc/smartmontools/smartd_warning.d \
+	    --with-smartdscriptdir=/usr/share/smartmontools \
 	    --with-systemdenvfile=/etc/default/smartmontools \
+	    --with-systemdsystemunitdir=/lib/systemd/system \
+	    --with-libsystemd=auto \
 	    ${CONFIGURE_ARGS} \
 	;
+
+override_dh_installinit:
+	dh_installinit --no-start
 
 override_dh_install:
 	dh_install

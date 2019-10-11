@@ -1,3 +1,12 @@
+smartmontools (7.0-2) unstable; urgency=medium
+
+  * SysV: don't (re)start daemon during upgrade (Closes: #942118).
+  * rules/configure: detect systemd automatically.
+  * Build-Depends:
+    = libsystemd-dev [!kfreebsd-any]
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Fri, 11 Oct 2019 14:05:51 +1100
+
 smartmontools (7.0-1) unstable; urgency=medium
 
   [ Jean-Michel Vourgère ]
