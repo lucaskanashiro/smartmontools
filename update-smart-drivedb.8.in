@@ -1,16 +1,10 @@
 .ig
 Copyright (C) 2013 Hannes von Haugwitz <hannes@vonhaugwitz.com>
-Copyright (C) 2014-17 Christian Franke
+Copyright (C) 2014-18 Christian Franke
 
-$Id: update-smart-drivedb.8.in 4584 2017-11-03 22:43:32Z chrfranke $
+SPDX-License-Identifier: GPL-2.0-or-later
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
-
-You should have received a copy of the GNU General Public License
-(for example COPYING); If not, see <http://www.gnu.org/licenses/>.
+$Id: update-smart-drivedb.8.in 4879 2018-12-28 22:05:12Z chrfranke $
 
 ..
 .\" Macros borrowed from pages generated with Pod::Man
@@ -64,7 +58,7 @@ or
 .BR svn (1).
 .PP
 [NEW EXPERIMENTAL UPDATE-SMART-DRIVEDB FEATURE]
-The downloaded file is verified with OpenPGP/GPG key ID DFD22559.
+The downloaded file is verified with OpenPGP/GPG key ID 721042C5.
 The public key block is included in the script.
 .PP
 The old file is kept if the downloaded file is identical (ignoring
@@ -98,17 +92,20 @@ The default is the first one found in PATH.
 Use URL of LOCATION for download.
 LOCATION is one of:
 .br
+.I github
+(GitHub mirror of SVN repository),
+.br
 .I sf
-(Sourceforge code browser via HTTPS),
+(Sourceforge code browser),
 .br
 .I svn
-(SVN repository via HTTPS),
+(SVN repository),
 .br
 .I svni
-(SVN repository via HTTP),
+(SVN repository via HTTP instead of HTTPS),
 .br
 .I trac
-(Trac code browser via HTTPS).
+(Trac code browser).
 .br
 The default is
 .IR svn .
@@ -200,4 +197,4 @@ Alternatively send the info to the smartmontools support mailing list:
 .SH PACKAGE VERSION
 CURRENT_SVN_VERSION CURRENT_SVN_DATE CURRENT_SVN_REV
 .br
-$Id: update-smart-drivedb.8.in 4584 2017-11-03 22:43:32Z chrfranke $
+$Id: update-smart-drivedb.8.in 4879 2018-12-28 22:05:12Z chrfranke $

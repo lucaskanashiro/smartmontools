@@ -5,16 +5,9 @@
  *
  * Copyright (C) YEAR YOUR_NAME
  * Copyright (C) 2003-8 Bruce Allen
- * Copyright (C) 2008 Christian Franke
+ * Copyright (C) 2008-18 Christian Franke
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 
@@ -53,8 +46,7 @@
      replace the 'stub' function calls provided in this file.
 
      Provide the functions defined in this file by fleshing out the
-     skeletons below.  You can entirely eliminate the function
-     'unsupported()'.
+     skeletons below.
 
  [5] Contact smartmontools-support@listi.jpberlin.de to see
      about checking your code into the smartmontools CVS archive.
@@ -71,7 +63,6 @@
 
 // These are needed to define prototypes and structures for the
 // functions defined below
-#include "int64.h"
 #include "atacmds.h"
 #include "utility.h"
 
@@ -83,60 +74,18 @@
 // should have one *_H_CVSID macro appearing below for each file
 // appearing with #include "*.h" above.  Please list these (below) in
 // alphabetic/dictionary order.
-const char * os_XXXX_cpp_cvsid="$Id: os_generic.cpp 4431 2017-08-08 19:38:15Z chrfranke $"
-  ATACMDS_H_CVSID CONFIG_H_CVSID INT64_H_CVSID OS_GENERIC_H_CVSID UTILITY_H_CVSID;
+const char * os_XXXX_cpp_cvsid="$Id: os_generic.cpp 4842 2018-12-02 16:07:26Z chrfranke $"
+  ATACMDS_H_CVSID CONFIG_H_CVSID OS_GENERIC_H_CVSID UTILITY_H_CVSID;
 
 // This is here to prevent compiler warnings for unused arguments of
 // functions.
 #define ARGUSED(x) ((void)(x))
 
-// Please eliminate the following block: both the #include and
-// the 'unsupported()' function.  They are only here to warn
-// unsuspecting users that their Operating System is not supported! If
-// you wish, you can use a similar warning mechanism for any of the
-// functions in this file that you can not (or choose not to)
-// implement.
-
-
-#ifdef HAVE_UNAME
-#include <sys/utsname.h>
-#endif
-
-static void unsupported(){
-  static int warninggiven;
-
-  if (!warninggiven) {
-    char *osname;
-    
-#ifdef HAVE_UNAME
-    struct utsname ostype;
-    uname(&ostype);
-    osname=ostype.sysname;
-#else
-    osname="host's";
-#endif
-
-    pout("\n"
-         "############################################################################\n"
-         "WARNING: smartmontools has not been ported to the %s Operating System.\n"
-         "Please see the files os_generic.cpp and os_generic.h for porting instructions.\n"
-         "############################################################################\n\n",
-         osname);
-    warninggiven=1;
-  }
-  
-  return;
-}
-// End of the 'unsupported()' block that you should eliminate.
-
-
 // print examples for smartctl.  You should modify this function so
 // that the device paths are sensible for your OS, and to eliminate
 // unsupported commands (eg, 3ware controllers).
 static void print_smartctl_examples(){
-  printf("=================================================== SMARTCTL EXAMPLES =====\n\n");
-#ifdef HAVE_GETOPT_LONG
-  printf(
+  printf("=================================================== SMARTCTL EXAMPLES =====\n\n"
          "  smartctl -a /dev/hda                       (Prints all SMART information)\n\n"
          "  smartctl --smart=on --offlineauto=on --saveauto=on /dev/hda\n"
          "                                              (Enables SMART on first disk)\n\n"
@@ -146,17 +95,6 @@ static void print_smartctl_examples(){
          "  smartctl -a --device=3ware,2 /dev/sda\n"
          "          (Prints all SMART info for 3rd ATA disk on 3ware RAID controller)\n"
          );
-#else
-  printf(
-         "  smartctl -a /dev/hda                       (Prints all SMART information)\n"
-         "  smartctl -s on -o on -S on /dev/hda         (Enables SMART on first disk)\n"
-         "  smartctl -t long /dev/hda              (Executes extended disk self-test)\n"
-         "  smartctl -A -l selftest -q errorsonly /dev/hda\n"
-         "                                      (Prints Self-Test & Attribute errors)\n"
-         "  smartctl -a -d 3ware,2 /dev/sda\n"
-         "          (Prints all SMART info for 3rd ATA disk on 3ware RAID controller)\n"
-         );
-#endif
   return;
 }
 
@@ -213,8 +151,6 @@ ata_device * generic_smart_interface::get_ata_device(const char * name, const ch
 {
   ARGUSED(name);
   ARGUSED(type);
-
-  unsupported();
   return NULL;
 }
 
@@ -224,8 +160,6 @@ scsi_device * generic_smart_interface::get_scsi_device(const char * name, const 
 {
   ARGUSED(name);
   ARGUSED(type);
-
-  unsupported();
   return NULL;
 }
 
@@ -234,9 +168,7 @@ scsi_device * generic_smart_interface::get_scsi_device(const char * name, const 
 smart_device * generic_smart_interface::autodetect_smart_device(const char * name)
 {
   ARGUSED(name);
-
-  // for the given name return the apropriate device type 
-  unsupported();
+  // for the given name return the appropriate device type 
   return NULL;
 }
 
@@ -248,8 +180,6 @@ bool generic_smart_interface::scan_smart_devices(smart_device_list & devlist,
   ARGUSED(devlist);
   ARGUSED(type);
   ARGUSED(pattern);
-
-  unsupported();
   return false;
 }
 
@@ -259,8 +189,6 @@ smart_device * generic_smart_interface::get_custom_smart_device(const char * nam
 {
   ARGUSED(name);
   ARGUSED(type);
-
-  unsupported();
   return NULL;
 }
 

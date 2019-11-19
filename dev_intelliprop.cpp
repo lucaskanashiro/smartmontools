@@ -5,25 +5,18 @@
  *
  * Copyright (C) 2016 Casey Biemiller  <cbiemiller@intelliprop.com>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
-#include "int64.h"
+
 #include "atacmds.h" //ATTR_PACKED and ASSERT_SIZEOF_STRUCT
 #include "dev_interface.h"
 #include "dev_intelliprop.h"
 #include "dev_tunnelled.h"
 #include <errno.h>
 
-const char * dev_intelliprop_cpp_cvsid = "$Id: dev_intelliprop.cpp 4370 2017-01-11 20:35:38Z chrfranke $"
+const char * dev_intelliprop_cpp_cvsid = "$Id: dev_intelliprop.cpp 4760 2018-08-19 18:45:53Z chrfranke $"
   DEV_INTELLIPROP_H_CVSID;
 
 //Vendor Specific log addresses

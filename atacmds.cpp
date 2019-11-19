@@ -4,39 +4,29 @@
  * Home page of code is: http://www.smartmontools.org
  *
  * Copyright (C) 2002-11 Bruce Allen
- * Copyright (C) 2008-17 Christian Franke
+ * Copyright (C) 2008-18 Christian Franke
  * Copyright (C) 1999-2000 Michael Cornwell <cornwell@acm.org>
  * Copyright (C) 2000 Andre Hedrick <andre@linux-ide.org>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
- * This code was originally developed as a Senior Thesis by Michael Cornwell
- * at the Concurrent Systems Laboratory (now part of the Storage Systems
- * Research Center), Jack Baskin School of Engineering, University of
- * California, Santa Cruz. http://ssrc.soe.ucsc.edu/
- * 
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "config.h"
+#define __STDC_FORMAT_MACROS 1 // enable PRI* for C++
+
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "config.h"
-#include "int64.h"
 #include "atacmds.h"
 #include "knowndrives.h"  // get_default_attr_defs()
 #include "utility.h"
 #include "dev_ata_cmd_set.h" // for parsed_ata_device
 
-const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 4582 2017-11-03 20:54:56Z chrfranke $"
+const char * atacmds_cpp_cvsid = "$Id: atacmds.cpp 4842 2018-12-02 16:07:26Z chrfranke $"
                                  ATACMDS_H_CVSID;
 
 // Print ATA debug messages?
@@ -52,7 +42,7 @@ bool dont_print_serial_number = false;
 
 // SMART RETURN STATUS yields SMART_CYL_HI,SMART_CYL_LOW to indicate drive
 // is healthy and SRET_STATUS_HI_EXCEEDED,SRET_STATUS_MID_EXCEEDED to
-// indicate that a threshhold exceeded condition has been detected.
+// indicate that a threshold exceeded condition has been detected.
 // Those values (byte pairs) are placed in ATA register "LBA 23:8".
 #define SRET_STATUS_HI_EXCEEDED 0x2C
 #define SRET_STATUS_MID_EXCEEDED 0xF4
@@ -267,7 +257,7 @@ bool parse_attribute_def(const char * opt, ata_vendor_attr_defs & defs,
 
 
 // Return a multiline string containing a list of valid arguments for
-// parse_attribute_def().  The strings are preceeded by tabs and followed
+// parse_attribute_def().  The strings are preceded by tabs and followed
 // (except for the last) by newlines.
 std::string create_vendor_attribute_arg_list()
 {
@@ -362,17 +352,12 @@ static void invalidate_serno(ata_identify_device * id)
     sum += b[i]; sum -= b[i] = 0x00;
   }
 
-#ifndef __NetBSD__
-  bool must_swap = !!isbigendian();
-  if (must_swap)
+  if (isbigendian())
     SWAPV(id->words088_255[255-88]);
-#endif
   if ((id->words088_255[255-88] & 0x00ff) == 0x00a5)
     id->words088_255[255-88] += sum << 8;
-#ifndef __NetBSD__
-  if (must_swap)
+  if (isbigendian())
     SWAPV(id->words088_255[255-88]);
-#endif
 }
 
 static const char * const commandstrings[]={
@@ -778,20 +763,9 @@ static void trim(char * out, const char * in)
 // Convenience function for formatting strings from ata_identify_device
 void ata_format_id_string(char * out, const unsigned char * in, int n)
 {
-  bool must_swap = true;
-#ifdef __NetBSD__
-  /* NetBSD kernel delivers IDENTIFY data in host byte order (but all else is LE) */
-  // TODO: Handle NetBSD case in os_netbsd.cpp
-  if (isbigendian())
-    must_swap = !must_swap;
-#endif
-
   char tmp[65];
   n = n > 64 ? 64 : n;
-  if (!must_swap)
-    strncpy(tmp, (const char *)in, n);
-  else
-    swapbytes(tmp, (const char *)in, n);
+  swapbytes(tmp, (const char *)in, n);
   tmp[n] = '\0';
   trim(out, tmp);
 }
@@ -873,10 +847,7 @@ int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_s
   if (raw_buf)
     memcpy(raw_buf, buf, sizeof(*buf));
 
-#ifndef __NetBSD__
   // if machine is big-endian, swap byte order as needed
-  // NetBSD kernel delivers IDENTIFY data in host byte order
-  // TODO: Handle NetBSD case in os_netbsd.cpp
   if (isbigendian()){
     // swap various capability words that are needed
     unsigned i;
@@ -887,7 +858,6 @@ int ata_read_identity(ata_device * device, ata_identify_device * buf, bool fix_s
     for (i=0; i<168; i++)
       swap2((char *)(buf->words088_255+i));
   }
-#endif
   
   // If there is a checksum there, validate it
   if ((rawshort[255] & 0x00ff) == 0x00a5 && checksum(rawbyte))
@@ -1277,7 +1247,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
     int mode = args.span[i].mode;
     uint64_t start = args.span[i].start;
     uint64_t end   = args.span[i].end;
-    if (mode == SEL_CONT) {// redo or next dependig on last test status
+    if (mode == SEL_CONT) {// redo or next depending on last test status
       switch (sv->self_test_exec_status >> 4) {
         case 1: case 2: // Aborted/Interrupted by host
           pout("Continue Selective Self-Test: Redo last span\n");
@@ -1293,7 +1263,7 @@ int ataWriteSelectiveSelfTestLog(ata_device * device, ata_selective_selftest_arg
     if (   (mode == SEL_REDO || mode == SEL_NEXT)
         && prev_args && i < prev_args->num_spans
         && !data->span[i].start && !data->span[i].end) {
-      // Some drives do not preserve the selective self-test log accross
+      // Some drives do not preserve the selective self-test log across
       // power-cyles.  If old span on drive is cleared use span provided
       // by caller.  This is used by smartd (first span only).
       data->span[i].start = prev_args->span[i].start;
@@ -1760,7 +1730,7 @@ int TestTime(const ata_smart_values *data, int testtype)
 // word 84 and 87.  Top two bits must match the pattern 01. BEFORE
 // ATA-6 these top two bits still had to match the pattern 01, but the
 // remaining bits were reserved (==0).
-int isSmartErrorLogCapable (const ata_smart_values * data, const ata_identify_device * identity)
+bool isSmartErrorLogCapable(const ata_smart_values * data, const ata_identify_device * identity)
 {
   unsigned short word84=identity->command_set_extension;
   unsigned short word87=identity->csf_default;
@@ -1768,18 +1738,18 @@ int isSmartErrorLogCapable (const ata_smart_values * data, const ata_identify_de
   int isata7=identity->major_rev_num & (0x01<<7);
 
   if ((isata6 || isata7) && (word84>>14) == 0x01 && (word84 & 0x01))
-    return 1;
+    return true;
   
   if ((isata6 || isata7) && (word87>>14) == 0x01 && (word87 & 0x01))
-    return 1;
+    return true;
   
   // otherwise we'll use the poorly documented capability bit
-  return data->errorlog_capability & 0x01;
+  return !!(data->errorlog_capability & 0x01);
 }
 
 // See previous function.  If the error log exists then the self-test
 // log should (must?) also exist.
-int isSmartTestLogCapable (const ata_smart_values * data, const ata_identify_device *identity)
+bool isSmartTestLogCapable(const ata_smart_values * data, const ata_identify_device *identity)
 {
   unsigned short word84=identity->command_set_extension;
   unsigned short word87=identity->csf_default;
@@ -1787,18 +1757,18 @@ int isSmartTestLogCapable (const ata_smart_values * data, const ata_identify_dev
   int isata7=identity->major_rev_num & (0x01<<7);
 
   if ((isata6 || isata7) && (word84>>14) == 0x01 && (word84 & 0x02))
-    return 1;
+    return true;
   
   if ((isata6 || isata7) && (word87>>14) == 0x01 && (word87 & 0x02))
-    return 1;
+    return true;
 
 
   // otherwise we'll use the poorly documented capability bit
-  return data->errorlog_capability & 0x01;
+  return !!(data->errorlog_capability & 0x01);
 }
 
 
-int isGeneralPurposeLoggingCapable(const ata_identify_device *identity)
+bool isGeneralPurposeLoggingCapable(const ata_identify_device *identity)
 {
   unsigned short word84=identity->command_set_extension;
   unsigned short word87=identity->csf_default;
@@ -1810,7 +1780,7 @@ int isGeneralPurposeLoggingCapable(const ata_identify_device *identity)
   if ((word84>>14) == 0x01)
     // If bit 5 of word 84 is set to one, the device supports the
     // General Purpose Logging feature set.
-    return (word84 & (0x01 << 5));
+    return !!(word84 & (0x01 << 5));
   
   // If bit 14 of word 87 is set to one and bit 15 of word 87 is
   // cleared to zero, the contents of words (87:85) contain valid
@@ -1818,50 +1788,10 @@ int isGeneralPurposeLoggingCapable(const ata_identify_device *identity)
   if ((word87>>14) == 0x01)
     // If bit 5 of word 87 is set to one, the device supports
     // the General Purpose Logging feature set.
-    return (word87 & (0x01 << 5));
+    return !!(word87 & (0x01 << 5));
 
   // not capable
-  return 0;
-}
-
-
-// SMART self-test capability is also indicated in bit 1 of DEVICE
-// IDENTIFY word 87 (if top two bits of word 87 match pattern 01).
-// However this was only introduced in ATA-6 (but self-test log was in
-// ATA-5).
-int isSupportExecuteOfflineImmediate(const ata_smart_values *data)
-{
-  return data->offline_data_collection_capability & 0x01;
-}
-
-// Note in the ATA-5 standard, the following bit is listed as "Vendor
-// Specific".  So it may not be reliable. The only use of this that I
-// have found is in IBM drives, where it is well-documented.  See for
-// example page 170, section 13.32.1.18 of the IBM Travelstar 40GNX
-// hard disk drive specifications page 164 Revision 1.1 22 Apr 2002.
-int isSupportAutomaticTimer(const ata_smart_values * data)
-{
-  return data->offline_data_collection_capability & 0x02;
-}
-int isSupportOfflineAbort(const ata_smart_values *data)
-{
-  return data->offline_data_collection_capability & 0x04;
-}
-int isSupportOfflineSurfaceScan(const ata_smart_values * data)
-{
-   return data->offline_data_collection_capability & 0x08;
-}
-int isSupportSelfTest (const ata_smart_values * data)
-{
-   return data->offline_data_collection_capability & 0x10;
-}
-int isSupportConveyanceSelfTest(const ata_smart_values * data)
-{
-   return data->offline_data_collection_capability & 0x20;
-}
-int isSupportSelectiveSelfTest(const ata_smart_values * data)
-{
-   return data->offline_data_collection_capability & 0x40;
+  return false;
 }
 
 // Get attribute state
@@ -2580,169 +2510,6 @@ int ataSetSCTErrorRecoveryControltime(ata_device * device, unsigned type, unsign
 }
 
 
-// Print one self-test log entry.
-// Returns:
-// -1: self-test failed
-//  1: extended self-test completed without error
-//  0: otherwise
-int ataPrintSmartSelfTestEntry(unsigned testnum, unsigned char test_type,
-                               unsigned char test_status,
-                               unsigned short timestamp,
-                               uint64_t failing_lba,
-                               bool print_error_only, bool & print_header)
-{
-  // Check status and type for return value
-  int retval = 0;
-  switch (test_status >> 4) {
-    case 0x0:
-      if ((test_type & 0x0f) == 0x02)
-        retval = 1; // extended self-test completed without error
-      break;
-    case 0x3: case 0x4:
-    case 0x5: case 0x6:
-    case 0x7: case 0x8:
-      retval = -1; // self-test failed
-      break;
-  }
-
-  if (retval >= 0 && print_error_only)
-    return retval;
-
-  std::string msgtest;
-  switch (test_type) {
-    case 0x00: msgtest = "Offline";            break;
-    case 0x01: msgtest = "Short offline";      break;
-    case 0x02: msgtest = "Extended offline";   break;
-    case 0x03: msgtest = "Conveyance offline"; break;
-    case 0x04: msgtest = "Selective offline";  break;
-    case 0x7f: msgtest = "Abort offline test"; break;
-    case 0x81: msgtest = "Short captive";      break;
-    case 0x82: msgtest = "Extended captive";   break;
-    case 0x83: msgtest = "Conveyance captive"; break;
-    case 0x84: msgtest = "Selective captive";  break;
-    default:
-      if ((0x40 <= test_type && test_type <= 0x7e) || 0x90 <= test_type)
-        msgtest = strprintf("Vendor (0x%02x)", test_type);
-      else
-        msgtest = strprintf("Reserved (0x%02x)", test_type);
-  }
-
-  std::string msgstat;
-  switch (test_status >> 4) {
-    case 0x0: msgstat = "Completed without error";       break;
-    case 0x1: msgstat = "Aborted by host";               break;
-    case 0x2: msgstat = "Interrupted (host reset)";      break;
-    case 0x3: msgstat = "Fatal or unknown error";        break;
-    case 0x4: msgstat = "Completed: unknown failure";    break;
-    case 0x5: msgstat = "Completed: electrical failure"; break;
-    case 0x6: msgstat = "Completed: servo/seek failure"; break;
-    case 0x7: msgstat = "Completed: read failure";       break;
-    case 0x8: msgstat = "Completed: handling damage??";  break;
-    case 0xf: msgstat = "Self-test routine in progress"; break;
-    default:  msgstat = strprintf("Unknown status (0x%x)", test_status >> 4);
-  }
-
-  // Print header once
-  if (print_header) {
-    print_header = false;
-    pout("Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error\n");
-  }
-
-  char msglba[32];
-  if (retval < 0 && failing_lba < 0xffffffffffffULL)
-    snprintf(msglba, sizeof(msglba), "%" PRIu64, failing_lba);
-  else {
-    msglba[0] = '-'; msglba[1] = 0;
-  }
-
-  pout("#%2u  %-19s %-29s %1d0%%  %8u         %s\n", testnum,
-       msgtest.c_str(), msgstat.c_str(), test_status & 0x0f, timestamp, msglba);
-
-  return retval;
-}
-
-// Print Smart self-test log, used by smartctl and smartd.
-// return value is:
-// bottom 8 bits: number of entries found where self-test showed an error
-// remaining bits: if nonzero, power on hours of last self-test where error was found
-int ataPrintSmartSelfTestlog(const ata_smart_selftestlog * data, bool allentries,
-                             firmwarebug_defs firmwarebugs)
-{
-  if (allentries)
-    pout("SMART Self-test log structure revision number %d\n",(int)data->revnumber);
-  if (data->revnumber != 0x0001 && allentries && !firmwarebugs.is_set(BUG_SAMSUNG))
-    pout("Warning: ATA Specification requires self-test log structure revision number = 1\n");
-  if (data->mostrecenttest==0){
-    if (allentries)
-      pout("No self-tests have been logged.  [To run self-tests, use: smartctl -t]\n");
-    return 0;
-  }
-
-  bool noheaderprinted = true;
-  int errcnt = 0, hours = 0, igncnt = 0;
-  int testno = 0, ext_ok_testno = -1;
-
-  // print log
-  for (int i = 20; i >= 0; i--) {
-    // log is a circular buffer
-    int j = (i+data->mostrecenttest)%21;
-    const ata_smart_selftestlog_struct * log = data->selftest_struct+j;
-
-    if (nonempty(log, sizeof(*log))) {
-      // count entry based on non-empty structures -- needed for
-      // Seagate only -- other vendors don't have blank entries 'in
-      // the middle'
-      testno++;
-
-      // T13/1321D revision 1c: (Data structure Rev #1)
-
-      //The failing LBA shall be the LBA of the uncorrectable sector
-      //that caused the test to fail. If the device encountered more
-      //than one uncorrectable sector during the test, this field
-      //shall indicate the LBA of the first uncorrectable sector
-      //encountered. If the test passed or the test failed for some
-      //reason other than an uncorrectable sector, the value of this
-      //field is undefined.
-
-      // This is true in ALL ATA-5 specs
-      uint64_t lba48 = (log->lbafirstfailure < 0xffffffff ? log->lbafirstfailure : 0xffffffffffffULL);
-
-      // Print entry
-      int state = ataPrintSmartSelfTestEntry(testno,
-        log->selftestnumber, log->selfteststatus,
-        log->timestamp, lba48, !allentries, noheaderprinted);
-
-      if (state < 0) {
-        // Self-test showed an error
-        if (ext_ok_testno < 0) {
-          errcnt++;
-
-          // keep track of time of most recent error
-          if (!hours)
-            hours = log->timestamp;
-        }
-        else
-          // Newer successful extended self-test exits
-          igncnt++;
-      }
-      else if (state > 0 && ext_ok_testno < 0) {
-        // Latest successful extended self-test
-        ext_ok_testno = testno;
-      }
-    }
-  }
-
-  if (igncnt)
-    pout("%d of %d failed self-tests are outdated by newer successful extended offline self-test #%2d\n",
-      igncnt, igncnt+errcnt, ext_ok_testno);
-
-  if (!allentries && !noheaderprinted)
-    pout("\n");
-
-  return ((hours << 8) | errcnt);
-}
-
-
 /////////////////////////////////////////////////////////////////////////////
 // Pseudo-device to parse "smartctl -r ataioctl,2 ..." output and simulate
 // an ATA device with same behaviour
@@ -2806,7 +2573,8 @@ static int name2command(const char * s)
   return -1;
 }
 
-static bool matchcpy(char * dest, size_t size, const char * src, const regmatch_t & srcmatch)
+static bool matchcpy(char * dest, size_t size, const char * src,
+  const regular_expression::match_range & srcmatch)
 {
   if (srcmatch.rm_so < 0)
     return false;
@@ -2818,7 +2586,7 @@ static bool matchcpy(char * dest, size_t size, const char * src, const regmatch_
   return true;
 }
 
-static inline int matchtoi(const char * src, const regmatch_t & srcmatch, int defval)
+static inline int matchtoi(const char * src, const regular_expression::match_range & srcmatch, int defval)
 {
   if (srcmatch.rm_so < 0)
     return defval;
@@ -2837,7 +2605,7 @@ parsed_ata_device::parsed_ata_device(smart_interface * intf, const char * dev_na
 
 parsed_ata_device::~parsed_ata_device() throw()
 {
-  close();
+  parsed_ata_device::close();
 }
 
 bool parsed_ata_device::is_open() const
@@ -2884,7 +2652,7 @@ bool parsed_ata_device::open()
   ")"; // )
 
   // Compile regex
-  const regular_expression regex(pattern, REG_EXTENDED);
+  const regular_expression regex(pattern);
 
   // Parse buffer
   const char * errmsg = 0;
@@ -2894,7 +2662,7 @@ bool parsed_ata_device::open()
     if (!(line[0] == 'R' || line[0] == '=' || line[0] == ' '))
       continue;
     const int nmatch = 1+11;
-    regmatch_t match[nmatch];
+    regular_expression::match_range match[nmatch];
     if (!regex.execute(line, nmatch, match))
       continue;
 

@@ -3,29 +3,22 @@
  *
  * Home page of code is: http://www.smartmontools.org
  *
- * Copyright (C) 2016 Christian Franke
+ * Copyright (C) 2016-18 Christian Franke
  *
  * Original code from <linux/nvme.h>:
  *   Copyright (C) 2011-2014 Intel Corporation
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * You should have received a copy of the GNU General Public License
- * (for example COPYING); If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef NVMECMDS_H
 #define NVMECMDS_H
 
-#define NVMECMDS_H_CVSID "$Id: nvmecmds.h 4488 2017-09-25 11:54:15Z samm2 $"
+#define NVMECMDS_H_CVSID "$Id: nvmecmds.h 4842 2018-12-02 16:07:26Z chrfranke $"
 
-#include "int64.h"
+#include <stdint.h>
 
-// The code below was orginally imported from <linux/nvme.h> include file from
+// The code below was originally imported from <linux/nvme.h> include file from
 // Linux kernel sources.  Types from <linux/types.h> were replaced.
 // Symbol names are unchanged but placed in a namespace to allow inclusion
 // of the original <linux/nvme.h>.
@@ -33,19 +26,6 @@ namespace smartmontools {
 
 ////////////////////////////////////////////////////////////////////////////
 // BEGIN: From <linux/nvme.h>
-/*
- * Definitions for the NVM Express interface
- * Copyright (c) 2011-2014, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- */
 
 struct nvme_error_log_page {
   uint64_t        error_count;
@@ -248,7 +228,8 @@ bool nvme_read_id_ctrl(nvme_device * device, smartmontools::nvme_id_ctrl & id_ct
 bool nvme_read_id_ns(nvme_device * device, unsigned nsid, smartmontools::nvme_id_ns & id_ns);
 
 // Read NVMe log page with identifier LID.
-bool nvme_read_log_page(nvme_device * device, unsigned char lid, void * data, unsigned size);
+bool nvme_read_log_page(nvme_device * device, unsigned char lid, void * data,
+	       		unsigned size, bool broadcast_nsid);
 
 // Read NVMe Error Information Log.
 bool nvme_read_error_log(nvme_device * device, smartmontools::nvme_error_log_page * error_log,

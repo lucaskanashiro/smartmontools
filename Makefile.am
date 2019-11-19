@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 #
-# $Id: Makefile.am 4519 2017-10-08 15:41:54Z chrfranke $
+# $Id: Makefile.am 4848 2018-12-05 18:30:46Z chrfranke $
 #
 
 @SET_MAKE@
@@ -32,10 +32,10 @@ if OS_WIN32_MINGW
 AM_CPPFLAGS += -I$(srcdir)/os_win32
 endif
 if NEED_GETOPT_LONG
-AM_CPPFLAGS += -I$(srcdir)/getopt -DHAVE_GETOPT_LONG -D__GNU_LIBRARY__
+AM_CPPFLAGS += -I$(srcdir)/getopt -D_GETOPT_STANDALONE
 endif
 if NEED_REGEX
-AM_CPPFLAGS += -I$(srcdir)/regex
+AM_CPPFLAGS += -I$(srcdir)/regex -D_REGEX_STANDALONE
 endif
 
 sbin_PROGRAMS = \
@@ -69,7 +69,8 @@ smartctl_SOURCES = \
         dev_interface.h \
         dev_tunnelled.h \
         drivedb.h \
-        int64.h \
+        json.cpp \
+        json.h \
         knowndrives.cpp \
         knowndrives.h \
         nvmecmds.cpp \
@@ -79,10 +80,12 @@ smartctl_SOURCES = \
         scsicmds.cpp \
         scsicmds.h \
         scsiata.cpp \
+        scsinvme.cpp \
         scsiprint.cpp \
         scsiprint.h \
         utility.cpp \
-        utility.h
+        utility.h \
+        sg_unaligned.h
 
 smartctl_LDADD = $(os_deps) $(os_libs)
 smartctl_DEPENDENCIES = $(os_deps)
@@ -119,6 +122,10 @@ EXTRA_smartctl_SOURCES = \
 
 if OS_WIN32_MINGW
 
+smartctl_SOURCES += \
+        os_win32/popen_win32.cpp \
+        os_win32/popen.h
+
 smartctl_LDADD        += smartctl_res.o
 smartctl_DEPENDENCIES += smartctl_res.o
 
@@ -139,7 +146,6 @@ smartd_SOURCES = \
         dev_interface.h \
         dev_tunnelled.h \
         drivedb.h \
-        int64.h \
         knowndrives.cpp \
         knowndrives.h \
         nvmecmds.cpp \
@@ -147,10 +153,12 @@ smartd_SOURCES = \
         scsicmds.cpp \
         scsicmds.h \
         scsiata.cpp \
+        scsinvme.cpp \
         utility.cpp \
-        utility.h
+        utility.h \
+        sg_unaligned.h
 
-smartd_LDADD = $(os_deps) $(os_libs) $(CAPNG_LDADD)
+smartd_LDADD = $(os_deps) $(os_libs) $(CAPNG_LDADD) $(SYSTEMD_LDADD)
 smartd_DEPENDENCIES = $(os_deps)
 
 EXTRA_smartd_SOURCES = \
@@ -190,6 +198,8 @@ if OS_WIN32_MINGW
 smartd_SOURCES += \
         os_win32/daemon_win32.cpp \
         os_win32/daemon_win32.h \
+        os_win32/popen_win32.cpp \
+        os_win32/popen.h \
         os_win32/syslog_win32.cpp \
         os_win32/syslog.h
 
@@ -207,12 +217,18 @@ if NEED_GETOPT_LONG
 smartctl_SOURCES += \
         getopt/getopt.c \
         getopt/getopt.h \
-        getopt/getopt1.c
+        getopt/getopt1.c \
+        getopt/getopt_int.h \
+        getopt/bits/getopt_core.h \
+        getopt/bits/getopt_ext.h
 
 smartd_SOURCES += \
         getopt/getopt.c \
         getopt/getopt.h \
-        getopt/getopt1.c
+        getopt/getopt1.c \
+        getopt/getopt_int.h \
+        getopt/bits/getopt_core.h \
+        getopt/bits/getopt_ext.h
 
 endif
 
@@ -372,6 +388,7 @@ EXTRA_DIST = \
         .editorconfig \
         autogen.sh \
         smartd.initd.in \
+        smartd.cygwin.initd.in \
         smartd.freebsd.initd.in \
         smartd.8.in \
         smartctl.8.in \
@@ -395,7 +412,6 @@ EXTRA_DIST = \
         os_win32/smartd_warning.cmd \
         os_win32/syslogevt.mc \
         os_win32/update-smart-drivedb.nsi \
-        os_win32/wbemcli_small.h \
         os_win32/versioninfo.rc.in \
         os_win32/wtssendmsg.c \
         $(docs_DATA) \
@@ -422,6 +438,7 @@ CLEANFILES = \
         smartd.conf.5.pdf \
         smartd.conf.5.txt \
         smartd.initd \
+        smartd.cygwin.initd \
         smartd.freebsd.initd \
         smartd.service \
         smartd_warning.sh \
@@ -450,7 +467,7 @@ MAINTAINERCLEANFILES = \
         $(srcdir)/missing \
         $(srcdir)/m4/pkg.m4
 
-utility.o: svnversion.h
+smartctl.o utility.o: svnversion.h
 
 if IS_SVN_BUILD
 # Get version info from SVN
@@ -616,6 +633,11 @@ MAN_FILTER = { \
       cat; \
     else \
       sed '/^\.\\" %IF ENABLE_CAPABILITIES/,/^\.\\" %ENDIF ENABLE_CAPABILITIES/ s,^,.\\"\# ,' ; \
+    fi | \
+    if test -n '$(SYSTEMD_LDADD)'; then \
+      cat; \
+    else \
+      sed '/^\.\\" %IF ENABLE_SYSTEMD_NOTIFY/,/^\.\\" %ENDIF ENABLE_SYSTEMD_NOTIFY/ s,^,.\\"\# ,' ; \
     fi | \
     if test '$(with_nvme_devicescan)' = 'yes'; then \
       cat; \
@@ -888,14 +910,16 @@ $(distzip_win32): distdir.mkdir $(FILES_WIN32)
 if OS_WIN32_NSIS
 # Build NSIS installer
 # Note: Only option character '-' is also compatible with Linux version of makensis
-$(distinst_win32): os_win32/installer.nsi distdir.mkdir $(FILES_WIN32)
+$(distinst_win32): os_win32/installer.nsi smartctl_res.rc distdir.mkdir $(FILES_WIN32)
 	test -z '$(builddir_win64)' || ( cd $(builddir_win64) && make distdir-win32 )
 	@date=`sed -n 's,^.*DATE[^"]*"\([^"]*\)".*$$,\1,p' svnversion.h` && \
 	rev=`sed -n 's,^.*REV[^"]*"\([^"]*\)".*$$,r\1,p' svnversion.h` && \
+	version=`sed -n 's|^ *VALUE "FileVersion", "\([0-9.]*\)".*$$|\1|p' smartctl_res.rc` && \
+	yy=`echo "$$date" | sed -n 's,^20\([0-9][0-9]\).*$$,\1,p'`; yy="$${yy:-XX}" && \
 	verstr="$(PACKAGE_VERSION) $$date $$rev "$(BUILD_INFO) && \
 	d64= && if [ -n '$(builddir_win64)' ]; then d64='-DINPDIR64=$(builddir_win64)/$(PACKAGE)-$(VERSION).win64'; fi && \
-	echo "'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSTR='$$verstr' $<" && \
-	'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSTR="$$verstr" $<
+	echo "'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSION=$$version -DYY=$$yy -DVERSTR='$$verstr' $<" && \
+	'$(MAKENSIS)' -V2 -NOCD -DINPDIR=$(distdir_win32) $$d64 -DOUTFILE=$@ -DVERSION=$$version -DYY=$$yy -DVERSTR="$$verstr" $<
 	md5sum $@ > $@.md5
 	sha1sum $@ > $@.sha1
 	sha256sum $@ > $@.sha256
@@ -1001,7 +1025,7 @@ config-vc$(vcver): $(CONFIG_VC_FILES)
 
 $(srcdir)/os_win32/vc$(vcver)/config.h: config.h Makefile
 	sed -e '1i/* os_win32/vc$(vcver)/config.h.  Generated from config.h by Makefile.  */' \
-	    -e 's,^#define HAVE_\(ATTR_PACKED\|GETTIMEOFDAY\|[DK_]*NTDDDISK_H\|STRINGS_H\|UNISTD_H\|WORKING_SNPRINTF\) 1$$,/* #undef HAVE_\1 */ /* VC$(vcver) */,' \
+	    -e 's,^#define HAVE_\(ATTR_PACKED\|GETTIMEOFDAY\|[DK_]*NTDDDISK_H\|LONG_DOUBLE_WIDER\|STRINGS_H\|UNISTD_H\) 1$$,/* #undef HAVE_\1 */ /* VC$(vcver) */,' \
 	    -e 's,^\(#define SMARTMONTOOLS_BUILD_HOST "[^-]*\)[^"]*,\1-pc-w32vc$(vcver),' $< > $@
 
 $(srcdir)/os_win32/vc$(vcver)/svnversion.h: svnversion.h
