@@ -9,8 +9,6 @@ Closes: #406130
  smartd.conf | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/smartd.conf b/smartd.conf
-index 59addd4..4cdede7 100644
 --- a/smartd.conf
 +++ b/smartd.conf
 @@ -18,7 +18,7 @@
