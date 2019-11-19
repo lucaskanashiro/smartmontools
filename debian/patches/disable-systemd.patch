@@ -1,0 +1,18 @@
+Description: Disable systemd notify integration
+ Use of systemd-dev and notify causes the systemd unit to
+ fail on deployments where no devices are detected with
+ SMART capabilities; switch back to default systemd unit
+ type to avoid package install/upgrade failures.
+Author: James Page <james.page@ubuntu.com>
+Forwarded: not-needed
+
+--- a/smartd.service.in
++++ b/smartd.service.in
+@@ -3,7 +3,6 @@ Description=Self Monitoring and Reportin
+ Documentation=man:smartd(8) man:smartd.conf(5)
+ 
+ [Service]
+-Type=notify
+ EnvironmentFile=-/usr/local/etc/sysconfig/smartmontools
+ ExecStart=/usr/local/sbin/smartd -n $smartd_opts
+ ExecReload=/bin/kill -HUP $MAINPID
