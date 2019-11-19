@@ -1,7 +1,8 @@
 Source: smartmontools
 Section: utils
 Priority: optional
-Maintainer: Giuseppe Iuculano <iuculano@debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Giuseppe Iuculano <iuculano@debian.org>
 Uploaders: Florian Maier <contact@marsmenschen.com>,
            Jonathan Dowland <jmtd@debian.org>
 Build-Depends: autoconf,
