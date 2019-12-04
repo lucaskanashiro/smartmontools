@@ -1,3 +1,15 @@
+smartmontools (7.0-2ubuntu1) focal; urgency=medium
+
+  * Merge with Debian unstable. Remaining changes:
+    - d/p/disable-systemd.patch: Disable Type=notify to mimic behaviour
+      of prior versions of smartmontools in deployments where no
+      SMART capable devices are detected.
+  * Dropped:
+    - d/control,rules: Enable direct support for systemd.
+      [In 7.0-2]
+
+ -- Lucas Kanashiro <lucas.kanashiro@canonical.com>  Wed, 04 Dec 2019 09:01:23 -0300
+
 smartmontools (7.0-2) unstable; urgency=medium
 
   * SysV: don't (re)start daemon during upgrade (Closes: #942118).
