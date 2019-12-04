@@ -2,7 +2,8 @@ Source: smartmontools
 Section: utils
 Priority: optional
 Standards-Version: 4.4.1
-Maintainer: Dmitry Smirnov <onlyjob@debian.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Dmitry Smirnov <onlyjob@debian.org>
 Uploaders: Florian Maier <contact@marsmenschen.com>,
            Jonathan Dowland <jmtd@debian.org>,
 Build-Depends: autoconf,

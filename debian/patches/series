@@ -6,3 +6,4 @@
 manpage.diff
 service-alias.patch
 unknown-formfactor.patch
+disable-systemd.patch
